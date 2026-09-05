@@ -15,13 +15,18 @@ export default function ChatInterface({
   onSendMessage,
   onNewConversation,
   isLoading,
+  isDeliberating,
+  onAbortDeliberation,
   onTagsChange,
 }) {
   const [input, setInput] = useState('');
   const [showTagEditor, setShowTagEditor] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState('0.0');
   const [copiedADR, setCopiedADR] = useState(false);
+  const [expandedResearch, setExpandedResearch] = useState({});
   const messagesEndRef = useRef(null);
+
+  const activeDeliberating = Boolean(isLoading || isDeliberating || conversation?.status === 'deliberating');
 
   const handleCopyADR = async () => {
     if (!conversation) return;
@@ -34,7 +39,7 @@ export default function ChatInterface({
 
   useEffect(() => {
     let interval = null;
-    if (isLoading) {
+    if (activeDeliberating) {
       const startTime = Date.now();
       setElapsedSeconds('0.0');
       interval = setInterval(() => {
@@ -46,7 +51,7 @@ export default function ChatInterface({
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isLoading]);
+  }, [activeDeliberating]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -77,7 +82,6 @@ export default function ChatInterface({
       <div className="chat-interface">
         <div className="empty-state">
           <div className="empty-council-badge">
-            <span className="empty-council-icon">{activeCouncil?.icon || '🏛️'}</span>
             <span className="empty-council-name">{activeCouncil?.name || 'LLM Council'}</span>
           </div>
           <h2>Welcome to LLM Council</h2>
@@ -107,7 +111,7 @@ export default function ChatInterface({
             <h2 className="chat-title">{conversation.title || 'Conversation'}</h2>
             {(conversation.council_name || activeCouncil?.name) && (
               <span className="chat-header-council-pill" title="Council assigned to this deliberation">
-                {activeCouncil?.icon || '🏛️'} {conversation.council_name || activeCouncil?.name}
+                {conversation.council_name || activeCouncil?.name}
               </span>
             )}
             {conversation.tags && conversation.tags.length > 0 && !showTagEditor && (
@@ -131,7 +135,7 @@ export default function ChatInterface({
               onClick={handleCopyADR}
               title="Copy decision as Architecture Decision Record (ADR) to clipboard"
             >
-              {copiedADR ? '✓ ADR Kopyalandı' : '📋 Copy ADR'}
+              {copiedADR ? 'ADR Copied' : 'Copy ADR'}
             </button>
             <button
               className="action-btn"
@@ -172,7 +176,6 @@ export default function ChatInterface({
         {conversation.messages.length === 0 ? (
           <div className="empty-state">
             <div className="empty-council-badge">
-              <span className="empty-council-icon">{activeCouncil?.icon || '🏛️'}</span>
               <span className="empty-council-name">{conversation.council_name || activeCouncil?.name || 'LLM Council'}</span>
             </div>
             <h2>Start a Deliberation</h2>
@@ -237,6 +240,99 @@ export default function ChatInterface({
                         </a>
                       ))}
                     </div>
+                  )}
+
+                  {/* Autonomous Technology Scouting & Candidate Discovery Showcase */}
+                  {(msg.metadata?.research?.researched || msg.researchMeta?.researched) && (
+                    (() => {
+                      const rMeta = msg.metadata?.research || msg.researchMeta;
+                      const isExpanded = expandedResearch[index] !== false; // expanded by default
+                      const candidates = rMeta?.candidates || [];
+                      return (
+                        <div className="research-discovery-container">
+                          <div
+                            className="research-badge-banner"
+                            onClick={() => setExpandedResearch(prev => ({ ...prev, [index]: isExpanded ? false : true }))}
+                            title="Click to toggle scouted technology candidates dossier"
+                          >
+                            <div className="research-banner-left">
+                              <span className="research-badge-icon">🔬</span>
+                              <span className="research-badge-label">Research Scouting:</span>
+                              {rMeta.search_terms && (
+                                <span className="research-terms-chip">
+                                  "{rMeta.search_terms}"
+                                </span>
+                              )}
+                              <span className="research-count-badge">
+                                {rMeta.candidate_count || candidates.length} candidates scouted
+                              </span>
+                            </div>
+                            <span className="research-accordion-toggle">
+                              {isExpanded ? '▲ Hide Dossier' : '▼ View Candidates'}
+                            </span>
+                          </div>
+
+                          {isExpanded && candidates.length > 0 && (
+                            <div className="research-candidates-grid">
+                              {candidates.map((c, cIdx) => (
+                                <div key={cIdx} className={`candidate-card source-${c.source || 'web'}`}>
+                                  <div className="candidate-card-header">
+                                    <span className={`candidate-source-tag source-tag-${c.source || 'web'}`}>
+                                      {c.source === 'github' && '🐙 GitHub'}
+                                      {c.source === 'local-skill' && '🧩 Skill'}
+                                      {c.source === 'package' && '📦 Package'}
+                                      {c.source === 'web' && '📰 Tech Article'}
+                                    </span>
+                                    {c.url && !c.url.startsWith('local://') ? (
+                                      <a
+                                        href={c.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="candidate-title-link"
+                                      >
+                                        {c.title} ↗
+                                      </a>
+                                    ) : (
+                                      <span className="candidate-title-text">{c.title}</span>
+                                    )}
+                                  </div>
+
+                                  {c.description && <p className="candidate-desc">{c.description}</p>}
+
+                                  <div className="candidate-meta-bar">
+                                    {c.stars !== undefined && (
+                                      <span className="candidate-stat stars" title="GitHub Stars">
+                                        {c.stars} stars
+                                      </span>
+                                    )}
+                                    {c.forks !== undefined && (
+                                      <span className="candidate-stat forks" title="Forks">
+                                        {c.forks} forks
+                                      </span>
+                                    )}
+                                    {c.license && (
+                                      <span className="candidate-stat license" title="License">
+                                        {c.license}
+                                      </span>
+                                    )}
+                                    {c.version && (
+                                      <span className="candidate-stat version" title="Package Version">
+                                        v{c.version}
+                                      </span>
+                                    )}
+                                    {c.topics && c.topics.length > 0 && (
+                                      <span className="candidate-topics">
+                                        {c.topics.slice(0, 3).map(t => `#${t}`).join(' ')}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()
                   )}
 
                   {/* Debate Mode View */}
@@ -400,19 +496,45 @@ export default function ChatInterface({
           ))
         )}
 
+        {/* Aborted deliberation status banner */}
+        {conversation.status === 'aborted' &&
+          conversation.messages.length > 0 &&
+          conversation.messages[conversation.messages.length - 1]?.role === 'user' && (
+            <div className="deliberation-aborted-banner">
+              <div className="deliberation-aborted-content">
+                <div className="deliberation-aborted-title">Deliberation Cancelled</div>
+                <div className="deliberation-aborted-desc">
+                  This deliberation was stopped. You can restart it at any time.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="deliberation-restart-btn"
+                onClick={() =>
+                  onSendMessage(
+                    conversation.messages[conversation.messages.length - 1].content,
+                    true
+                  )
+                }
+              >
+                <span>Restart</span>
+              </button>
+            </div>
+          )}
+
         {/* Interrupted or pending deliberation after page reload */}
-        {!isLoading &&
+        {!activeDeliberating &&
+          conversation.status !== 'aborted' &&
           conversation.messages.length > 0 &&
           conversation.messages[conversation.messages.length - 1]?.role === 'user' && (
             <div className="pending-deliberation-wrap">
               <div className="pending-deliberation-card">
                 <div className="pending-card-header">
-                  <span className="pending-card-icon">⏳</span>
-                  <span className="pending-card-title">Müzakere Bekliyor / Sayfa Yenilendi</span>
+                  <span className="pending-card-title">Deliberation Interrupted</span>
                 </div>
                 <p className="pending-card-desc">
-                  Bu soru gönderilmiş fakat müzakere süreci henüz tamamlanmamış.
-                  Aşağıdaki butona basarak konseyi hemen çalıştırabilirsiniz.
+                  This query was submitted, but deliberation was interrupted before completion.
+                  Click below to run the council.
                 </p>
                 <button
                   className="pending-retry-btn"
@@ -423,41 +545,49 @@ export default function ChatInterface({
                     )
                   }
                 >
-                  <svg
-                    width="13"
-                    height="13"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="1 4 1 10 7 10"></polyline>
-                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-                  </svg>
-                  <span>Konseyi Çalıştır / Yanıt Al</span>
+                  <span>Run Council</span>
                 </button>
               </div>
             </div>
           )}
 
-        {isLoading && (
-          <div className="loading-indicator">
-            <div className="spinner"></div>
-            <span>
-              {(() => {
-                const lastMsg = conversation.messages[conversation.messages.length - 1];
-                if (lastMsg && (lastMsg.isDebating || lastMsg.useDebate || lastMsg.stage3?.debate_mode)) {
-                  if (lastMsg.isJudging) return `Hakem / Başkan değerlendiriyor... (${elapsedSeconds}s)`;
-                  if (lastMsg.debateRound === 1) return `1. Tur: Pozisyonlar toplanıyor... (${elapsedSeconds}s)`;
-                  if (lastMsg.debateRound === 2) return `2. Tur: Eleştiriler yazılıyor... (${elapsedSeconds}s)`;
-                  if (lastMsg.debateRound === 3) return `3. Tur: Savunmalar toplanıyor... (${elapsedSeconds}s)`;
-                  return `Münazara oturumu sürüyor... (${elapsedSeconds}s)`;
-                }
-                return `Consulting the council... (${elapsedSeconds}s)`;
-              })()}
-            </span>
+        {/* Active Deliberation Banner with Live Status & Abort Control */}
+        {activeDeliberating && (
+          <div className="deliberation-active-banner">
+            <div className="deliberation-active-info">
+              <div className="deliberation-spinner"></div>
+              <div className="deliberation-active-text">
+                <span className="deliberation-active-title">
+                  {(() => {
+                    const lastMsg = conversation.messages[conversation.messages.length - 1];
+                    if (lastMsg && (lastMsg.isDebating || lastMsg.useDebate || lastMsg.stage3?.debate_mode)) {
+                      if (lastMsg.isJudging) return 'Referee / Chairman evaluating...';
+                      if (lastMsg.debateRound === 1) return 'Round 1: Collecting initial positions...';
+                      if (lastMsg.debateRound === 2) return 'Round 2: Peer critiques in progress...';
+                      if (lastMsg.debateRound === 3) return 'Round 3: Rebuttals in progress...';
+                      return 'Debate session in progress...';
+                    }
+                    if (conversation.council_id === 'tech-scout') {
+                      return 'Tech Scout & Candidate Radar exploring...';
+                    }
+                    return 'Council deliberating...';
+                  })()}
+                </span>
+                <span className="deliberation-active-sub">
+                  Active task ({elapsedSeconds}s) • Persists across page reload
+                </span>
+              </div>
+            </div>
+            {onAbortDeliberation && (
+              <button
+                type="button"
+                className="deliberation-abort-btn"
+                onClick={() => onAbortDeliberation(conversation.id)}
+                title="Stop the running deliberation"
+              >
+                <span>Stop</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -465,25 +595,41 @@ export default function ChatInterface({
       </div>
 
       {(!hasMessages ||
-        conversation.messages[conversation.messages.length - 1]?.role ===
-          'assistant') && (
+        conversation.messages[conversation.messages.length - 1]?.role === 'assistant' ||
+        activeDeliberating ||
+        conversation.status === 'aborted') && (
         <form className="input-form" onSubmit={handleSubmit}>
           <textarea
             className="message-input"
-            placeholder="Ask your question... (Shift+Enter for new line, Enter to send)"
+            placeholder={
+              activeDeliberating
+                ? 'Council deliberation in progress... (Click Stop to cancel)'
+                : 'Ask your question... (Shift+Enter for new line, Enter to send)'
+            }
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isLoading}
+            disabled={activeDeliberating}
             rows={3}
           />
-          <button
-            type="submit"
-            className="send-button"
-            disabled={!input.trim() || isLoading}
-          >
-            Send
-          </button>
+          {activeDeliberating ? (
+            <button
+              type="button"
+              className="abort-button"
+              onClick={() => onAbortDeliberation && onAbortDeliberation(conversation.id)}
+              title="Stop deliberation"
+            >
+              <span>Stop</span>
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="send-button"
+              disabled={!input.trim() || activeDeliberating}
+            >
+              Send
+            </button>
+          )}
         </form>
       )}
     </div>

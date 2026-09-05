@@ -79,6 +79,20 @@ BUILTIN_COUNCILS: List[Dict[str, Any]] = [
         "chairman_model": "local/claude-code",
         "is_builtin": True,
     },
+    {
+        "id": "tech-scout",
+        "name": "Tech Scout & Candidate Radar",
+        "icon": "📡",
+        "description": "Automated technology scouting & candidate evaluation: Antigravity Deep Research, Qwen Supply Chain Audit, Qwen First Principles + Claude Evaluator. Always searches GitHub, packages, and web to evaluate candidates.",
+        "council_models": [
+            "local/antigravity@deep-research",
+            "local/qwen3.6-27b@supply-chain-audit",
+            "local/qwen3.6-27b@first-principles",
+        ],
+        "chairman_model": "local/claude-code",
+        "is_builtin": True,
+        "force_research": True,
+    },
 ]
 
 

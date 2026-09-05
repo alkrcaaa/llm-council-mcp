@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import './Sidebar.css';
 
 export default function Sidebar({
@@ -12,6 +13,22 @@ export default function Sidebar({
   onTagFilterChange,
   activeCouncil,
 }) {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredConversations = conversations.filter((conv) => {
+    if (selectedTag && (!conv.tags || !conv.tags.includes(selectedTag))) {
+      return false;
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const titleMatch = (conv.title || '').toLowerCase().includes(q);
+      const tagMatch = (conv.tags || []).some((t) => t.toLowerCase().includes(q));
+      const councilMatch = (conv.council_name || '').toLowerCase().includes(q);
+      return titleMatch || tagMatch || councilMatch;
+    }
+    return true;
+  });
+
   return (
     <div className="sidebar">
       <div className="sidebar-header">
@@ -25,9 +42,29 @@ export default function Sidebar({
       {activeCouncil && (
         <div className="sidebar-active-council" title={`New conversations will start with ${activeCouncil.name}`}>
           <span className="sidebar-active-council-label">COUNCIL:</span>
-          <span className="sidebar-active-council-value">{activeCouncil.icon || '🏛️'} {activeCouncil.name}</span>
+          <span className="sidebar-active-council-value">{activeCouncil.name}</span>
         </div>
       )}
+
+      {/* Conversation Search Bar */}
+      <div className="sidebar-search">
+        <input
+          type="text"
+          className="sidebar-search-input"
+          placeholder="Search conversations..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        {searchQuery && (
+          <button
+            className="sidebar-search-clear"
+            onClick={() => setSearchQuery('')}
+            title="Clear search"
+          >
+            ×
+          </button>
+        )}
+      </div>
 
       {/* Tag Filter */}
       {allTags && allTags.length > 0 && (
@@ -48,12 +85,16 @@ export default function Sidebar({
       )}
 
       <div className="conversation-list">
-        {conversations.length === 0 ? (
+        {filteredConversations.length === 0 ? (
           <div className="no-conversations">
-            {selectedTag ? `No conversations with #${selectedTag}` : 'No conversations yet'}
+            {searchQuery
+              ? `No conversations matching "${searchQuery}"`
+              : selectedTag
+              ? `No conversations with #${selectedTag}`
+              : 'No conversations yet'}
           </div>
         ) : (
-          conversations.map((conv) => (
+          filteredConversations.map((conv) => (
             <div
               key={conv.id}
               className={`conversation-item ${
@@ -84,14 +125,19 @@ export default function Sidebar({
               </div>
               <div className="conversation-meta">
                 <span className="conversation-count">{conv.message_count} messages</span>
-                {conv.id === loadingConversationId && (
-                  <span className="conv-thinking-pill" title="Konsey deliberasyonu devam ediyor">
-                    <span className="thinking-pulse-dot"></span> Düşünüyor...
+                {(conv.id === loadingConversationId || conv.status === 'deliberating') && (
+                  <span className="conv-thinking-pill" title="Council deliberation in progress">
+                    <span className="thinking-pulse-dot"></span> Thinking...
+                  </span>
+                )}
+                {conv.status === 'aborted' && (
+                  <span className="conv-aborted-pill" title="Deliberation cancelled">
+                    Aborted
                   </span>
                 )}
                 {conv.council_name && (
-                  <span className="conv-council-pill" title={`Assigned Council: ${conv.council_name}`}>
-                    🏛️ {conv.council_name}
+                  <span className="conv-council-pill" title={`Council: ${conv.council_name}`}>
+                    {conv.council_name}
                   </span>
                 )}
               </div>

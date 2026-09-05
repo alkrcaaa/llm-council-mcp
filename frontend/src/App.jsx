@@ -97,6 +97,11 @@ function App() {
     () => localStorage.getItem('useCache') === 'true'
   );
 
+  // Autonomous Tech Scouting & Candidate Discovery state (default true)
+  const [useResearch, setUseResearch] = useState(
+    () => localStorage.getItem('useResearch') !== 'false'
+  );
+
   // Council profiles state
   const [councilsList, setCouncilsList] = useState([]);
   const [activeCouncil, setActiveCouncil] = useState(null);
@@ -233,6 +238,65 @@ function App() {
       console.error('Failed to load conversation:', error);
     }
   };
+
+  const handleAbortDeliberation = async (conversationId) => {
+    const targetId = conversationId || currentConversationId;
+    if (!targetId) return;
+
+    try {
+      await api.abortDeliberation(targetId);
+      if (loadingConversationId === targetId) {
+        setLoadingConversationId(null);
+      }
+      if (activeStreamRef.current) {
+        delete activeStreamRef.current[targetId];
+      }
+      await loadConversation(targetId);
+      await loadConversations(selectedTag);
+    } catch (err) {
+      console.error('Failed to abort deliberation:', err);
+    }
+  };
+
+  // Polling for active background deliberations (survives page refresh / F5)
+  useEffect(() => {
+    const hasAnyDeliberating =
+      loadingConversationId !== null ||
+      currentConversation?.status === 'deliberating' ||
+      conversations.some((c) => c.status === 'deliberating');
+
+    if (!hasAnyDeliberating) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const updatedList = await api.listConversations(selectedTag);
+        setConversations(updatedList);
+
+        if (currentConversationId) {
+          const freshConv = await api.getConversation(currentConversationId);
+          if (freshConv.status !== 'deliberating') {
+            if (loadingConversationId === currentConversationId) {
+              setLoadingConversationId(null);
+            }
+            if (activeStreamRef.current) {
+              delete activeStreamRef.current[currentConversationId];
+            }
+            _setCurrentConversation(freshConv);
+          } else {
+            // Still deliberating in background
+            if (activeStreamRef.current && activeStreamRef.current[currentConversationId]) {
+              freshConv.messages = [...(freshConv.messages || []), activeStreamRef.current[currentConversationId]];
+            }
+            _setCurrentConversation(freshConv);
+          }
+        }
+      } catch (pollErr) {
+        console.warn('Deliberation status poll warning:', pollErr);
+      }
+    }, 2500);
+
+    return () => clearInterval(pollInterval);
+  }, [loadingConversationId, currentConversation?.status, currentConversationId, conversations, selectedTag]);
 
   const handleNewConversation = async (councilId = null) => {
     try {
@@ -402,6 +466,11 @@ function App() {
     localStorage.setItem('useCache', value.toString());
   };
 
+  const handleResearchChange = (value) => {
+    setUseResearch(value);
+    localStorage.setItem('useResearch', value.toString());
+  };
+
   const handleSendMessage = async (content, isRetry = false) => {
     if (!currentConversationId) return;
     const targetConversationId = currentConversationId;
@@ -541,6 +610,16 @@ function App() {
               const messages = [...prev.messages];
               const lastMsg = messages[messages.length - 1];
               lastMsg.ingestMeta = event.metadata;
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'research_complete':
+            // Autonomous technology scouting discovered candidates
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.researchMeta = event.metadata;
               return { ...prev, messages };
             });
             break;
@@ -1601,7 +1680,8 @@ function App() {
         useCache,
         0.92,
         currentConversation?.council_id || activeCouncil?.id,
-        selectedWorkspace || null
+        selectedWorkspace || null,
+        useResearch
       );
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -1661,8 +1741,8 @@ function App() {
                   onClick={() => setShowCouncilDropdown(!showCouncilDropdown)}
                   title="Select or switch active Council"
                 >
-                  <span className="council-selector-icon">{activeCouncil?.icon || '🏛️'}</span>
-                  <span className="council-selector-name">{activeCouncil?.name || 'Council'}</span>
+                  <span className="council-selector-label">Council:</span>
+                  <span className="council-selector-name">{activeCouncil?.name || 'Default'}</span>
                   <svg className="council-selector-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="6 9 12 15 18 9"></polyline>
                   </svg>
@@ -1698,7 +1778,6 @@ function App() {
                               className={`council-dropdown-item ${isSelected ? 'selected' : ''}`}
                               onClick={() => handleSelectCouncil(c)}
                             >
-                              <span className="council-item-icon">{c.icon || '🏛️'}</span>
                               <div className="council-item-info">
                                 <div className="council-item-name-row">
                                   <span className="council-item-name">{c.name}</span>
@@ -2027,6 +2106,23 @@ function App() {
                   </span>
                 </label>
               </div>
+
+              <div className="settings-section research-section">
+                <label className="research-toggle-wrapper">
+                  <input
+                    type="checkbox"
+                    checked={useResearch}
+                    onChange={(e) => handleResearchChange(e.target.checked)}
+                  />
+                  <span className="research-toggle-slider" />
+                  <span className="research-toggle-label">
+                    <span className="research-toggle-title">Autonomous Tech Scouting & Search</span>
+                    <span className="research-toggle-description">
+                      Scout GitHub, open packages, and installed skills to ground deliberations in concrete candidates
+                    </span>
+                  </span>
+                </label>
+              </div>
             </div>
           )}
         </div>
@@ -2036,6 +2132,8 @@ function App() {
           onSendMessage={handleSendMessage}
           onNewConversation={handleNewConversation}
           isLoading={loadingConversationId === currentConversationId}
+          isDeliberating={loadingConversationId === currentConversationId || currentConversation?.status === 'deliberating'}
+          onAbortDeliberation={handleAbortDeliberation}
           onTagsChange={handleTagsChange}
         />
       </div>

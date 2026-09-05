@@ -392,7 +392,6 @@ export default function ConfigPanel({ onClose, onCouncilsUpdated }) {
                 title="Click to activate this council profile"
               >
                 <div className="council-card-top">
-                  <span className="council-card-icon">{c.icon || '🏛️'}</span>
                   <div className="council-card-meta">
                     <span className="council-card-name">{c.name}</span>
                     {c.is_builtin ? (
@@ -439,7 +438,7 @@ export default function ConfigPanel({ onClose, onCouncilsUpdated }) {
 
         {/* 1-Click Specialist Presets */}
         <div className="presets-container">
-          <span className="presets-label">⚡ Specialist Presets:</span>
+          <span className="presets-label">Specialist Presets:</span>
           <div className="preset-buttons">
             <button
               type="button"
@@ -447,7 +446,7 @@ export default function ConfigPanel({ onClose, onCouncilsUpdated }) {
               onClick={handleAllQwenPreset}
               title="4-seat specialized Qwen council: Security, Architecture, DevOps, Quality"
             >
-              <span className="preset-icon">🛡️</span> All-Qwen Specialists
+              All-Qwen Specialists
             </button>
             <button
               type="button"
@@ -455,7 +454,7 @@ export default function ConfigPanel({ onClose, onCouncilsUpdated }) {
               onClick={handleHybridPreset}
               title="Hybrid Local: Qwen (Security & Ops) + Antigravity (Architecture)"
             >
-              <span className="preset-icon">⚡</span> Hybrid Local
+              Hybrid Local
             </button>
             <button
               type="button"
@@ -463,7 +462,7 @@ export default function ConfigPanel({ onClose, onCouncilsUpdated }) {
               onClick={handleLocalDuoPreset}
               title="Standard dual local council: Antigravity + Qwen"
             >
-              <span className="preset-icon">👥</span> Local Duo
+              Local Duo
             </button>
           </div>
         </div>
@@ -680,22 +679,6 @@ export default function ConfigPanel({ onClose, onCouncilsUpdated }) {
                 onChange={(e) => setNewCouncilName(e.target.value)}
                 autoFocus
               />
-
-              <div className="icon-select-row">
-                <label className="modal-label">Council Icon / Emoji</label>
-                <div className="icon-options">
-                  {['🛡️', '⚡', '🏛️', '🔒', '👥', '🎨', '🚀', '🧠', '🔬', '⚙️'].map((ico) => (
-                    <button
-                      key={ico}
-                      type="button"
-                      className={`icon-opt-btn ${newCouncilIcon === ico ? 'selected' : ''}`}
-                      onClick={() => setNewCouncilIcon(ico)}
-                    >
-                      {ico}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               <label className="modal-label">Description (Optional)</label>
               <input

@@ -263,7 +263,8 @@
 .adversary-toggle-wrapper,
 .debate-toggle-wrapper,
 .decomposition-toggle-wrapper,
-.cache-toggle-wrapper {
+.cache-toggle-wrapper,
+.research-toggle-wrapper {
   display: flex;
   align-items: center;
   gap: 14px;
@@ -285,7 +286,8 @@
 .adversary-toggle-wrapper:hover,
 .debate-toggle-wrapper:hover,
 .decomposition-toggle-wrapper:hover,
-.cache-toggle-wrapper:hover {
+.cache-toggle-wrapper:hover,
+.research-toggle-wrapper:hover {
   background: var(--bg-surface-hover);
   border-color: var(--border-medium);
 }
@@ -300,7 +302,8 @@
 .adversary-toggle-wrapper input[type="checkbox"],
 .debate-toggle-wrapper input,
 .decomposition-toggle-wrapper input[type="checkbox"],
-.cache-toggle-wrapper input[type="checkbox"] {
+.cache-toggle-wrapper input[type="checkbox"],
+.research-toggle-wrapper input[type="checkbox"] {
   display: none;
 }
 
@@ -315,7 +318,8 @@
 .adversary-toggle-slider,
 .debate-toggle-slider,
 .decomposition-toggle-slider,
-.cache-toggle-slider {
+.cache-toggle-slider,
+.research-toggle-slider {
   position: relative;
   flex-shrink: 0;
   width: 38px;
@@ -336,7 +340,8 @@
 .adversary-toggle-slider::after,
 .debate-toggle-slider::after,
 .decomposition-toggle-slider::after,
-.cache-toggle-slider::after {
+.cache-toggle-slider::after,
+.research-toggle-slider::after {
   content: '';
   position: absolute;
   top: 2px;
@@ -360,7 +365,8 @@
 .adversary-toggle-wrapper input:checked + .adversary-toggle-slider,
 .debate-toggle-wrapper input:checked + .debate-toggle-slider,
 .decomposition-toggle-wrapper input:checked + .decomposition-toggle-slider,
-.cache-toggle-wrapper input:checked + .cache-toggle-slider {
+.cache-toggle-wrapper input:checked + .cache-toggle-slider,
+.research-toggle-wrapper input:checked + .research-toggle-slider {
   background: var(--accent-brass);
   border-color: var(--accent-brass);
 }
@@ -375,7 +381,8 @@
 .adversary-toggle-wrapper input:checked + .adversary-toggle-slider::after,
 .debate-toggle-wrapper input:checked + .debate-toggle-slider::after,
 .decomposition-toggle-wrapper input:checked + .decomposition-toggle-slider::after,
-.cache-toggle-wrapper input:checked + .cache-toggle-slider::after {
+.cache-toggle-wrapper input:checked + .cache-toggle-slider::after,
+.research-toggle-wrapper input:checked + .research-toggle-slider::after {
   transform: translateX(18px);
   background: #090b0e;
 }
@@ -391,7 +398,8 @@
 .adversary-toggle-label,
 .debate-toggle-label,
 .decomposition-toggle-label,
-.cache-toggle-label {
+.cache-toggle-label,
+.research-toggle-label {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -407,7 +415,8 @@
 .adversary-toggle-title,
 .debate-toggle-title,
 .decomposition-toggle-title,
-.cache-toggle-title {
+.cache-toggle-title,
+.research-toggle-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
@@ -424,7 +433,8 @@
 .adversary-toggle-description,
 .debate-toggle-description,
 .decomposition-toggle-description,
-.cache-toggle-description {
+.cache-toggle-description,
+.research-toggle-description {
   font-size: 11px;
   font-weight: 400;
   color: var(--text-secondary);
@@ -441,7 +451,8 @@
 .adversary-toggle-wrapper input:checked ~ .adversary-toggle-label .adversary-toggle-title,
 .debate-toggle-wrapper input:checked ~ .debate-toggle-label .debate-toggle-title,
 .decomposition-toggle-wrapper input:checked ~ .decomposition-toggle-label .decomposition-toggle-title,
-.cache-toggle-wrapper input:checked ~ .cache-toggle-label .cache-toggle-title {
+.cache-toggle-wrapper input:checked ~ .cache-toggle-label .cache-toggle-title,
+.research-toggle-wrapper input:checked ~ .research-toggle-label .research-toggle-title {
   color: var(--accent-brass);
 }
 
@@ -455,7 +466,8 @@
 .settings-adversary-indicator,
 .settings-debate-indicator,
 .settings-decomposition-indicator,
-.settings-cache-indicator {
+.settings-cache-indicator,
+.settings-research-indicator {
   display: inline-block;
   padding: 2px 6px;
   margin-left: 6px;

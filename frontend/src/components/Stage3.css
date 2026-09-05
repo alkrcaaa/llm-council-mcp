@@ -53,11 +53,6 @@
   gap: 8px;
 }
 
-.chairman-label::before {
-  content: '⚖';
-  font-size: 14px;
-}
-
 .final-text {
   color: var(--text-primary);
   line-height: 1.7;
@@ -205,10 +200,5 @@
 }
 
 .chairman-label.consensus-winner {
-  color: var(--status-consensus);
-}
-
-.chairman-label.consensus-winner::before {
-  content: '✓';
   color: var(--status-consensus);
 }

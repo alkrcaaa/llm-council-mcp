@@ -49,13 +49,16 @@ def format_adr_payload(stage3_data: Dict[str, Any], metadata: Dict[str, Any]) ->
 
     rec_candidates = []
     risk_candidates = []
+    sources_candidates = []
 
     for sec in sections[1:]:
         sec_clean = sec.strip()
         if not sec_clean:
             continue
         first_line = sec_clean.splitlines()[0].lower()
-        if any(h in first_line for h in ["risk", "tradeoff", "dissent", "objection", "caveat", "failure mode", "when to", "migrate"]):
+        if any(h in first_line for h in ["source", "radar", "consulted"]):
+            sources_candidates.append(sec_clean)
+        elif any(h in first_line for h in ["risk", "tradeoff", "dissent", "objection", "caveat", "failure mode", "when to", "migrate"]):
             risk_candidates.append(sec_clean)
         elif any(h in first_line for h in ["recommendation", "decision", "action", "setup", "why", "fits", "solution", "proposal", "approach"]):
             rec_candidates.append(sec_clean)
@@ -75,7 +78,7 @@ def format_adr_payload(stage3_data: Dict[str, Any], metadata: Dict[str, Any]) ->
     else:
         risk_text = "None material (unanimous alignment across council seats)."
 
-    # Format cleanly and enforce <=150-word cap using word boundaries
+    # Format cleanly and enforce concise word boundaries
     rec_clean = re.sub(r"```[a-z]*\n?|```", "", rec_text)
     rec_clean = " ".join(rec_clean.split())
     rec_words = rec_clean.split()
@@ -94,6 +97,17 @@ def format_adr_payload(stage3_data: Dict[str, Any], metadata: Dict[str, Any]) ->
         f"**Recommendation:** {rec_clean}",
         f"**Dissenting risk:** {risk_clean}",
     ]
+
+    if sources_candidates:
+        s_first = sources_candidates[0]
+        s_text = " ".join(s_first.splitlines()[1:]) if "\n" in s_first else s_first
+        s_clean = re.sub(r"```[a-z]*\n?|```", "", s_text)
+        s_clean = " ".join(s_clean.split())
+        s_words = s_clean.split()
+        if len(s_words) > 45:
+            s_clean = " ".join(s_words[:45]) + "..."
+        lines.append(f"**Consulted Sources & Radar:** {s_clean}")
+
     return "\n".join(lines)
 
 
@@ -142,7 +156,7 @@ async def ask_council(
 
     os.environ[RECURSION_ENV_KEY] = "1"
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             # Create a dedicated conversation for this deliberation
             conv_resp = await client.post(
                 f"{COUNCIL_API_BASE}/api/conversations",
@@ -189,7 +203,7 @@ async def ask_council(
 
     except httpx.TimeoutException:
         return (
-            "## Verdict: Council Deliberation Timed Out (>120s)\n"
+            "## Verdict: Council Deliberation Timed Out (>300s)\n"
             "**Confidence:** Aborted\n"
             "**Recommendation:** Models took too long to reach consensus; fall back to local direct analysis.\n"
             "**Dissenting risk:** Latency ceiling exceeded."
@@ -226,8 +240,43 @@ async def list_councils() -> str:
         "- code-craft: Deep refactoring & surgical simplicity\n"
         "- deep-tech: Technology, protocol & library evaluation\n"
         "- sec-ops: Production security & SRE resilience\n"
-        "- frontend-craft: Design systems & UI flows"
+        "- frontend-craft: Design systems & UI flows\n"
+        "- tech-scout: Automated technology scouting, candidate evaluation & telemetry"
     )
+
+
+@mcp.tool()
+async def scout_candidates(
+    query: str,
+    max_candidates: int = 6
+) -> str:
+    """Scout and discover candidate technologies, MCP servers, libraries, or skills across GitHub, web, and local registries.
+
+    Args:
+        query: Technology keywords or problem description (e.g. 'vector database', 'obsidian mcp')
+        max_candidates: Maximum number of candidates to evaluate (default 6)
+
+    Returns:
+        Structured candidate dossier with stars, forks, licenses, topics, and overview.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{COUNCIL_API_BASE}/api/research/scout",
+                json={"query": query, "max_candidates": max_candidates}
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                dossier = data.get("dossier", "")
+                if dossier:
+                    return dossier
+                candidates = data.get("candidates", [])
+                if candidates:
+                    return f"Found {len(candidates)} candidates: " + ", ".join(c.get("title", "") for c in candidates)
+                return f"No candidate technologies found for query: '{query}'"
+            return f"Scout error ({resp.status_code}): {resp.text[:120]}"
+    except Exception as e:
+        return f"Failed to scout candidates: {str(e)}"
 
 
 if __name__ == "__main__":

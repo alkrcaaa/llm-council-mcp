@@ -49,6 +49,7 @@ def create_conversation(
         "council_name": council_name,
         "council_models": council_models,
         "chairman_model": chairman_model,
+        "status": "idle",
         "messages": []
     }
 
@@ -122,6 +123,7 @@ def list_conversations() -> List[Dict[str, Any]]:
                         "tags": data.get("tags", []),
                         "council_id": data.get("council_id"),
                         "council_name": data.get("council_name"),
+                        "status": data.get("status", "idle"),
                         "message_count": len(data["messages"])
                     })
             except Exception:
@@ -182,8 +184,33 @@ def add_assistant_message(
         "stage2": stage2,
         "stage3": stage3
     })
+    conversation["status"] = "idle"
+    conversation["last_error"] = None
 
     save_conversation(conversation)
+
+
+def set_conversation_status(conversation_id: str, status: str, error: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Update the execution status of a conversation ('idle', 'deliberating', 'aborted', 'error').
+
+    Args:
+        conversation_id: Conversation identifier
+        status: New status string
+        error: Optional error message
+    """
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        return None
+
+    conversation["status"] = status
+    if error is not None:
+        conversation["last_error"] = error
+    elif status == "idle":
+        conversation["last_error"] = None
+
+    save_conversation(conversation)
+    return conversation
 
 
 def update_conversation_title(conversation_id: str, title: str):

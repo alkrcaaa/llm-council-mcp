@@ -20,6 +20,7 @@ def test_builtin_councils_exist():
     assert "deep-tech" in ids
     assert "sec-ops" in ids
     assert "frontend-craft" in ids
+    assert "tech-scout" in ids
 
 
 def test_active_council():

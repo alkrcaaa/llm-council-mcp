@@ -486,6 +486,11 @@ Guidelines:
 - Match the user's language: If the user writes in Turkish, respond fluently and naturally in Turkish.
 - Match the scale and intent: If the user query is a simple greeting (e.g. "selam", "merhaba", "hello"), brief conversation opener, or simple check, reply warmly, directly, and concisely without unnecessary essays, jargon, or excessive formality.
 - For technical, complex, or analytical inquiries, synthesize the council's perspectives into a comprehensive, well-structured final answer using concise bullet points and direct takeaways. Avoid unnecessary fluff.
+- For architectural decisions, library comparisons, technology scouting, or strategy evaluations, structure your response clearly:
+  ## Verdict: <One clear, decisive conclusion>
+  **Recommendation:** <Concrete action items, trade-offs, and direct rationale>
+  **Dissenting risk:** <The most critical counterargument, tradeoff, or failure mode raised by any seat, or "None material">
+  **Consulted Sources & Radar:** <Explicit list of researched packages, repositories, versions, licenses, and URLs evaluated>
 
 Provide the final answer:"""
 
@@ -701,11 +706,11 @@ Your task as Chairman is to synthesize all of this information into a single, ac
 Guidelines:
 - Match the user's language: If the user writes in Turkish, respond fluently and naturally in Turkish.
 - Match the scale and intent: If the user query is a simple greeting (e.g. "selam", "merhaba", "hello"), brief conversation opener, or simple check, reply warmly, directly, and concisely without unnecessary essays, jargon, or excessive formality.
-- For technical, complex, or analytical inquiries, synthesize the council's perspectives into a comprehensive, well-structured final answer using concise bullet points and direct takeaways. Avoid unnecessary fluff.
-- For architectural decisions, library comparisons, or strategy evaluations, structure your response clearly:
+- For architectural decisions, library comparisons, technology scouting, or strategy evaluations, structure your response clearly:
   ## Verdict: <One clear, decisive conclusion>
-  **Recommendation:** <Concrete action items and direct rationale>
+  **Recommendation:** <Concrete action items, trade-offs, and direct rationale>
   **Dissenting risk:** <The most critical counterargument, tradeoff, or failure mode raised by any seat, or "None material">
+  **Consulted Sources & Radar:** <Explicit list of researched packages, repositories, versions, licenses, and URLs evaluated>
 
 Provide the final answer:"""
 

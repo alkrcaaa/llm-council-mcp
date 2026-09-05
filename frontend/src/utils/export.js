@@ -96,7 +96,7 @@ export function generateMarkdown(conversation) {
 
   for (const msg of conversation.messages || []) {
     if (msg.role === 'user') {
-      md += `## 💬 User Question\n\n`;
+      md += `## User Question\n\n`;
       md += `${msg.content}\n\n`;
       md += `---\n\n`;
     } else {
@@ -110,7 +110,7 @@ export function generateMarkdown(conversation) {
 
       if (isDebate) {
         // --- DEBATE MODE EXPORT ---
-        md += `## 🏛️ Council Debate Process\n\n`;
+        md += `## Council Debate Process\n\n`;
 
         // Round 1: Initial Positions
         const positions = msg.stage1 || [];
@@ -150,7 +150,7 @@ export function generateMarkdown(conversation) {
         const judgment = msg.debateJudgment || msg.stage3?.response;
         if (judgment) {
           const chairman = formatModelLabel(msg.chairmanModel || msg.stage3?.model || 'Chairman');
-          md += `### ⚖️ Final Synthesis & Verdict\n\n`;
+          md += `### Final Synthesis & Verdict\n\n`;
           md += `*Synthesized by ${chairman}*\n\n`;
           md += `${judgment}\n\n`;
         }

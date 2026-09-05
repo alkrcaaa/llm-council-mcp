@@ -60,6 +60,42 @@ app.add_middleware(
 )
 
 
+# Active background deliberations registry {conversation_id: asyncio.Task}
+ACTIVE_DELIBERATIONS: Dict[str, asyncio.Task] = {}
+
+
+class DeliberationContext:
+    """Manages independent background deliberation worker and SSE subscriber queues."""
+    def __init__(self, conversation_id: str):
+        self.conversation_id = conversation_id
+        self.task: Optional[asyncio.Task] = None
+        self.subscribers: List[asyncio.Queue] = []
+        self.history: List[str] = []
+        self.done: bool = False
+
+    def add_subscriber(self) -> asyncio.Queue:
+        q: asyncio.Queue = asyncio.Queue()
+        for item in self.history:
+            q.put_nowait(item)
+        if self.done:
+            q.put_nowait(None)
+        self.subscribers.append(q)
+        return q
+
+    def remove_subscriber(self, q: asyncio.Queue):
+        if q in self.subscribers:
+            self.subscribers.remove(q)
+
+    def broadcast(self, data: Optional[str]):
+        if data is not None:
+            self.history.append(data)
+        for q in list(self.subscribers):
+            q.put_nowait(data)
+
+
+ACTIVE_DELIBERATION_CONTEXTS: Dict[str, DeliberationContext] = {}
+
+
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
     council_id: Optional[str] = None
@@ -108,6 +144,16 @@ class SendMessageRequest(BaseModel):
     use_research: Optional[bool] = None  # Automated technology scouting (None = auto, True = force, False = disable)
 
 
+class ScoutRequest(BaseModel):
+    """Request to scout candidate technologies, libraries, and skills."""
+    query: str
+    max_candidates: int = 6
+    include_github: bool = True
+    include_web: bool = True
+    include_packages: bool = True
+    include_local_skills: bool = True
+
+
 class UpdateTagsRequest(BaseModel):
     """Request to update tags for a conversation."""
     tags: List[str]
@@ -139,6 +185,8 @@ class ConversationMetadata(BaseModel):
     message_count: int
     council_id: Optional[str] = None
     council_name: Optional[str] = None
+    status: Optional[str] = "idle"
+    last_error: Optional[str] = None
 
 
 class Conversation(BaseModel):
@@ -151,6 +199,8 @@ class Conversation(BaseModel):
     council_name: Optional[str] = None
     council_models: Optional[List[str]] = None
     chairman_model: Optional[str] = None
+    status: Optional[str] = "idle"
+    last_error: Optional[str] = None
     messages: List[Dict[str, Any]]
 
 
@@ -182,6 +232,21 @@ async def create_conversation(request: CreateConversationRequest):
         chairman_model=council_obj["chairman_model"],
     )
     return conversation
+
+
+@app.get("/api/conversations/active")
+async def get_active_deliberations():
+    """
+    Get list of currently running deliberation conversation IDs.
+    """
+    active_ids = [
+        cid for cid, ctx in ACTIVE_DELIBERATION_CONTEXTS.items()
+        if ctx.task and not ctx.task.done()
+    ]
+    for cid, t in ACTIVE_DELIBERATIONS.items():
+        if cid not in active_ids and not t.done():
+            active_ids.append(cid)
+    return {"active_conversations": active_ids}
 
 
 @app.get("/api/conversations/{conversation_id}", response_model=Conversation)
@@ -217,6 +282,28 @@ async def update_conversation_council(conversation_id: str, council_id: str = Bo
     conversation["chairman_model"] = c_obj["chairman_model"]
     storage.save_conversation(conversation)
     return conversation
+
+
+@app.post("/api/conversations/{conversation_id}/abort")
+async def abort_deliberation(conversation_id: str):
+    """
+    Abort an actively running deliberation for a conversation.
+    """
+    ctx = ACTIVE_DELIBERATION_CONTEXTS.get(conversation_id)
+    task = ACTIVE_DELIBERATIONS.get(conversation_id)
+    storage.set_conversation_status(conversation_id, "aborted")
+    aborted_any = False
+    if ctx and ctx.task and not ctx.task.done():
+        ctx.task.cancel()
+        ACTIVE_DELIBERATION_CONTEXTS.pop(conversation_id, None)
+        aborted_any = True
+    if task and not task.done():
+        task.cancel()
+        ACTIVE_DELIBERATIONS.pop(conversation_id, None)
+        aborted_any = True
+    if aborted_any:
+        return {"success": True, "message": "Deliberation successfully aborted"}
+    return {"success": True, "message": "No active deliberation task was running or already finished"}
 
 
 # ============================================================================
@@ -631,71 +718,96 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         title = await generate_conversation_title(request.content)
         storage.update_conversation_title(conversation_id, title)
 
-    # Ingest and enrich evaluation context if GitHub URLs or workspace references exist
-    effective_query, ingest_meta = await ingestion.resolve_evaluation_context(
-        request.content,
-        target_workspace=request.target_workspace
-    )
+    storage.set_conversation_status(conversation_id, "deliberating")
+    ACTIVE_DELIBERATIONS[conversation_id] = asyncio.current_task()
 
-    # Automated technology scouting & candidate discovery
-    research_meta = {"researched": False}
-    if request.use_research is not False:
-        force_research = request.use_research is True
-        effective_query, research_meta = await research.resolve_research_context(
-            effective_query,
-            force=force_research
+    try:
+        # Ingest and enrich evaluation context if GitHub URLs or workspace references exist
+        effective_query, ingest_meta = await ingestion.resolve_evaluation_context(
+            request.content,
+            target_workspace=request.target_workspace
         )
 
-    # Resolve council models and chairman model for the conversation
-    c_target = None
-    if request.council_id:
-        c_target = councils.get_council_by_id(request.council_id)
-    elif conversation and conversation.get("council_id"):
-        c_target = councils.get_council_by_id(conversation["council_id"])
+        # Resolve council models and chairman model for the conversation
+        c_target = None
+        if request.council_id:
+            c_target = councils.get_council_by_id(request.council_id)
+        elif conversation and conversation.get("council_id"):
+            c_target = councils.get_council_by_id(conversation["council_id"])
 
-    if not c_target:
-        c_target = councils.get_active_council()
+        if not c_target:
+            c_target = councils.get_active_council()
 
-    if c_target and c_target.get("council_models"):
-        active_council_models = list(c_target["council_models"])
-        active_chairman_model = request.chairman_model or c_target.get("chairman_model")
-    elif conversation and conversation.get("council_models"):
-        active_council_models = list(conversation["council_models"])
-        active_chairman_model = request.chairman_model or conversation.get("chairman_model")
-    else:
-        active_council_models = None
-        active_chairman_model = request.chairman_model
+        if c_target and c_target.get("council_models"):
+            active_council_models = list(c_target["council_models"])
+            active_chairman_model = request.chairman_model or c_target.get("chairman_model")
+        elif conversation and conversation.get("council_models"):
+            active_council_models = list(conversation["council_models"])
+            active_chairman_model = request.chairman_model or conversation.get("chairman_model")
+        else:
+            active_council_models = None
+            active_chairman_model = request.chairman_model
 
-    # Run the 3-stage council process
-    stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-        effective_query,
-        system_prompt=request.system_prompt,
-        use_cot=request.use_cot,
-        use_weighted_consensus=request.use_weighted_consensus,
-        use_early_consensus=request.use_early_consensus,
-        council_models=active_council_models,
-        chairman_model=active_chairman_model,
-    )
-    if ingest_meta.get("enriched"):
-        metadata["ingestion"] = ingest_meta
-    if research_meta.get("researched"):
-        metadata["research"] = research_meta
+        # Automated technology scouting & candidate discovery
+        research_meta = {"researched": False}
+        if request.use_research is not False:
+            is_scout_council = bool((c_target and c_target.get("force_research")) or request.council_id == "tech-scout")
+            force_research = request.use_research is True or is_scout_council
+            effective_query, research_meta = await research.resolve_research_context(
+                effective_query,
+                force=force_research
+            )
 
-    # Add assistant message with all stages
-    storage.add_assistant_message(
-        conversation_id,
-        stage1_results,
-        stage2_results,
-        stage3_result
-    )
+        # Set specialized system prompt for candidate scout council if not provided
+        effective_system_prompt = request.system_prompt
+        if not effective_system_prompt and ((c_target and c_target.get("id") == "tech-scout") or request.council_id == "tech-scout"):
+            effective_system_prompt = (
+                "You are the Tech Scout & Radar Council. Your primary objective is to evaluate discovered technology "
+                "candidates (GitHub repos, packages, web articles, skills) on production readiness, telemetry, maintenance, "
+                "license, and trade-offs. Directly compare the candidates and deliver a clear top recommendation."
+            )
 
-    # Return the complete response with metadata
-    return {
-        "stage1": stage1_results,
-        "stage2": stage2_results,
-        "stage3": stage3_result,
-        "metadata": metadata
-    }
+        # Run the 3-stage council process
+        stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
+            effective_query,
+            system_prompt=effective_system_prompt,
+            use_cot=request.use_cot,
+            use_weighted_consensus=request.use_weighted_consensus,
+            use_early_consensus=request.use_early_consensus,
+            council_models=active_council_models,
+            chairman_model=active_chairman_model,
+        )
+        if ingest_meta.get("enriched"):
+            metadata["ingestion"] = ingest_meta
+        if research_meta.get("researched"):
+            metadata["research"] = research_meta
+
+        # Add assistant message with all stages
+        storage.add_assistant_message(
+            conversation_id,
+            stage1_results,
+            stage2_results,
+            stage3_result
+        )
+
+        # Return the complete response with metadata
+        return {
+            "stage1": stage1_results,
+            "stage2": stage2_results,
+            "stage3": stage3_result,
+            "metadata": metadata
+        }
+    except asyncio.CancelledError:
+        storage.set_conversation_status(conversation_id, "aborted")
+        raise
+    except Exception as e:
+        storage.set_conversation_status(conversation_id, "error", error=str(e))
+        raise
+    finally:
+        ACTIVE_DELIBERATIONS.pop(conversation_id, None)
+        conv = storage.get_conversation(conversation_id)
+        if conv and conv.get("status") == "deliberating":
+            storage.set_conversation_status(conversation_id, "idle")
 
 
 @app.post("/api/conversations/{conversation_id}/message/stream")
@@ -781,7 +893,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             return f"data: {json.dumps(event)}\n\n"
         return ""
 
-    async def event_generator():
+    async def _execute_deliberation_stream():
         try:
             # Track timing for process events
             stage_start_time = time.time()
@@ -815,33 +927,6 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
                 yield f"data: {json.dumps({'type': 'context_ingested', 'metadata': ingest_meta})}\n\n"
 
-            # Automated technology scouting & candidate discovery
-            research_meta = {"researched": False}
-            if request.use_research is not False:
-                force_research = request.use_research is True
-                effective_query, research_meta = await research.resolve_research_context(
-                    effective_query,
-                    force=force_research
-                )
-
-            if research_meta.get("researched"):
-                c_count = research_meta.get("candidate_count", 0)
-                sterms = research_meta.get("search_terms", "")
-                proc_event = emit_process(pl.create_process_event(
-                    f"Research Discovery: Found {c_count} candidates for '{sterms}'",
-                    pl.EventCategory.INFO,
-                    pl.Verbosity.BASIC
-                ))
-                if proc_event:
-                    yield proc_event
-
-                yield f"data: {json.dumps({'type': 'research_complete', 'metadata': research_meta})}\n\n"
-
-            # Start title generation in parallel (don't await yet)
-            title_task = None
-            if is_first_message:
-                title_task = asyncio.create_task(generate_conversation_title(request.content))
-
             # Get council models for process events
             from .config_api import get_council_models, get_chairman_model, get_routing_pools
 
@@ -873,6 +958,43 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 conv_data["council_models"] = council_models
                 conv_data["chairman_model"] = chairman_model
                 storage.save_conversation(conv_data)
+
+            # Automated technology scouting & candidate discovery
+            research_meta = {"researched": False}
+            if request.use_research is not False:
+                is_scout_council = bool((c_target and c_target.get("force_research")) or request.council_id == "tech-scout")
+                force_research = request.use_research is True or is_scout_council
+                effective_query, research_meta = await research.resolve_research_context(
+                    effective_query,
+                    force=force_research
+                )
+
+            # Set specialized system prompt for candidate scout council if not provided
+            active_system_prompt = request.system_prompt
+            if not active_system_prompt and ((c_target and c_target.get("id") == "tech-scout") or request.council_id == "tech-scout"):
+                active_system_prompt = (
+                    "You are the Tech Scout & Radar Council. Your primary objective is to evaluate discovered technology "
+                    "candidates (GitHub repos, packages, web articles, skills) on production readiness, telemetry, maintenance, "
+                    "license, and trade-offs. Directly compare the candidates and deliver a clear top recommendation."
+                )
+
+            if research_meta.get("researched"):
+                c_count = research_meta.get("candidate_count", 0)
+                sterms = research_meta.get("search_terms", "")
+                proc_event = emit_process(pl.create_process_event(
+                    f"Research Discovery: Found {c_count} candidates for '{sterms}'",
+                    pl.EventCategory.INFO,
+                    pl.Verbosity.BASIC
+                ))
+                if proc_event:
+                    yield proc_event
+
+                yield f"data: {json.dumps({'type': 'research_complete', 'metadata': research_meta})}\n\n"
+
+            # Start title generation in parallel (don't await yet)
+            title_task = None
+            if is_first_message:
+                title_task = asyncio.create_task(generate_conversation_title(request.content))
 
             # ================================================================
             # CACHE CHECK - Return cached response if similar query found
@@ -1497,7 +1619,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             model_token_counts = {}  # Track token counts for verbose logging
             models_to_use = routed_models if use_dynamic_routing else council_models
 
-            async for event in stage1_collect_responses_streaming(effective_query, request.system_prompt, use_cot, models_to_use):
+            async for event in stage1_collect_responses_streaming(effective_query, active_system_prompt, use_cot, models_to_use):
                 if event["type"] == "stage1_token":
                     # Stream individual tokens to frontend
                     token_event = {'type': 'stage1_token', 'model': event['model'], 'content': event['content']}
@@ -1594,7 +1716,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                             current_tier = 2
                             tier2_results = []
 
-                            async for tier2_event in stage1_collect_responses_streaming(effective_query, request.system_prompt, use_cot, tier2_models):
+                            async for tier2_event in stage1_collect_responses_streaming(effective_query, active_system_prompt, use_cot, tier2_models):
                                 if tier2_event["type"] == "stage1_token":
                                     token_event = {'type': 'stage1_token', 'model': tier2_event['model'], 'content': tier2_event['content'], 'tier': 2}
                                     yield f"data: {json.dumps(token_event)}\n\n"
@@ -2382,9 +2504,58 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             import traceback
             traceback.print_exc()
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            raise
+
+    # Background deliberation orchestration:
+    # Deliberation task is decoupled from the HTTP SSE socket so F5 / client disconnect
+    # never cancels the background computation.
+    ctx = ACTIVE_DELIBERATION_CONTEXTS.get(conversation_id)
+    if not ctx or (ctx.task and ctx.task.done()):
+        ctx = DeliberationContext(conversation_id)
+        ACTIVE_DELIBERATION_CONTEXTS[conversation_id] = ctx
+
+        async def _background_pump():
+            storage.set_conversation_status(conversation_id, "deliberating")
+            try:
+                async for chunk in _execute_deliberation_stream():
+                    ctx.broadcast(chunk)
+            except asyncio.CancelledError:
+                storage.set_conversation_status(conversation_id, "aborted")
+                ctx.broadcast(f"data: {json.dumps({'type': 'aborted', 'message': 'Deliberation aborted by user'})}\n\n")
+                raise
+            except Exception as exc:
+                storage.set_conversation_status(conversation_id, "error", error=str(exc))
+                ctx.broadcast(f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n")
+            finally:
+                ctx.done = True
+                ctx.broadcast(None)
+                ACTIVE_DELIBERATION_CONTEXTS.pop(conversation_id, None)
+                ACTIVE_DELIBERATIONS.pop(conversation_id, None)
+                conv = storage.get_conversation(conversation_id)
+                if conv and conv.get("status") == "deliberating":
+                    storage.set_conversation_status(conversation_id, "idle")
+
+        worker_task = asyncio.create_task(_background_pump())
+        ctx.task = worker_task
+        ACTIVE_DELIBERATIONS[conversation_id] = worker_task
+
+    async def client_sse_stream():
+        q = ctx.add_subscriber()
+        try:
+            while True:
+                chunk = await q.get()
+                if chunk is None:
+                    break
+                yield chunk
+        except asyncio.CancelledError:
+            # Client disconnected (page reload, F5, tab closed).
+            # The background worker_task keeps executing independently!
+            pass
+        finally:
+            ctx.remove_subscriber(q)
 
     return StreamingResponse(
-        event_generator(),
+        client_sse_stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -2515,6 +2686,41 @@ async def get_embeddings_config():
     Returns the model used for embeddings, dimensions, and API info.
     """
     return embeddings.get_embedding_config()
+
+
+@app.post("/api/research/scout")
+async def scout_candidates_endpoint(request: ScoutRequest):
+    """
+    Scout technology, library, or skill candidates across GitHub, web, and local skills.
+    """
+    if not request.query or not request.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    return await research.run_research(
+        query=request.query.strip(),
+        max_candidates=request.max_candidates,
+        include_github=request.include_github,
+        include_web=request.include_web,
+        include_packages=request.include_packages,
+        include_local_skills=request.include_local_skills,
+    )
+
+
+@app.get("/api/research/scout")
+async def scout_candidates_get_endpoint(
+    query: str = Query(..., description="Keywords or technology to search/scout"),
+    max_candidates: int = Query(6, description="Max candidate items to return")
+):
+    """
+    GET endpoint to scout technology candidates.
+    """
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    return await research.run_research(
+        query=query.strip(),
+        max_candidates=max_candidates
+    )
 
 
 if __name__ == "__main__":

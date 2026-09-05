@@ -69,7 +69,7 @@ export default function CostDisplay({ costs, expanded = false }) {
         {costs.debate ? (
           <div className="cost-stage">
             <div className="cost-stage-header">
-              <span className="cost-stage-name">Council Debate (Münazara)</span>
+              <span className="cost-stage-name">Council Debate</span>
               <span className="cost-stage-value">{formatCost(total.total_cost ?? total.total)}</span>
               <span className="cost-stage-percent">(100%)</span>
             </div>

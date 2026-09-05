@@ -299,13 +299,16 @@ export const api = {
    * @param {string} systemPrompt - Optional system prompt
    * @param {string} targetWorkspace - Optional local workspace project
    */
-  async sendMessage(conversationId, content, systemPrompt = null, targetWorkspace = null) {
+  async sendMessage(conversationId, content, systemPrompt = null, targetWorkspace = null, useResearch = null) {
     const body = { content };
     if (systemPrompt) {
       body.system_prompt = systemPrompt;
     }
     if (targetWorkspace) {
       body.target_workspace = targetWorkspace;
+    }
+    if (useResearch !== null && useResearch !== undefined) {
+      body.use_research = useResearch;
     }
 
     const response = await fetch(
@@ -687,9 +690,10 @@ export const api = {
    * @param {boolean} useCache - Enable Response Caching (default false)
    * @param {number} cacheSimilarityThreshold - Minimum similarity for cache hit (default 0.92)
    * @param {string} targetWorkspace - Optional local workspace project
+   * @param {boolean|null} useResearch - Autonomous technology scouting (null = auto, true = force, false = disable)
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent, systemPrompt = null, verbosity = 0, useCot = false, useMultiChairman = false, useWeightedConsensus = true, useEarlyConsensus = false, useDynamicRouting = false, useEscalation = false, useRefinement = false, refinementMaxIterations = 2, useAdversary = false, useDebate = false, includeRebuttal = true, useDecomposition = false, useCache = false, cacheSimilarityThreshold = 0.92, councilId = null, targetWorkspace = null) {
+  async sendMessageStream(conversationId, content, onEvent, systemPrompt = null, verbosity = 0, useCot = false, useMultiChairman = false, useWeightedConsensus = true, useEarlyConsensus = false, useDynamicRouting = false, useEscalation = false, useRefinement = false, refinementMaxIterations = 2, useAdversary = false, useDebate = false, includeRebuttal = true, useDecomposition = false, useCache = false, cacheSimilarityThreshold = 0.92, councilId = null, targetWorkspace = null, useResearch = null) {
     const body = {
       content,
       verbosity,
@@ -716,6 +720,9 @@ export const api = {
     }
     if (targetWorkspace) {
       body.target_workspace = targetWorkspace;
+    }
+    if (useResearch !== null && useResearch !== undefined) {
+      body.use_research = useResearch;
     }
 
     const response = await fetch(
@@ -755,5 +762,57 @@ export const api = {
         }
       }
     }
+  },
+
+  /**
+   * Scout candidate technologies, libraries, and skills across channels.
+   * @param {string} query - The keywords or question to scout
+   * @param {number} maxCandidates - Max candidate items to return
+   * @param {Object} options - Search channel options
+   */
+  async scoutCandidates(query, maxCandidates = 6, options = {}) {
+    const response = await fetch(`${API_BASE}/api/research/scout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        max_candidates: maxCandidates,
+        include_github: options.includeGithub !== false,
+        include_web: options.includeWeb !== false,
+        include_packages: options.includePackages !== false,
+        include_local_skills: options.includeLocalSkills !== false,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to scout candidates');
+    }
+    return response.json();
+  },
+
+  /**
+   * Abort an ongoing deliberation for a conversation.
+   * @param {string} conversationId
+   */
+  async abortDeliberation(conversationId) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/abort`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to abort deliberation');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get all actively running deliberation conversation IDs.
+   */
+  async getActiveDeliberations() {
+    const response = await fetch(`${API_BASE}/api/conversations/active`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch active deliberations');
+    }
+    return response.json();
   },
 };

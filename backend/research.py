@@ -68,45 +68,94 @@ def extract_search_terms(prompt: str) -> str:
         "lütfen", "bana", "için", "hakkında", "nelerdir", "neler", "var", "olan",
         "bir", "ve", "ile", "veya", "en", "iyi", "en iyi", "öner", "bul", "araştır",
         "please", "for", "about", "what", "which", "are", "the", "a", "an", "and",
-        "with", "best", "top", "find", "recommend", "show", "me", "tell", "give"
+        "with", "best", "top", "find", "recommend", "show", "me", "tell", "give",
+        "compare", "comparison", "evaluate", "evaluation", "versus"
     }
     words = [w for w in cleaned.split() if len(w) > 2 and w.lower() not in stop_words]
-    return " ".join(words[:6]) if words else prompt[:40]
+    return " ".join(words[:5]) if words else prompt[:40]
 
 
-async def search_github_repositories(
-    query: str,
-    limit: int = 5,
-    client: Optional[httpx.AsyncClient] = None
-) -> List[Dict[str, Any]]:
-    """Search public GitHub repositories for libraries, tools, or MCP servers.
-
-    Args:
-        query: Search keywords (e.g. "obsidian mcp server")
-        limit: Max repositories to return
-        client: Optional shared httpx AsyncClient
-
-    Returns:
-        List of repository metadata dicts.
-    """
-    if not query.strip():
-        return []
-
-    headers = {
-        "User-Agent": "LLM-Council-Research/1.0",
-        "Accept": "application/vnd.github.v3+json",
+def extract_candidate_names(prompt: str) -> List[str]:
+    """Extract named tools, libraries, or packages from queries like 'SQLite-vec vs Chroma' or '(A, B, C)'."""
+    names: List[str] = []
+    ignore_words = {
+        "zero-dependency", "open-source", "real-time", "end-to-end",
+        "built-in", "third-party", "high-level", "low-level",
+        "in-memory", "server-side", "client-side", "e-commerce",
+        "e.g", "eg", "ie", "vs", "or", "and", "the", "for", "with",
+        "compare", "which", "what", "how", "best", "simple", "local",
+        "python", "docker", "javascript", "typescript", "rust", "golang",
+        "evaluate", "evaluation", "investigate", "analyze", "benchmark",
+        "solutions", "applications", "database", "databases", "vector"
     }
-    if GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
 
-    encoded_q = urllib.parse.quote(query.strip())
+    # 1. Look inside parentheses: e.g. (SQLite-vec, LanceDB, DuckDB-vss, Chroma)
+    paren_match = re.search(r"\(([^)]+)\)", prompt)
+    if paren_match:
+        for part in re.split(r"[,/|;]", paren_match.group(1)):
+            clean = re.sub(r"[^\w\-\.]", "", part).strip()
+            if clean and len(clean) >= 2 and clean.lower() not in ignore_words:
+                if clean not in names:
+                    names.append(clean)
+
+    # 2. Look for patterns like 'X vs Y' or 'X vs. Y'
+    vs_matches = re.findall(r"\b([A-Za-z0-9_\-\.]+)\s+vs\.?\s+([A-Za-z0-9_\-\.]+)\b", prompt, re.I)
+    for m in vs_matches:
+        for item in m:
+            clean = item.strip().strip(".")
+            if clean and len(clean) >= 2 and clean.lower() not in ignore_words:
+                if clean not in names:
+                    names.append(clean)
+
+    # 3. Look for phrases like 'alternatives to X or Y' / 'between X and Y'
+    phrase_matches = re.findall(r"\b(?:to|like|between|than)\s+([A-Za-z0-9_\-\.]+)\s+(?:or|and)\s+([A-Za-z0-9_\-\.]+)\b", prompt, re.I)
+    for m in phrase_matches:
+        for item in m:
+            clean = item.strip().strip(".")
+            if clean and len(clean) >= 2 and clean.lower() not in ignore_words:
+                if clean not in names:
+                    names.append(clean)
+
+    # 4. Look for hyphenated or compound library names (e.g. sqlite-vec, duckdb-vss)
+    hyphenated = re.findall(r"\b([A-Za-z0-9]+[\-_][A-Za-z0-9\-_]+)\b", prompt)
+    for h in hyphenated:
+        clean = h.strip()
+        if clean.lower() not in ignore_words and clean not in names and len(clean) >= 3:
+            names.append(clean)
+
+    # 5. Look for comma / 'and' separated tech tokens or tech-like words
+    comma_parts = re.split(r",|\band\b", prompt, flags=re.IGNORECASE)
+    if len(comma_parts) > 1:
+        for part in comma_parts:
+            words = [w.strip(" .?!;:") for w in part.split() if w.strip(" .?!;:")]
+            for w in words:
+                clean = re.sub(r"[^\w\-\.]", "", w).strip()
+                if (
+                    clean
+                    and len(clean) >= 3
+                    and clean.lower() not in ignore_words
+                    and clean not in names
+                    and (
+                        "-" in clean
+                        or "_" in clean
+                        or clean.lower().endswith(("db", "vec", "vss", "lite", "sql", "ai", "store"))
+                        or (clean[0].isupper() and any(c.islower() for c in clean[1:]))
+                    )
+                ):
+                    names.append(clean)
+
+    return names[:6]
+
+
+async def _fetch_gh_repo_query(
+    q: str,
+    client: httpx.AsyncClient,
+    headers: Dict[str, str],
+    limit: int = 1
+) -> List[Dict[str, Any]]:
+    """Helper to query GitHub repository search API."""
+    encoded_q = urllib.parse.quote(q.strip())
     url = f"{GITHUB_API_BASE}/search/repositories?q={encoded_q}&sort=stars&order=desc&per_page={limit}"
-
-    should_close = False
-    if client is None:
-        client = httpx.AsyncClient(timeout=8.0)
-        should_close = True
-
     results = []
     try:
         resp = await client.get(url, headers=headers)
@@ -129,11 +178,57 @@ async def search_github_repositories(
                 })
     except Exception:
         pass
+    return results
+
+
+async def search_github_repositories(
+    query: str,
+    limit: int = 5,
+    client: Optional[httpx.AsyncClient] = None
+) -> List[Dict[str, Any]]:
+    """Search public GitHub repositories for libraries, tools, or MCP servers.
+
+    Args:
+        query: Search keywords or prompt
+        limit: Max repositories to return
+        client: Optional shared httpx AsyncClient
+
+    Returns:
+        List of repository metadata dicts.
+    """
+    if not query.strip():
+        return []
+
+    headers = {
+        "User-Agent": "LLM-Council-Research/1.0",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+
+    should_close = False
+    if client is None:
+        client = httpx.AsyncClient(timeout=8.0)
+        should_close = True
+
+    results = []
+    seen_urls = set()
+
+    try:
+        extracted = extract_candidate_names(query)
+        if extracted:
+            # Combine candidates with OR to discover canonical repos in a single API call
+            search_q = " OR ".join(extracted[:4])
+            results = await _fetch_gh_repo_query(search_q, client, headers, limit=limit)
+        else:
+            terms = extract_search_terms(query).split()
+            search_q = " ".join(terms[:3]) if terms else query[:30]
+            results = await _fetch_gh_repo_query(search_q, client, headers, limit=limit)
     finally:
         if should_close:
             await client.aclose()
 
-    return results
+    return results[:limit]
 
 
 async def search_web(
@@ -141,7 +236,7 @@ async def search_web(
     limit: int = 5,
     client: Optional[httpx.AsyncClient] = None
 ) -> List[Dict[str, Any]]:
-    """Search DuckDuckGo Lite for relevant articles, tools, and documentation.
+    """Search developer web resources, technical articles, and announcements.
 
     Args:
         query: Search keywords
@@ -154,11 +249,172 @@ async def search_web(
     if not query.strip():
         return []
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    }
-    url = f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote_plus(query)}"
+    should_close = False
+    if client is None:
+        client = httpx.AsyncClient(timeout=6.0, follow_redirects=True)
+        should_close = True
+
+    results = []
+    # 1. High-signal developer articles & release announcements via Algolia HN API
+    try:
+        hn_url = f"https://hn.algolia.com/api/v1/search?query={urllib.parse.quote_plus(query)}&tags=story&hitsPerPage={limit}"
+        resp = await client.get(hn_url)
+        if resp.status_code == 200:
+            hits = resp.json().get("hits", [])
+            for h in hits:
+                title = h.get("title")
+                url = h.get("url") or f"https://news.ycombinator.com/item?id={h.get('objectID')}"
+                points = h.get("points") or 0
+                num_comments = h.get("num_comments") or 0
+                if title and url:
+                    results.append({
+                        "source": "web",
+                        "title": title,
+                        "url": url,
+                        "description": f"Tech discussion & article ({points} points, {num_comments} comments)",
+                    })
+    except Exception:
+        pass
+
+    # 2. Web fallback (DuckDuckGo Lite) if needed
+    if len(results) < limit:
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            }
+            ddg_url = f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote_plus(query)}"
+            resp = await client.get(ddg_url, headers=headers)
+            if resp.status_code == 200:
+                link_matches = re.findall(
+                    r"<a[^>]+class=[\x27\"]result-link[\x27\"][^>]+href=[\x27\"]([^\x27\"]+)[\x27\"][^>]*>(.*?)</a>",
+                    resp.text,
+                    re.DOTALL
+                )
+                for link, raw_title in link_matches[:limit - len(results)]:
+                    clean_url = link
+                    if "uddg=" in link:
+                        clean_url = urllib.parse.unquote(link.split("uddg=")[1].split("&")[0])
+                    elif link.startswith("//"):
+                        clean_url = "https:" + link
+
+                    clean_title = re.sub(r"<[^>]+>", "", raw_title).strip()
+                    if clean_url and clean_title:
+                        results.append({
+                            "source": "web",
+                            "title": clean_title,
+                            "url": clean_url,
+                            "description": clean_title,
+                        })
+        except Exception:
+            pass
+
+    if should_close:
+        await client.aclose()
+
+    return results[:limit]
+
+
+async def search_pypi_package(
+    package_name: str,
+    client: Optional[httpx.AsyncClient] = None
+) -> Optional[Dict[str, Any]]:
+    """Look up a package directly on PyPI using canonical JSON API.
+
+    Tries normalizations: lowercase, hyphens <-> underscores, and common suffixes (e.g. 'db').
+    """
+    if not package_name or len(package_name.strip()) < 2:
+        return None
+
+    norm = package_name.strip().lower()
+    variations = [norm]
+    if "-" in norm:
+        variations.append(norm.replace("-", "_"))
+    if "_" in norm:
+        variations.append(norm.replace("_", "-"))
+    if not norm.endswith("db") and not norm.endswith("-db"):
+        variations.append(norm + "db")
+
+    should_close = False
+    if client is None:
+        client = httpx.AsyncClient(timeout=4.0, follow_redirects=True)
+        should_close = True
+
+    try:
+        for v in variations:
+            try:
+                url = f"https://pypi.org/pypi/{v}/json"
+                headers = {"User-Agent": "LLM-Council-Research/1.0"}
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    info = data.get("info", {})
+                    name = info.get("name") or v
+                    summary = info.get("summary") or ""
+                    # Guard against irrelevant packages (e.g. color manipulation 'chroma' instead of 'chromadb')
+                    if v == "chroma" and "color" in summary.lower():
+                        continue
+                    license_str = (info.get("license") or info.get("license_expression") or "").strip()
+                    if not license_str or license_str.lower() in ("unknown", "none"):
+                        for c in info.get("classifiers", []):
+                            if "License ::" in c:
+                                license_str = c.split("::")[-1].strip()
+                                break
+                    if not license_str:
+                        license_str = "Not specified"
+
+                    target_url = info.get("package_url") or f"https://pypi.org/project/{name}/"
+                    proj_urls = info.get("project_urls") or {}
+                    github_repo_url = ""
+                    for key in ["repository", "Source", "Source Code", "Homepage", "Code"]:
+                        for k, val in proj_urls.items():
+                            if k.lower() == key.lower() and "github.com" in str(val).lower():
+                                github_repo_url = str(val).rstrip("/")
+                                break
+                        if github_repo_url:
+                            break
+                    if not github_repo_url:
+                        for k, val in proj_urls.items():
+                            if "github.com" in str(val).lower() and not any(sub in str(val).lower() for sub in ["/issues", "/pull", "/actions"]):
+                                github_repo_url = str(val).rstrip("/")
+                                break
+
+                    return {
+                        "source": "package",
+                        "ecosystem": "pypi",
+                        "title": name,
+                        "url": target_url,
+                        "github_url": github_repo_url,
+                        "version": info.get("version", ""),
+                        "license": license_str,
+                        "description": summary or f"PyPI Python package '{name}'",
+                    }
+            except Exception:
+                continue
+    finally:
+        if should_close:
+            await client.aclose()
+
+    return None
+
+
+async def search_package_ecosystem(
+    query: str,
+    limit: int = 5,
+    client: Optional[httpx.AsyncClient] = None
+) -> List[Dict[str, Any]]:
+    """Search open package registries (PyPI and NPM) for libraries, packages, and tools.
+
+    Args:
+        query: Search keywords or candidate prompt
+        limit: Max results to return
+        client: Optional shared httpx client
+
+    Returns:
+        List of package candidate dicts.
+    """
+    if not query.strip():
+        return []
 
     should_close = False
     if client is None:
@@ -166,37 +422,54 @@ async def search_web(
         should_close = True
 
     results = []
-    try:
-        resp = await client.get(url, headers=headers)
-        if resp.status_code == 200:
-            # Parse table rows containing result links
-            link_matches = re.findall(
-                r"<a[^>]+class=[\x27\"]result-link[\x27\"][^>]+href=[\x27\"]([^\x27\"]+)[\x27\"][^>]*>(.*?)</a>",
-                resp.text,
-                re.DOTALL
-            )
-            for link, raw_title in link_matches[:limit]:
-                clean_url = link
-                if "uddg=" in link:
-                    clean_url = urllib.parse.unquote(link.split("uddg=")[1].split("&")[0])
-                elif link.startswith("//"):
-                    clean_url = "https:" + link
+    seen_titles = set()
 
-                clean_title = re.sub(r"<[^>]+>", "", raw_title).strip()
-                if clean_url and clean_title:
-                    results.append({
-                        "source": "web",
-                        "title": clean_title,
-                        "url": clean_url,
-                        "description": clean_title,
-                    })
-    except Exception:
-        pass
+    try:
+        candidates = extract_candidate_names(query)
+        is_python_context = any(
+            w in query.lower()
+            for w in ["python", "pip", "py", "django", "fastapi", "flask", "pydantic", "torch", "numpy", "sqlite-vec"]
+        )
+
+        # 1. If explicit candidates or Python context detected, query PyPI first
+        if candidates or is_python_context:
+            target_pkgs = candidates if candidates else [t for t in extract_search_terms(query).split() if len(t) >= 3][:limit]
+            pypi_tasks = [search_pypi_package(pkg, client=client) for pkg in target_pkgs]
+            pypi_res = await asyncio.gather(*pypi_tasks, return_exceptions=True)
+            for r in pypi_res:
+                if isinstance(r, dict) and r.get("title") and r["title"].lower() not in seen_titles:
+                    seen_titles.add(r["title"].lower())
+                    results.append(r)
+
+        # 2. If room remains and not exclusively Python candidates, query NPM registry
+        if len(results) < limit and not (is_python_context and (candidates or results)):
+            npm_query = " ".join(candidates[:2]) if candidates and not is_python_context else extract_search_terms(query)
+            if npm_query:
+                try:
+                    url = f"https://registry.npmjs.org/-/v1/search?text={urllib.parse.quote_plus(npm_query)}&size={limit - len(results)}"
+                    resp = await client.get(url)
+                    if resp.status_code == 200:
+                        for obj in resp.json().get("objects", []):
+                            pkg = obj.get("package", {})
+                            name = pkg.get("name")
+                            if name and name.lower() not in seen_titles:
+                                seen_titles.add(name.lower())
+                                results.append({
+                                    "source": "package",
+                                    "ecosystem": "npm",
+                                    "title": name,
+                                    "url": pkg.get("links", {}).get("npm") or f"https://www.npmjs.com/package/{name}",
+                                    "version": pkg.get("version", ""),
+                                    "license": pkg.get("license", "Not specified") if isinstance(pkg.get("license"), str) else "Not specified",
+                                    "description": pkg.get("description") or "Open source NPM package registry module.",
+                                })
+                except Exception:
+                    pass
     finally:
         if should_close:
             await client.aclose()
 
-    return results
+    return results[:limit]
 
 
 def search_local_skills(query: str, limit: int = 5) -> List[Dict[str, Any]]:
@@ -318,6 +591,24 @@ def format_candidate_dossier(
             lines.append(f"- **Skill Identifier:** `{c.get('skill_name')}`")
             lines.append(f"- **Overview:** {desc}\n")
 
+        elif source == "PACKAGE":
+            ecosystem = c.get("ecosystem", "package").upper()
+            version = c.get("version", "")
+            license_val = c.get("license", "")
+            github_url = c.get("github_url", "")
+            lines.append(f"### Candidate {i} [{ecosystem} PACKAGE]: {title}")
+            lines.append(f"- **URL:** {url}")
+            if github_url:
+                lines.append(f"- **Source Repo:** {github_url}")
+            details = []
+            if version:
+                details.append(f"**Version:** {version}")
+            if license_val:
+                details.append(f"**License:** {license_val}")
+            if details:
+                lines.append(f"- {' | '.join(details)}")
+            lines.append(f"- **Overview:** {desc}\n")
+
         else:
             lines.append(f"### Candidate {i} [WEB RESOURCE]: {title}")
             lines.append(f"- **URL:** {url}")
@@ -331,6 +622,7 @@ async def run_research(
     max_candidates: int = 6,
     include_github: bool = True,
     include_web: bool = True,
+    include_packages: bool = True,
     include_local_skills: bool = True
 ) -> Dict[str, Any]:
     """Execute a parallel multi-channel research inquiry and return structured dossier.
@@ -339,7 +631,8 @@ async def run_research(
         query: User question or search keywords
         max_candidates: Maximum items in final synthesized dossier
         include_github: Search GitHub repositories
-        include_web: Search DuckDuckGo Lite
+        include_web: Search HackerNews Algolia & developer articles
+        include_packages: Search open package ecosystems (PyPI & NPM)
         include_local_skills: Scan local installed skills
 
     Returns:
@@ -348,28 +641,51 @@ async def run_research(
     search_terms = extract_search_terms(query)
     tasks = []
 
+    task_names = []
     async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
         if include_github:
-            tasks.append(search_github_repositories(search_terms, limit=max_candidates, client=client))
+            tasks.append(search_github_repositories(query, limit=max_candidates, client=client))
+            task_names.append("github")
         if include_web:
             tasks.append(search_web(search_terms, limit=max_candidates, client=client))
+            task_names.append("web")
+        if include_packages:
+            tasks.append(search_package_ecosystem(query, limit=max_candidates, client=client))
+            task_names.append("packages")
 
         # Run remote searches concurrently
         remote_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    candidates = []
+    results_map: Dict[str, List[Dict[str, Any]]] = {
+        "github": [],
+        "web": [],
+        "packages": [],
+        "skills": [],
+    }
+    for name, res in zip(task_names, remote_results):
+        if isinstance(res, list):
+            results_map[name] = res
+
     # Local skills search (synchronous disk scan)
     if include_local_skills:
         try:
             local_skills = search_local_skills(search_terms, limit=3)
-            candidates.extend(local_skills)
+            results_map["skills"] = local_skills
         except Exception:
             pass
 
-    # Collect remote results
-    for res in remote_results:
-        if isinstance(res, list):
-            candidates.extend(res)
+    # Order priority:
+    # If the query asks for skills explicitly, prioritize skills first.
+    # Otherwise, prioritize GitHub repositories and Package ecosystems, followed by skills and web.
+    is_skill_query = any(w in query.lower() for w in ["skill", "skills", "yetenek"])
+    if is_skill_query:
+        ordered_sources = ["skills", "github", "packages", "web"]
+    else:
+        ordered_sources = ["github", "packages", "skills", "web"]
+
+    candidates = []
+    for s in ordered_sources:
+        candidates.extend(results_map.get(s, []))
 
     # Deduplicate candidates by URL
     seen_urls = set()

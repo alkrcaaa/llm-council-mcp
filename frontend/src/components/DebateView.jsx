@@ -169,7 +169,7 @@ export default function DebateView({
           >
             <div className="round-info">
               <span className="round-number">Round 2</span>
-              <span className="round-name">Critiques (Karşılıklı Eleştiri)</span>
+              <span className="round-name">Critiques</span>
               {currentRound === 2 && isDebating && (
                 <span className="round-status streaming">Collecting...</span>
               )}
@@ -196,7 +196,7 @@ export default function DebateView({
                             <span className="chip-role-tag">{modelToLabel[crit.critic] || 'Critic'}</span>
                           </div>
                           <div className="flow-direction-indicator">
-                            <span className="flow-action-text">eleştiriyor</span>
+                            <span className="flow-action-text">critiques</span>
                             <span className="critique-arrow">&#10132;</span>
                           </div>
                           <div className={`participant-chip chip-${targetDetails.colorClass}`}>
@@ -226,7 +226,7 @@ export default function DebateView({
           >
             <div className="round-info">
               <span className="round-number">Round 3</span>
-              <span className="round-name">Rebuttals (Savunma & Karşı Tez)</span>
+              <span className="round-name">Rebuttals</span>
               {currentRound === 3 && isDebating && (
                 <span className="round-status streaming">Collecting...</span>
               )}
@@ -253,7 +253,7 @@ export default function DebateView({
                           {defenderDetails.skill && <span className="speaker-skill-tag">@{defenderDetails.skill}</span>}
                           <span className="position-label-pill">{getLabel(reb.model)}</span>
                         </div>
-                        <span className="rebuttal-badge">Savunma / Karşı Tez</span>
+                        <span className="rebuttal-badge">Rebuttal</span>
                       </div>
                       <div className="rebuttal-content markdown-content">
                         <ReactMarkdown>{reb.rebuttal}</ReactMarkdown>

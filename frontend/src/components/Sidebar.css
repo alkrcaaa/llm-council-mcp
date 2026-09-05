@@ -63,6 +63,60 @@
   transform: translateY(0);
 }
 
+/* Sidebar Search */
+.sidebar-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebar-search-icon {
+  position: absolute;
+  left: 24px;
+  font-size: 11px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.sidebar-search-input {
+  width: 100%;
+  padding: 6px 26px 6px 28px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-family: var(--font-body);
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  transition: all 0.15s ease;
+}
+
+.sidebar-search-input:focus {
+  outline: none;
+  border-color: var(--accent-brass);
+  box-shadow: 0 0 0 1px var(--accent-brass-glow);
+}
+
+.sidebar-search-clear {
+  position: absolute;
+  right: 22px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 50%;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.sidebar-search-clear:hover {
+  color: var(--text-primary);
+}
+
 /* Tag Filter */
 .tag-filter {
   padding: 10px 16px;
@@ -279,3 +333,18 @@
     opacity: 1;
   }
 }
+
+.conv-aborted-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 1px 5px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
