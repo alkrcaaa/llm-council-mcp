@@ -13,6 +13,7 @@ from backend.research import (
     search_pypi_package,
     run_research,
     resolve_research_context,
+    _fetch_gh_repo_query,
 )
 
 
@@ -75,6 +76,7 @@ def test_format_candidate_dossier():
     assert "340 stars" in dossier
     assert "MIT" in dossier
     assert "owasp-security" in dossier
+    assert "Low signal:" not in dossier
 
 
 def test_search_local_skills():
@@ -321,4 +323,199 @@ def test_format_candidate_dossier_package():
     assert "sqlite-vec" in dossier
     assert "0.1.9" in dossier
     assert "Apache-2.0" in dossier
+
+
+@pytest.mark.asyncio
+async def test_fetch_gh_repo_query_no_sort_stars_and_filters_archived():
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    captured_url = None
+
+    async def fake_get(url, headers=None):
+        nonlocal captured_url
+        captured_url = url
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {
+            "items": [
+                {
+                    "full_name": "relevant/active-repo",
+                    "html_url": "https://github.com/relevant/active-repo",
+                    "description": "Active relevant tool",
+                    "stargazers_count": 50,
+                    "forks_count": 5,
+                    "archived": False,
+                },
+                {
+                    "full_name": "abandoned/archived-repo",
+                    "html_url": "https://github.com/abandoned/archived-repo",
+                    "description": "Archived old tool",
+                    "stargazers_count": 5000,
+                    "forks_count": 200,
+                    "archived": True,
+                },
+                {
+                    "full_name": "relevant/second-repo",
+                    "html_url": "https://github.com/relevant/second-repo",
+                    "description": "Another relevant tool",
+                    "stargazers_count": 25,
+                    "forks_count": 2,
+                    "archived": False,
+                },
+            ]
+        }
+        return resp
+
+    mock_client.get = fake_get
+
+    results = await _fetch_gh_repo_query("obsidian sync mcp server", mock_client, {}, limit=2)
+    assert captured_url is not None
+    assert "sort=stars" not in captured_url
+    assert "order=desc" not in captured_url
+    assert "per_page=6" in captured_url
+    # Archived repo must be filtered out
+    assert len(results) == 2
+    assert results[0]["title"] == "relevant/active-repo"
+    assert results[1]["title"] == "relevant/second-repo"
+    # Verify GitHub's original relevance order is preserved (50 stars before 25 stars, NOT sorted by stars)
+    assert results[0]["stars"] == 50
+    assert results[1]["stars"] == 25
+
+
+def test_extract_candidate_names_ignores_compound_adjectives():
+    # 'local-first', 'privacy-first', 'cloud-native' should NOT be extracted as candidates
+    extracted = extract_candidate_names("Find local-first obsidian sync mcp server with privacy-first storage")
+    assert "local-first" not in extracted
+    assert "privacy-first" not in extracted
+    assert extracted == []
+
+
+@pytest.mark.asyncio
+async def test_search_github_repositories_preserves_multi_term_query():
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    captured_url = None
+
+    async def fake_get(url, headers=None):
+        nonlocal captured_url
+        captured_url = url
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"items": []}
+        return resp
+
+    mock_client.get = fake_get
+
+    await search_github_repositories("local-first obsidian sync mcp server", limit=4, client=mock_client)
+    assert captured_url is not None
+    import urllib.parse
+    parsed_q = urllib.parse.unquote(captured_url)
+    assert "obsidian" in parsed_q
+    assert "sync" in parsed_q
+    assert "mcp" in parsed_q
+    assert "server" in parsed_q
+    assert "sort=stars" not in parsed_q
+
+
+@pytest.mark.asyncio
+async def test_scout_niche_query_relevance():
+    # Acceptance criteria from SCOUT_RELEVANCE_FIX.md
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "items": [
+            {
+                "full_name": "jimprosser/obsidian-web-mcp",
+                "html_url": "https://github.com/jimprosser/obsidian-web-mcp",
+                "description": "Secure remote MCP server for Obsidian vaults",
+                "stargazers_count": 167,
+                "forks_count": 10,
+                "archived": False,
+            },
+            {
+                "full_name": "es617/obsidian-sync-mcp",
+                "html_url": "https://github.com/es617/obsidian-sync-mcp",
+                "description": "MCP server for Obsidian — access your vault from any AI agent",
+                "stargazers_count": 50,
+                "forks_count": 4,
+                "archived": False,
+            },
+        ]
+    }
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.get.return_value = mock_response
+
+    results = await search_github_repositories("local-first obsidian sync mcp server", limit=4, client=mock_client)
+    titles = [c["title"].lower() for c in results]
+    assert len(titles) == 2
+    # Generic mega-repos must NOT crowd out relevant hits
+    assert not any(t in {"home-assistant/core", "mintplex-labs/anything-llm", "nexu-io/open-design"} for t in titles)
+    # Must be topically relevant
+    assert all("obsidian" in t or "mcp" in t or "sync" in t for t in titles)
+
+
+def test_format_candidate_dossier_maturity_signal():
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(timezone.utc)
+    recent_date = (now - timedelta(days=10)).strftime("%Y-%m-%d")
+    old_date = (now - timedelta(days=120)).strftime("%Y-%m-%d")
+
+    candidates = [
+        {
+            "title": "new-author/toy-mcp",
+            "url": "https://github.com/new-author/toy-mcp",
+            "stars": 0,
+            "forks": 0,
+            "license": "MIT",
+            "updated_at": recent_date,
+            "description": "Brand new MCP server created last week.",
+            "source": "github",
+        },
+        {
+            "title": "growing/new-tool",
+            "url": "https://github.com/growing/new-tool",
+            "stars": 5,
+            "forks": 1,
+            "license": "Apache-2.0",
+            "updated_at": recent_date,
+            "description": "Small repo with 5 stars.",
+            "source": "github",
+        },
+        {
+            "title": "moderate/tool-repo",
+            "url": "https://github.com/moderate/tool-repo",
+            "stars": 45,
+            "forks": 5,
+            "license": "MIT",
+            "updated_at": recent_date,
+            "description": "Moderate repo with 45 stars.",
+            "source": "github",
+        },
+        {
+            "title": "old/abandoned-repo",
+            "url": "https://github.com/old/abandoned-repo",
+            "stars": 2,
+            "forks": 0,
+            "license": "MIT",
+            "updated_at": old_date,
+            "description": "Old repo with 2 stars updated 120 days ago.",
+            "source": "github",
+        },
+    ]
+
+    dossier = format_candidate_dossier(candidates, "mcp tool")
+
+    # Candidate 1 (0 stars, recent) -> MUST have warning
+    assert "- ⚠️ **Low signal:** new/unstarred repo (0★, created/updated recently) — verify independently before relying on it." in dossier
+
+    # Candidate 2 (5 stars, recent) -> MUST have warning
+    assert "- ⚠️ **Low signal:** new/unstarred repo (5★, created/updated recently) — verify independently before relying on it." in dossier
+
+    # Candidate 3 (45 stars, recent) -> in between, NO warning
+    assert "new/unstarred repo (45★" not in dossier
+
+    # Candidate 4 (2 stars, 120 days old) -> > 90 days, NO recent warning
+    assert "new/unstarred repo (2★" not in dossier
+
+
 

@@ -10,6 +10,7 @@ import re
 import json
 import asyncio
 import urllib.parse
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 import httpx
@@ -72,7 +73,7 @@ def extract_search_terms(prompt: str) -> str:
         "compare", "comparison", "evaluate", "evaluation", "versus"
     }
     words = [w for w in cleaned.split() if len(w) > 2 and w.lower() not in stop_words]
-    return " ".join(words[:5]) if words else prompt[:40]
+    return " ".join(words[:8]) if words else prompt[:40]
 
 
 def extract_candidate_names(prompt: str) -> List[str]:
@@ -82,6 +83,9 @@ def extract_candidate_names(prompt: str) -> List[str]:
         "zero-dependency", "open-source", "real-time", "end-to-end",
         "built-in", "third-party", "high-level", "low-level",
         "in-memory", "server-side", "client-side", "e-commerce",
+        "local-first", "privacy-first", "cloud-native", "self-hosted",
+        "peer-to-peer", "offline-first", "multi-tenant", "single-tenant",
+        "ai-powered", "agent-native", "cross-platform", "full-stack",
         "e.g", "eg", "ie", "vs", "or", "and", "the", "for", "with",
         "compare", "which", "what", "how", "best", "simple", "local",
         "python", "docker", "javascript", "typescript", "rust", "golang",
@@ -155,13 +159,16 @@ async def _fetch_gh_repo_query(
 ) -> List[Dict[str, Any]]:
     """Helper to query GitHub repository search API."""
     encoded_q = urllib.parse.quote(q.strip())
-    url = f"{GITHUB_API_BASE}/search/repositories?q={encoded_q}&sort=stars&order=desc&per_page={limit}"
+    fetch_limit = min(max(limit * 3, limit), 30)
+    url = f"{GITHUB_API_BASE}/search/repositories?q={encoded_q}&per_page={fetch_limit}"
     results = []
     try:
         resp = await client.get(url, headers=headers)
         if resp.status_code == 200:
             data = resp.json()
-            for item in data.get("items", [])[:limit]:
+            for item in data.get("items", []):
+                if item.get("archived", False):
+                    continue
                 license_info = item.get("license") or {}
                 results.append({
                     "source": "github",
@@ -176,6 +183,8 @@ async def _fetch_gh_repo_query(
                     "archived": item.get("archived", False),
                     "topics": item.get("topics", [])[:5],
                 })
+                if len(results) >= limit:
+                    break
     except Exception:
         pass
     return results
@@ -222,7 +231,7 @@ async def search_github_repositories(
             results = await _fetch_gh_repo_query(search_q, client, headers, limit=limit)
         else:
             terms = extract_search_terms(query).split()
-            search_q = " ".join(terms[:3]) if terms else query[:30]
+            search_q = " ".join(terms) if terms else query[:40]
             results = await _fetch_gh_repo_query(search_q, client, headers, limit=limit)
     finally:
         if should_close:
@@ -538,6 +547,19 @@ def search_local_skills(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     return [{k: v for k, v in item.items() if k != "score"} for item in matched[:limit]]
 
 
+def _is_recent_repo(updated_at_str: str, max_days: int = 90) -> bool:
+    """Check if repository was updated within the last max_days days."""
+    if not updated_at_str:
+        return False
+    try:
+        date_part = str(updated_at_str).strip()[:10]
+        updated_date = datetime.strptime(date_part, "%Y-%m-%d").date()
+        days_ago = (datetime.now(timezone.utc).date() - updated_date).days
+        return -1 <= days_ago <= max_days
+    except Exception:
+        return False
+
+
 def format_candidate_dossier(
     candidates: List[Dict[str, Any]],
     query: str,
@@ -570,7 +592,12 @@ def format_candidate_dossier(
 
         # Format header with metrics if GitHub repository
         if source == "GITHUB":
-            stars = c.get("stars", 0)
+            raw_stars = c.get("stars", 0)
+            try:
+                stars = int(raw_stars) if raw_stars is not None else 0
+            except (ValueError, TypeError):
+                stars = 0
+
             forks = c.get("forks", 0)
             license_spdx = c.get("license", "Unknown")
             updated = c.get("updated_at", "")
@@ -582,6 +609,8 @@ def format_candidate_dossier(
             if archived:
                 metric_line += " | ⚠️ **ARCHIVED**"
             lines.append(metric_line)
+            if stars < 10 and _is_recent_repo(updated, max_days=90):
+                lines.append(f"- ⚠️ **Low signal:** new/unstarred repo ({stars}★, created/updated recently) — verify independently before relying on it.")
             if c.get("topics"):
                 lines.append(f"- **Topics:** {', '.join(c['topics'])}")
             lines.append(f"- **Overview:** {desc}\n")
