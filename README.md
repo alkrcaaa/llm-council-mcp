@@ -43,6 +43,7 @@ Karpathy built the original `llm-council` as a fun "Saturday vibe-hack" — a li
 | **Decision Output** | Unbounded text transcript | **Strict ≤150-word Markdown ADR** (Verdict, Confidence, Recommendation, Dissenting Risk) |
 | **Telemetry & Metrics** | ❌ None | **Empirical Performance Dashboard:** Elo win-rates, peer evaluation stats, and token economics |
 | **Context Ingestion** | ❌ Manual copy-paste | **Automated Local Workspace & GitHub Repository context resolution** |
+| **Technology Scouting** | ❌ None (Hallucinated from weights) | **Autonomous Research Engine:** Live GitHub repo telemetry + DuckDuckGo Lite search + local skills discovery |
 | **Deployment** | Local scripts with hardcoded configs | **12-Factor Docker Compose stack** with zero leaked host credentials via `.env` |
 
 ---

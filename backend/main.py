@@ -43,6 +43,7 @@ from . import decompose
 from . import cache
 from . import embeddings
 from . import ingestion
+from . import research
 
 app = FastAPI(title="LLM Council API")
 
@@ -104,6 +105,7 @@ class SendMessageRequest(BaseModel):
     use_decomposition: bool = False  # Enable sub-question decomposition (map-reduce for complex questions)
     use_cache: bool = False  # Enable semantic response caching (returns similar cached responses)
     cache_similarity_threshold: float = 0.92  # Minimum similarity for cache hit (0.0-1.0)
+    use_research: Optional[bool] = None  # Automated technology scouting (None = auto, True = force, False = disable)
 
 
 class UpdateTagsRequest(BaseModel):
@@ -635,6 +637,15 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         target_workspace=request.target_workspace
     )
 
+    # Automated technology scouting & candidate discovery
+    research_meta = {"researched": False}
+    if request.use_research is not False:
+        force_research = request.use_research is True
+        effective_query, research_meta = await research.resolve_research_context(
+            effective_query,
+            force=force_research
+        )
+
     # Resolve council models and chairman model for the conversation
     c_target = None
     if request.council_id:
@@ -667,6 +678,8 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     )
     if ingest_meta.get("enriched"):
         metadata["ingestion"] = ingest_meta
+    if research_meta.get("researched"):
+        metadata["research"] = research_meta
 
     # Add assistant message with all stages
     storage.add_assistant_message(
@@ -801,6 +814,28 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                     yield proc_event
 
                 yield f"data: {json.dumps({'type': 'context_ingested', 'metadata': ingest_meta})}\n\n"
+
+            # Automated technology scouting & candidate discovery
+            research_meta = {"researched": False}
+            if request.use_research is not False:
+                force_research = request.use_research is True
+                effective_query, research_meta = await research.resolve_research_context(
+                    effective_query,
+                    force=force_research
+                )
+
+            if research_meta.get("researched"):
+                c_count = research_meta.get("candidate_count", 0)
+                sterms = research_meta.get("search_terms", "")
+                proc_event = emit_process(pl.create_process_event(
+                    f"Research Discovery: Found {c_count} candidates for '{sterms}'",
+                    pl.EventCategory.INFO,
+                    pl.Verbosity.BASIC
+                ))
+                if proc_event:
+                    yield proc_event
+
+                yield f"data: {json.dumps({'type': 'research_complete', 'metadata': research_meta})}\n\n"
 
             # Start title generation in parallel (don't await yet)
             title_task = None
