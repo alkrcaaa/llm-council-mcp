@@ -125,6 +125,7 @@ class SendMessageRequest(BaseModel):
     target_workspace: Optional[str] = None  # Optional target workspace project name
     system_prompt: str = None
     council_id: Optional[str] = None  # Optional council override for this deliberation
+    council_models: Optional[List[str]] = None  # Optional panelist-list override for this deliberation
     chairman_model: Optional[str] = None  # Optional chairman model override
     verbosity: int = 0  # Process monitor verbosity level (0-3)
     use_cot: bool = False  # Chain-of-Thought mode (request structured reasoning)
@@ -738,7 +739,10 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         if not c_target:
             c_target = councils.get_active_council()
 
-        if c_target and c_target.get("council_models"):
+        if request.council_models:
+            active_council_models = list(request.council_models)
+            active_chairman_model = request.chairman_model or (c_target.get("chairman_model") if c_target else None) or (conversation.get("chairman_model") if conversation else None)
+        elif c_target and c_target.get("council_models"):
             active_council_models = list(c_target["council_models"])
             active_chairman_model = request.chairman_model or c_target.get("chairman_model")
         elif conversation and conversation.get("council_models"):
@@ -747,6 +751,10 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         else:
             active_council_models = None
             active_chairman_model = request.chairman_model
+
+        if request.council_models and conversation:
+            conversation["council_models"] = active_council_models
+            storage.save_conversation(conversation)
 
         # Automated technology scouting & candidate discovery
         research_meta = {"researched": False}
@@ -941,7 +949,10 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             if not c_target:
                 c_target = councils.get_active_council()
 
-            if c_target and c_target.get("council_models"):
+            if request.council_models:
+                council_models = list(request.council_models)
+                chairman_model = request.chairman_model or (c_target.get("chairman_model") if c_target else None) or (conv_data.get("chairman_model") if conv_data else None) or get_chairman_model()
+            elif c_target and c_target.get("council_models"):
                 council_models = list(c_target["council_models"])
                 chairman_model = request.chairman_model or c_target.get("chairman_model") or get_chairman_model()
             elif conv_data and conv_data.get("council_models"):
@@ -951,8 +962,12 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 council_models = get_council_models()
                 chairman_model = request.chairman_model or get_chairman_model()
 
-            # Ensure conversation records council profile info if missing
-            if conv_data and c_target and not conv_data.get("council_id"):
+            # Ensure conversation records council profile info if missing or overridden
+            if request.council_models and conv_data:
+                conv_data["council_models"] = council_models
+                conv_data["chairman_model"] = chairman_model
+                storage.save_conversation(conv_data)
+            elif conv_data and c_target and not conv_data.get("council_id"):
                 conv_data["council_id"] = c_target["id"]
                 conv_data["council_name"] = c_target["name"]
                 conv_data["council_models"] = council_models

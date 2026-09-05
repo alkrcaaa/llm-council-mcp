@@ -11,12 +11,20 @@ import re
 import sys
 from typing import Optional, Dict, Any, List
 import httpx
-from mcp.server.fastmcp import FastMCP
 
 COUNCIL_API_BASE = os.getenv("COUNCIL_API_BASE", "http://localhost:8001")
 RECURSION_ENV_KEY = "LLM_COUNCIL_INVOCATION"
 
-mcp = FastMCP("llm-council")
+try:
+    from mcp.server.fastmcp import FastMCP
+    mcp = FastMCP("llm-council")
+except (ImportError, ModuleNotFoundError):
+    class _DummyFastMCP:
+        def tool(self):
+            def decorator(fn):
+                return fn
+            return decorator
+    mcp = _DummyFastMCP()
 
 
 def format_adr_payload(stage3_data: Dict[str, Any], metadata: Dict[str, Any]) -> str:
@@ -111,6 +119,43 @@ def format_adr_payload(stage3_data: Dict[str, Any], metadata: Dict[str, Any]) ->
     return "\n".join(lines)
 
 
+def get_caller_model_id() -> Optional[str]:
+    """Identify the host agent CLI calling the MCP server.
+
+    Returns:
+        'local/claude-code' if invoked by Claude Code,
+        'local/antigravity' if invoked by Antigravity,
+        None if unrecognized or generic caller.
+    """
+    if os.getenv("CLAUDE_PROJECT_DIR") or os.getenv("CLAUDE_CODE") or "claude" in sys.argv[0].lower():
+        return "local/claude-code"
+    if (
+        os.getenv("ANTIGRAVITY_AGENT")
+        or os.getenv("AI_AGENT") == "antigravity"
+        or os.getenv("ANTIGRAVITY_CONVERSATION_ID")
+        or "antigravity" in sys.argv[0].lower()
+    ):
+        return "local/antigravity"
+    return None
+
+
+def filter_panelists_for_caller(
+    council_models: List[str],
+    caller_model_id: Optional[str]
+) -> List[str]:
+    """Filter out any panelist whose model id matches the calling agent.
+
+    Strips the model identifier before '@skill' and compares with caller_model_id.
+    """
+    if not caller_model_id or not council_models:
+        return list(council_models)
+
+    return [
+        m for m in council_models
+        if m.split("@")[0] != caller_model_id
+    ]
+
+
 @mcp.tool()
 async def ask_council(
     question: str,
@@ -151,8 +196,8 @@ async def ask_council(
         )
 
     # 2. Identify caller and assign opposing peer as chairman
-    caller_is_claude = bool(os.getenv("CLAUDE_PROJECT_DIR") or os.getenv("CLAUDE_CODE") or "claude" in sys.argv[0].lower())
-    chairman_override = "local/antigravity" if caller_is_claude else "local/claude-code"
+    caller_model_id = get_caller_model_id()
+    chairman_override = "local/antigravity" if caller_model_id == "local/claude-code" else "local/claude-code"
 
     os.environ[RECURSION_ENV_KEY] = "1"
     try:
@@ -173,6 +218,18 @@ async def ask_council(
             conv_data = conv_resp.json()
             conv_id = conv_data["id"]
 
+            raw_council_models = conv_data.get("council_models", [])
+            filtered_council_models = filter_panelists_for_caller(raw_council_models, caller_model_id)
+
+            if len(filtered_council_models) < 2:
+                return (
+                    "## Verdict: Council Misconfigured for This Caller\n"
+                    "**Confidence:** Rejected\n"
+                    f"**Recommendation:** Deliberation requires at least 2 independent panelists after filtering out the calling agent ({caller_model_id or 'unknown'}). "
+                    f"Board '{council_id}' has insufficient independent panelists for this caller.\n"
+                    "**Dissenting risk:** Degenerate single-model deliberation prevented."
+                )
+
             # Send deliberation request (synchronous 3-stage process with early consensus enabled)
             msg_payload = {
                 "content": f"{question}\n\nType-1 Context: {type1_rationale.strip()}",
@@ -181,6 +238,8 @@ async def ask_council(
                 "target_workspace": target_workspace,
                 "use_early_consensus": True,
             }
+            if filtered_council_models != raw_council_models:
+                msg_payload["council_models"] = filtered_council_models
 
             msg_resp = await client.post(
                 f"{COUNCIL_API_BASE}/api/conversations/{conv_id}/message",
