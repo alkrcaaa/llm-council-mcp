@@ -19,6 +19,7 @@ DEFAULT_CONFIG = {
         "google/gemini-3-pro-preview",
         "anthropic/claude-sonnet-4.5",
         "x-ai/grok-4",
+        "local/qwen3.6-27b",
     ],
     "chairman_model": "google/gemini-3-pro-preview",
     "multi_chairman_models": [
@@ -328,4 +329,8 @@ AVAILABLE_MODELS = [
     # Mistral
     "mistralai/mistral-large",
     "mistralai/mistral-medium",
+    # Local / self-hosted (routed outside OpenRouter, see backend/config.py LOCAL_MODELS)
+    "local/qwen3.6-27b",
+    "local/claude-code",  # costs real API credit per call - not in the default council, add manually
+    "local/antigravity",  # costs real API credit per call - not in the default council, add manually
 ]

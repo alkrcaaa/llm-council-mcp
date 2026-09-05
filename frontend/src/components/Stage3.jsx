@@ -338,7 +338,11 @@ export default function Stage3({
       </div>
       <div className="final-response">
         <div className="chairman-label">
-          Chairman: {displayModel.split('/')[1] || displayModel}
+          Chairman: {(() => {
+            const [baseDisplay, sId] = displayModel.split('@');
+            const bName = baseDisplay.split('/')[1] || baseDisplay;
+            return sId ? `${bName} [${sId}]` : bName;
+          })()}
           {isStreaming && <span className="streaming-badge">Generating...</span>}
         </div>
         <div className={`final-text markdown-content ${isStreaming ? 'streaming' : ''}`}>

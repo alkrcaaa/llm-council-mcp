@@ -31,6 +31,10 @@ POSITION_PROMPT_TEMPLATE = """You are participating in a structured debate on th
 Present your best answer to this question. Be clear, thorough, and well-reasoned.
 Support your position with evidence and logical arguments.
 
+**Guidelines:**
+- Be direct, structured, and concise (maximum 150-250 words or clear bullet points).
+- Avoid conversational preamble or repetitive filler.
+
 State your position:"""
 
 
@@ -47,8 +51,9 @@ Critically analyze this position. Identify:
 2. **Missing Considerations**: What important aspects did they overlook?
 3. **Counter-arguments**: What evidence or logic contradicts their position?
 
-Be constructive but thorough. Point out real issues, not minor nitpicks.
-If the position is genuinely strong, acknowledge that while still noting any possible improvements.
+**Guidelines:**
+- Be constructive, sharp, and concise (maximum 150-200 words). Point out real issues, not minor nitpicks.
+- Avoid repetitive filler.
 
 Your critique:"""
 
@@ -70,6 +75,9 @@ Defend your position against this critique. You may:
 3. **Strengthen**: Provide additional evidence or reasoning for your original position
 4. **Revise**: If the critique has merit, refine your position accordingly
 
+**Guidelines:**
+- Keep your defense concise and focused (maximum 150-200 words).
+
 Your rebuttal:"""
 
 
@@ -87,7 +95,12 @@ Evaluate the debate and determine the best answer to the original question.
 1. **Analysis**: Briefly analyze the key arguments and how they held up under criticism
 2. **Assessment**: Which positions were strongest and why? Which critiques were most valid?
 3. **Synthesis**: Combine the best insights from all participants
-4. **Final Answer**: Provide the definitive answer to the question
+4. **Final Answer**: Provide the definitive, actionable answer to the question
+
+Guidelines:
+- Match the user's language: If the user writes in Turkish, respond fluently and naturally in Turkish.
+- Keep the judgment authoritative, clear, and well-structured using bullet points or concise sections.
+- Synthesize directly without re-quoting the entire transcript.
 
 Your judgment:"""
 

@@ -71,24 +71,41 @@ export default function PerformanceDashboard({ onClose }) {
     return `$${cost.toFixed(2)}`;
   };
 
-  const formatModelName = (model) => {
-    // Extract model name after provider prefix (e.g., "openai/gpt-4" -> "gpt-4")
+  const formatModelDisplay = (model) => {
+    if (!model) return '';
+    if (model.startsWith('local/')) {
+      const name = model.replace('local/', '');
+      return (
+        <span className="dash-model-badge">
+          <span className="dash-local-tag">local/</span>
+          <span className="dash-model-name">{name}</span>
+        </span>
+      );
+    }
     const parts = model.split('/');
-    return parts.length > 1 ? parts[1] : model;
+    if (parts.length > 1) {
+      return (
+        <span className="dash-model-badge">
+          <span className="dash-provider-tag">{parts[0]}/</span>
+          <span className="dash-model-name">{parts[1]}</span>
+        </span>
+      );
+    }
+    return <span className="dash-model-name">{model}</span>;
   };
 
-  const getWinRateColor = (winRate) => {
-    if (winRate >= 50) return '#059669'; // green
-    if (winRate >= 30) return '#0d9488'; // teal
-    if (winRate >= 15) return '#d97706'; // amber
-    return '#dc2626'; // red
+  const getWinRateClass = (winRate) => {
+    if (winRate >= 50) return 'rate-high';
+    if (winRate >= 30) return 'rate-med';
+    if (winRate >= 15) return 'rate-fair';
+    return 'rate-low';
   };
 
-  const getRankColor = (rank) => {
-    if (rank <= 1.5) return '#059669'; // green - top
-    if (rank <= 2.5) return '#0d9488'; // teal - good
-    if (rank <= 3.5) return '#d97706'; // amber - middle
-    return '#dc2626'; // red - low
+  const getRankClass = (rank) => {
+    if (rank <= 1.5) return 'rank-top';
+    if (rank <= 2.5) return 'rank-good';
+    if (rank <= 3.5) return 'rank-mid';
+    return 'rank-low';
   };
 
   if (isLoading) {
@@ -96,9 +113,17 @@ export default function PerformanceDashboard({ onClose }) {
       <div className="performance-dashboard">
         <div className="dashboard-header">
           <h2>Performance Dashboard</h2>
-          <button className="close-btn" onClick={onClose}>×</button>
+          <button className="close-btn" onClick={onClose} aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
-        <div className="dashboard-loading">Loading analytics...</div>
+        <div className="dashboard-loading">
+          <div className="dash-spinner"></div>
+          <span>Loading analytics engine...</span>
+        </div>
       </div>
     );
   }
@@ -108,11 +133,16 @@ export default function PerformanceDashboard({ onClose }) {
       <div className="performance-dashboard">
         <div className="dashboard-header">
           <h2>Performance Dashboard</h2>
-          <button className="close-btn" onClick={onClose}>×</button>
+          <button className="close-btn" onClick={onClose} aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
         <div className="dashboard-error">
           <p>{error}</p>
-          <button onClick={loadAnalytics}>Retry</button>
+          <button className="retry-btn" onClick={loadAnalytics}>Retry</button>
         </div>
       </div>
     );
@@ -126,7 +156,12 @@ export default function PerformanceDashboard({ onClose }) {
     <div className="performance-dashboard">
       <div className="dashboard-header">
         <h2>Performance Dashboard</h2>
-        <button className="close-btn" onClick={onClose}>×</button>
+        <button className="close-btn" onClick={onClose} aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
 
       {/* Summary Section */}
@@ -146,9 +181,9 @@ export default function PerformanceDashboard({ onClose }) {
         {summary.date_range?.start && (
           <div className="summary-stat date-range">
             <span className="stat-value">
-              {formatDate(summary.date_range.start)} - {formatDate(summary.date_range.end)}
+              {formatDate(summary.date_range.start)} — {formatDate(summary.date_range.end)}
             </span>
-            <span className="stat-label">Date Range</span>
+            <span className="stat-label">Observation Window</span>
           </div>
         )}
       </div>
@@ -177,8 +212,9 @@ export default function PerformanceDashboard({ onClose }) {
 
       {!hasData ? (
         <div className="no-data">
-          <p>No analytics data yet.</p>
-          <p className="hint">Run some council queries to see performance statistics.</p>
+          <div className="no-data-icon">◈</div>
+          <p>No council deliberation records recorded yet.</p>
+          <p className="hint">Execute deliberations in the chamber to populate model metrics.</p>
         </div>
       ) : (
         <div className="dashboard-content">
@@ -188,7 +224,7 @@ export default function PerformanceDashboard({ onClose }) {
               <table className="leaderboard-table">
                 <thead>
                   <tr>
-                    <th className="rank-col">#</th>
+                    <th className="rank-col">Rank</th>
                     <th className="model-col">Model</th>
                     <th className="stat-col">Win Rate</th>
                     <th className="stat-col">Avg Rank</th>
@@ -200,38 +236,31 @@ export default function PerformanceDashboard({ onClose }) {
                   {modelList.map(([model, stats], index) => (
                     <tr key={model} className={index < 3 ? 'top-three' : ''}>
                       <td className="rank-col">
-                        {index === 0 && <span className="medal gold">🥇</span>}
-                        {index === 1 && <span className="medal silver">🥈</span>}
-                        {index === 2 && <span className="medal bronze">🥉</span>}
-                        {index > 2 && <span className="rank-num">{index + 1}</span>}
+                        <span className={`rank-badge rank-${index + 1}`}>
+                          {index + 1}
+                        </span>
                       </td>
                       <td className="model-col">
-                        <span className="model-name" title={model}>
-                          {formatModelName(model)}
-                        </span>
+                        {formatModelDisplay(model)}
                       </td>
                       <td className="stat-col">
-                        <span
-                          className="win-rate"
-                          style={{ color: getWinRateColor(stats.win_rate) }}
-                        >
-                          {stats.win_rate}%
-                        </span>
-                        <span className="wins-count">({stats.wins} wins)</span>
+                        <div className="win-rate-cell">
+                          <span className={`win-rate ${getWinRateClass(stats.win_rate)}`}>
+                            {stats.win_rate}%
+                          </span>
+                          <span className="wins-count">({stats.wins} wins)</span>
+                        </div>
                       </td>
                       <td className="stat-col">
-                        <span
-                          className="avg-rank"
-                          style={{ color: getRankColor(stats.average_rank) }}
-                        >
-                          {stats.average_rank || 'N/A'}
+                        <span className={`avg-rank ${getRankClass(stats.average_rank)}`}>
+                          {stats.average_rank ? stats.average_rank.toFixed(2) : 'N/A'}
                         </span>
                       </td>
                       <td className="stat-col">
                         {stats.average_confidence !== null ? (
-                          <span className="confidence">{stats.average_confidence}/10</span>
+                          <span className="confidence">{stats.average_confidence.toFixed(1)}/10</span>
                         ) : (
-                          <span className="na">N/A</span>
+                          <span className="na">—</span>
                         )}
                       </td>
                       <td className="stat-col queries">
@@ -250,59 +279,64 @@ export default function PerformanceDashboard({ onClose }) {
               {modelList.map(([model, stats]) => (
                 <div key={model} className="model-card">
                   <div className="model-card-header">
-                    <h4 title={model}>{formatModelName(model)}</h4>
-                    <span
-                      className="win-badge"
-                      style={{ backgroundColor: getWinRateColor(stats.win_rate) }}
-                    >
+                    <div className="model-card-title">
+                      {formatModelDisplay(model)}
+                    </div>
+                    <span className={`win-badge ${getWinRateClass(stats.win_rate)}`}>
                       {stats.win_rate}% win rate
                     </span>
                   </div>
                   <div className="model-card-stats">
                     <div className="stat-group">
-                      <label>Performance</label>
+                      <div className="stat-group-header">Performance Metrics</div>
                       <div className="stat-row">
-                        <span>Wins:</span>
-                        <span>{stats.wins} / {stats.total_queries}</span>
+                        <span className="stat-row-label">Consensus Wins:</span>
+                        <span className="stat-row-val">{stats.wins} / {stats.total_queries}</span>
                       </div>
                       <div className="stat-row">
-                        <span>Avg Rank:</span>
-                        <span style={{ color: getRankColor(stats.average_rank) }}>
-                          {stats.average_rank || 'N/A'}
+                        <span className="stat-row-label">Average Rank:</span>
+                        <span className={`stat-row-val ${getRankClass(stats.average_rank)}`}>
+                          {stats.average_rank ? stats.average_rank.toFixed(2) : 'N/A'}
                         </span>
                       </div>
                       <div className="stat-row">
-                        <span>Avg Confidence:</span>
-                        <span>{stats.average_confidence || 'N/A'}</span>
+                        <span className="stat-row-label">Avg Confidence:</span>
+                        <span className="stat-row-val">
+                          {stats.average_confidence !== null ? `${stats.average_confidence.toFixed(1)}/10` : 'N/A'}
+                        </span>
                       </div>
                     </div>
                     <div className="stat-group">
-                      <label>Usage</label>
+                      <div className="stat-group-header">Resource Consumption</div>
                       <div className="stat-row">
-                        <span>Total Cost:</span>
-                        <span>{formatCost(stats.total_cost)}</span>
+                        <span className="stat-row-label">Total Cost:</span>
+                        <span className="stat-row-val mono-accent">{formatCost(stats.total_cost)}</span>
                       </div>
                       <div className="stat-row">
-                        <span>Total Tokens:</span>
-                        <span>{stats.total_tokens?.toLocaleString() || 0}</span>
+                        <span className="stat-row-label">Total Tokens:</span>
+                        <span className="stat-row-val">{stats.total_tokens?.toLocaleString() || 0}</span>
+                      </div>
+                      <div className="stat-row">
+                        <span className="stat-row-label">Deliberation Runs:</span>
+                        <span className="stat-row-val">{stats.total_queries}</span>
                       </div>
                     </div>
                     {stats.rank_distribution && Object.keys(stats.rank_distribution).length > 0 && (
-                      <div className="stat-group">
-                        <label>Rank Distribution</label>
+                      <div className="stat-group rank-dist-group">
+                        <div className="stat-group-header">Rank Distribution</div>
                         <div className="rank-distribution">
                           {Object.entries(stats.rank_distribution).map(([rank, count]) => (
                             <div key={rank} className="rank-bar-container">
-                              <span className="rank-label">#{rank}</span>
                               <div className="rank-bar-bg">
                                 <div
-                                  className="rank-bar"
+                                  className={`rank-bar rank-${rank}`}
                                   style={{
-                                    width: `${(count / stats.total_queries) * 100}%`,
-                                    backgroundColor: getRankColor(parseInt(rank)),
+                                    height: `${Math.max(8, (count / Math.max(1, stats.total_queries)) * 100)}%`,
                                   }}
+                                  title={`Rank #${rank}: ${count} times`}
                                 />
                               </div>
+                              <span className="rank-label">#{rank}</span>
                               <span className="rank-count">{count}</span>
                             </div>
                           ))}
@@ -319,33 +353,33 @@ export default function PerformanceDashboard({ onClose }) {
           {activeTab === 'chairman' && (
             <div className="chairman-stats">
               <p className="chairman-intro">
-                The chairman model synthesizes the final answer from all council responses and rankings.
+                The Chairman model synthesizes the final council verdict by analyzing peer cross-examinations and consensus rankings.
               </p>
               {chairmanStats && Object.keys(chairmanStats.models).length > 0 ? (
                 <table className="chairman-table">
                   <thead>
                     <tr>
                       <th className="model-col">Chairman Model</th>
-                      <th className="stat-col">Times Used</th>
-                      <th className="stat-col">Total Cost</th>
+                      <th className="stat-col">Syntheses Presided</th>
+                      <th className="stat-col">Cumulative Cost</th>
                     </tr>
                   </thead>
                   <tbody>
                     {Object.entries(chairmanStats.models).map(([model, stats]) => (
                       <tr key={model}>
                         <td className="model-col">
-                          <span className="model-name" title={model}>
-                            {formatModelName(model)}
-                          </span>
+                          {formatModelDisplay(model)}
                         </td>
                         <td className="stat-col">{stats.times_used}</td>
-                        <td className="stat-col">{formatCost(stats.total_cost)}</td>
+                        <td className="stat-col mono-accent">{formatCost(stats.total_cost)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               ) : (
-                <p className="no-chairman-data">No chairman statistics available yet.</p>
+                <div className="no-chairman-data">
+                  <p>No chairman syntheses recorded yet.</p>
+                </div>
               )}
             </div>
           )}
@@ -355,13 +389,18 @@ export default function PerformanceDashboard({ onClose }) {
       {/* Footer Actions */}
       <div className="dashboard-footer">
         <button className="refresh-btn" onClick={loadAnalytics}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
           Refresh Data
         </button>
         {hasData && (
           <>
             {showClearConfirm ? (
               <div className="clear-confirm">
-                <span>Clear all analytics data?</span>
+                <span>Permanently clear analytics history?</span>
                 <button className="confirm-yes" onClick={handleClearAnalytics}>
                   Yes, Clear
                 </button>
@@ -374,6 +413,10 @@ export default function PerformanceDashboard({ onClose }) {
                 className="clear-btn"
                 onClick={() => setShowClearConfirm(true)}
               >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
                 Clear Data
               </button>
             )}

@@ -1,117 +1,162 @@
-# LLM Council
+# LLM Council MCP
 
 ![llmcouncil](header.jpg)
 
-The idea of this repo is that instead of asking a question to your favorite LLM provider (e.g. OpenAI GPT 5.1, Google Gemini 3.0 Pro, Anthropic Claude Sonnet 4.5, xAI Grok 4, eg.c), you can group them into your "LLM Council". This repo is a simple, local web app that essentially looks like ChatGPT except it uses OpenRouter to send your query to multiple LLMs, it then asks them to review and rank each other's work, and finally a Chairman LLM produces the final response.
+> **Fork & Provenance:**  
+> This project is an advanced, production-hardened fork of [Andrej Karpathy's llm-council](https://github.com/karpathy/llm-council) (extended from [az9713/llm-council](https://github.com/az9713/llm-council)). It evolves Karpathy's original multi-LLM peer-review concept into an enterprise deliberation engine and a native **Model Context Protocol (MCP) oracle** for autonomous AI coding agents (Claude Code, Google Antigravity, and Qwen).
 
-In a bit more detail, here is what happens when you submit a query:
+---
 
-1. **Stage 1: First opinions**. The user query is given to all LLMs individually, and the responses are collected. The individual responses are shown in a "tab view", so that the user can inspect them all one by one.
-2. **Stage 2: Review**. Each individual LLM is given the responses of the other LLMs. Under the hood, the LLM identities are anonymized so that the LLM can't play favorites when judging their outputs. The LLM is asked to rank them in accuracy and insight.
-3. **Stage 3: Final response**. The designated Chairman of the LLM Council takes all of the model's responses and compiles them into a single final answer that is presented to the user.
+## What is LLM Council MCP?
 
-## Vibe Code Alert
+Instead of relying on a single AI model's blind spots for critical architectural and strategic decisions, LLM Council orchestrates multiple frontier and local models in a 3-stage consensus process:
 
-This project was 99% vibe coded as a fun Saturday hack because I wanted to explore and evaluate a number of LLMs side by side in the process of [reading books together with LLMs](https://x.com/karpathy/status/1990577951671509438). It's nice and useful to see multiple responses side by side, and also the cross-opinions of all LLMs on each other's outputs. I'm not going to support it in any way, it's provided here as is for other people's inspiration and I don't intend to improve it. Code is ephemeral now and libraries are over, ask your LLM to change it in whatever way you like.
+1. **Stage 1 (Independent Perspectives):** Council models independently answer the problem without seeing each other's responses.
+2. **Stage 2 (Blind Peer Review):** Council members read anonymized responses from other seats and critically rank them on correctness, technical depth, and trade-offs.
+3. **Stage 3 (Synthesis & ADR):** A designated Chairman model synthesizes the debate into a decisive, structured **Architectural Decision Record (ADR)** bounded strictly to ≤150 words.
 
-## Setup
+### Key Enhancements in this Fork
 
-### 1. Install Dependencies
+- 🔌 **Native FastMCP Server (`mcp/`):** Exposes `ask_council` and `list_councils` to Claude Code and Antigravity with millisecond fast-rejection for trivial queries and automated peer-chairman rotation.
+- 🧠 **5 Specialized Council Boards:**
+  - `cognitive-strategy`: High-stakes architectural & strategic decisions.
+  - `code-craft`: Deep refactoring, diff-risk minimization & surgical simplicity.
+  - `deep-tech`: Protocols, RFCs, and dependency evaluations.
+  - `sec-ops`: Hardening, OWASP audit, and SRE resilience.
+  - `frontend-craft`: Distinctive UI/UX, design DNA, and client workflows.
+- 💻 **Hybrid Local & Cloud Model Execution:** Run OpenRouter cloud models alongside local vLLM instances (`local/qwen3.6-27b`) and headless CLI shims (`local/claude-code`, `local/antigravity`).
+- 🎯 **Skill & Role Prompt Injection:** Models can be decorated with domain skills (e.g. `@red-team-reasoning`, `@first-principles`, `@karpathy-guidelines`).
+- 🐳 **12-Factor Docker Setup:** Fully containerized backend and frontend with `.env` parameterization and zero leaked host credentials.
 
-The project uses [uv](https://docs.astral.sh/uv/) for project management.
+---
 
-**Backend:**
+## Quick Setup
+
+### 1. Configure Environment
+
+Copy the example environment template and configure your keys and endpoints:
+
 ```bash
-uv sync
+cp .env.example .env
 ```
 
-**Frontend:**
+Edit `.env` to configure your OpenRouter API key (if using cloud models) or local endpoints:
 ```bash
-cd frontend
-npm install
+# Optional if using local models exclusively:
+OPENROUTER_API_KEY=sk-or-v1-...
+
+# Local vLLM / OpenAI-compatible endpoint:
+QWEN_BASE_URL=http://host.docker.internal:8002/v1
+```
+
+---
+
+### 2. Run with Docker Compose (Recommended)
+
+Start the full stack (FastAPI backend + React frontend) in background:
+
+```bash
+docker compose -f infra/docker-compose.yml up -d
+```
+
+- **Web UI:** http://localhost:5173
+- **Backend API:** http://localhost:8001 (Health check: `curl http://localhost:8001/`)
+
+To stop:
+```bash
+docker compose -f infra/docker-compose.yml down
+```
+
+---
+
+### 3. Run Manually with UV & NPM
+
+If you prefer running without Docker:
+
+```bash
+# 1. Install dependencies
+uv sync
+cd frontend && npm install && cd ..
+
+# 2. Start Backend (Terminal 1)
+uv run python -m backend.main
+
+# 3. Start Frontend (Terminal 2)
+cd frontend && npm run dev
+```
+
+---
+
+## Connecting as an MCP Server (Claude Code & Antigravity)
+
+The `mcp/` folder contains a standalone FastMCP server that connects your agent directly to the council backend.
+
+### 1. Install MCP Environment
+
+```bash
+cd mcp
+bash install.sh
 cd ..
 ```
 
-### 2. Configure API Key
+### 2. Register with Claude Code (`~/.claude.json`)
 
-Create a `.env` file in the project root:
+Add the following under `mcpServers`:
 
-```bash
-OPENROUTER_API_KEY=sk-or-v1-...
+```json
+{
+  "mcpServers": {
+    "llm-council": {
+      "command": "/absolute/path/to/llm-council-mcp/mcp/.venv/bin/python",
+      "args": [
+        "/absolute/path/to/llm-council-mcp/mcp/server.py"
+      ],
+      "timeout": 140000
+    }
+  }
+}
 ```
 
-Get your API key at [openrouter.ai](https://openrouter.ai/). Make sure to purchase the credits you need, or sign up for automatic top up.
+### 3. Register with Antigravity (`~/.gemini/config/mcp_config.json`)
 
-### 3. Configure Models (Optional)
-
-Edit `backend/config.py` to customize the council:
-
-```python
-COUNCIL_MODELS = [
-    "openai/gpt-5.1",
-    "google/gemini-3-pro-preview",
-    "anthropic/claude-sonnet-4.5",
-    "x-ai/grok-4",
-]
-
-CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
+```json
+{
+  "mcpServers": {
+    "llm-council": {
+      "command": "/absolute/path/to/llm-council-mcp/mcp/.venv/bin/python",
+      "args": [
+        "/absolute/path/to/llm-council-mcp/mcp/server.py"
+      ],
+      "timeout": 140000
+    }
+  }
+}
 ```
 
-## Running the Application
+### MCP Gating Rule (Agent Guardrail)
 
-**Option 1: Use the start script**
-```bash
-./start.sh
-```
+To prevent models from lazily delegating trivial questions, `ask_council` enforces a strict gating checklist:
+1. **Type-1 Decision:** Must be irreversible or have a high rollback cost (justified via `type1_rationale`).
+2. **Genuine Deadlock:** Must have hit real disagreement or uncertainty through solo reasoning first.
+3. **High Cost of Error:** Getting it wrong costs significantly more than ~35s + deliberation token spend.
+4. **User has not already decided:** Council informs open decisions; it never overrides an explicit user choice.
 
-**Option 2: Run manually**
+*Trivial or unjustified queries are rejected in milliseconds with `Verdict: Gating Rejection` without triggering backend model calls.*
 
-Terminal 1 (Backend):
-```bash
-uv run python -m backend.main
-```
-
-Terminal 2 (Frontend):
-```bash
-cd frontend
-npm run dev
-```
-
-Then open http://localhost:5173 in your browser.
-
-## Quick Start Use Cases
-
-New to the project? Check out our **[Quick Start Use Cases Guide](docs/QUICK_START_USE_CASES.md)** featuring 10 hands-on tutorials:
-
-1. **Your First Council Query** - See multiple AIs collaborate
-2. **Compare Different Perspectives** - Watch unbiased peer review
-3. **Export and Share** - Save conversations as Markdown/JSON
-4. **Real-Time Streaming** - Watch AI responses generate live
-5. **Custom System Prompts** - Control AI behavior
-6. **Performance Dashboard** - Track which models perform best
-7. **Chain-of-Thought** - See AI reasoning step-by-step
-8. **Multi-Chairman** - Multiple AIs synthesize answers
-9. **Response Caching** - Save money on similar queries
-10. **Debate Mode** - AI vs AI debates
-
-Each use case is ranked by complexity with step-by-step instructions.
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [Quick Start Use Cases](docs/QUICK_START_USE_CASES.md) | 10 hands-on tutorials (start here!) |
-| [Comprehensive Feature Guide](docs/COMPREHENSIVE_FEATURE_GUIDE.md) | All 21 features explained in detail |
-| [Getting Started](docs/GETTING_STARTED.md) | Setup and installation |
-| [How It Works](docs/HOW_IT_WORKS.md) | Understanding the 3-stage process |
-| [API Reference](docs/API_REFERENCE.md) | Backend API documentation |
+---
 
 ## Tech Stack
 
-- **Backend:** FastAPI (Python 3.10+), async httpx, OpenRouter API
-- **Frontend:** React + Vite, react-markdown for rendering
-- **Storage:** JSON files in `data/conversations/`
-- **Package Management:** uv for Python, npm for JavaScript
+- **Backend:** FastAPI, Async HTTPX, Pydantic, uv
+- **Protocol:** FastMCP (Model Context Protocol stdio)
+- **Frontend:** React, Vite, Tailwind CSS, react-markdown
+- **Containerization:** Docker & Docker Compose
+- **Orchestration:** Multi-model consensus, early-exit detection, and peer ranking
 
-## Source
-- [Karpathy/llm-council](https://github.com/karpathy/llm-council)
+---
+
+## Acknowledgments & Upstream
+
+- Original idea and implementation by **[Andrej Karpathy](https://github.com/karpathy/llm-council)**
+- Extended feature set contributions by **[az9713](https://github.com/az9713/llm-council)**
+- Licensed under MIT.

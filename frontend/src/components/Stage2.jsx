@@ -2,14 +2,34 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './Stage2.css';
 
+function formatModelLabel(model) {
+  if (!model) return '';
+  const [baseModel, skillId = ''] = model.split('@');
+  const shortName = baseModel.split('/')[1] || baseModel;
+  if (!skillId) return shortName;
+
+  let skillTitle = skillId;
+  if (skillId.includes('security')) skillTitle = 'Security';
+  else if (skillId.includes('karpathy') || skillId.includes('architect')) skillTitle = 'Architect';
+  else if (skillId.includes('devops')) skillTitle = 'DevOps';
+  else if (skillId.includes('testing') || skillId.includes('qa')) skillTitle = 'Quality';
+  else if (skillId.includes('review')) skillTitle = 'Review';
+  else {
+    skillTitle = skillId.replace(/-(guidelines|handbook|audit|security)/g, '');
+    skillTitle = skillTitle.charAt(0).toUpperCase() + skillTitle.slice(1);
+  }
+
+  return `${shortName} [${skillTitle}]`;
+}
+
 function deAnonymizeText(text, labelToModel) {
   if (!labelToModel) return text;
 
   let result = text;
-  // Replace each "Response X" with the actual model name
+  // Replace each "Response X" with the actual model name + specialist tag
   Object.entries(labelToModel).forEach(([label, model]) => {
-    const modelShortName = model.split('/')[1] || model;
-    result = result.replace(new RegExp(label, 'g'), `**${modelShortName}**`);
+    const labelFormatted = formatModelLabel(model);
+    result = result.replace(new RegExp(label, 'g'), `**${labelFormatted}**`);
   });
   return result;
 }
@@ -42,14 +62,14 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings, useW
             className={`tab ${activeTab === index ? 'active' : ''}`}
             onClick={() => setActiveTab(index)}
           >
-            {rank.model.split('/')[1] || rank.model}
+            {formatModelLabel(rank.model)}
           </button>
         ))}
       </div>
 
       <div className="tab-content">
         <div className="ranking-model">
-          {rankings[activeTab].model}
+          {formatModelLabel(rankings[activeTab].model)}
         </div>
         <div className="ranking-content markdown-content">
           <ReactMarkdown>
@@ -65,7 +85,7 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings, useW
               {rankings[activeTab].parsed_ranking.map((label, i) => (
                 <li key={i}>
                   {labelToModel && labelToModel[label]
-                    ? labelToModel[label].split('/')[1] || labelToModel[label]
+                    ? formatModelLabel(labelToModel[label])
                     : label}
                 </li>
               ))}
@@ -104,7 +124,7 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings, useW
                 <div className="weights-details">
                   {Object.entries(weightsInfo.weights).map(([model, info]) => (
                     <div key={model} className="weight-item">
-                      <span className="weight-model">{model.split('/')[1] || model}</span>
+                      <span className="weight-model">{formatModelLabel(model)}</span>
                       <span className="weight-value" title={info.weight_explanation}>
                         {info.normalized_weight?.toFixed(2) || '1.00'}×
                       </span>
@@ -128,7 +148,7 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings, useW
               <div key={index} className="aggregate-item">
                 <span className="rank-position">#{index + 1}</span>
                 <span className="rank-model">
-                  {agg.model.split('/')[1] || agg.model}
+                  {formatModelLabel(agg.model)}
                 </span>
                 <span className="rank-score">
                   {hasWeightedData && agg.weighted_average_rank != null ? (

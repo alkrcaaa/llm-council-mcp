@@ -1,6 +1,6 @@
 """FastAPI backend for LLM Council."""
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -12,6 +12,7 @@ import time
 
 from . import storage
 from . import config_api
+from . import councils
 from . import analytics
 from . import process_logger as pl
 from . import weights
@@ -41,13 +42,17 @@ from . import debate
 from . import decompose
 from . import cache
 from . import embeddings
+from . import ingestion
 
 app = FastAPI(title="LLM Council API")
 
-# Enable CORS for local development
+# Enable CORS for local development, including access from other devices
+# on the LAN (e.g. http://192.168.x.x:5173) since the frontend is often
+# viewed from a machine other than the one running the containers.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|(\d{1,3}\.){3}\d{1,3}):(5173|3000)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,13 +61,34 @@ app.add_middleware(
 
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
-    pass
+    council_id: Optional[str] = None
+
+
+class CreateCouncilRequest(BaseModel):
+    """Request to create a new custom council profile."""
+    name: str
+    icon: str = "🏛️"
+    description: str = ""
+    council_models: List[str]
+    chairman_model: str
+
+
+class UpdateCouncilRequest(BaseModel):
+    """Request to update a council profile."""
+    name: Optional[str] = None
+    icon: Optional[str] = None
+    description: Optional[str] = None
+    council_models: Optional[List[str]] = None
+    chairman_model: Optional[str] = None
 
 
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
+    target_workspace: Optional[str] = None  # Optional target workspace project name
     system_prompt: str = None
+    council_id: Optional[str] = None  # Optional council override for this deliberation
+    chairman_model: Optional[str] = None  # Optional chairman model override
     verbosity: int = 0  # Process monitor verbosity level (0-3)
     use_cot: bool = False  # Chain-of-Thought mode (request structured reasoning)
     use_multi_chairman: bool = False  # Multi-Chairman mode (ensemble synthesis)
@@ -109,6 +135,8 @@ class ConversationMetadata(BaseModel):
     title: str
     tags: List[str] = []
     message_count: int
+    council_id: Optional[str] = None
+    council_name: Optional[str] = None
 
 
 class Conversation(BaseModel):
@@ -117,6 +145,10 @@ class Conversation(BaseModel):
     created_at: str
     title: str
     tags: List[str] = []
+    council_id: Optional[str] = None
+    council_name: Optional[str] = None
+    council_models: Optional[List[str]] = None
+    chairman_model: Optional[str] = None
     messages: List[Dict[str, Any]]
 
 
@@ -136,9 +168,17 @@ async def list_conversations(tag: Optional[str] = Query(None, description="Filte
 
 @app.post("/api/conversations", response_model=Conversation)
 async def create_conversation(request: CreateConversationRequest):
-    """Create a new conversation."""
+    """Create a new conversation bound to an active or requested council profile."""
     conversation_id = str(uuid.uuid4())
-    conversation = storage.create_conversation(conversation_id)
+    council_id = request.council_id or councils.get_active_council_id()
+    council_obj = councils.get_council_by_id(council_id) or councils.get_active_council()
+    conversation = storage.create_conversation(
+        conversation_id,
+        council_id=council_obj["id"],
+        council_name=council_obj["name"],
+        council_models=council_obj["council_models"],
+        chairman_model=council_obj["chairman_model"],
+    )
     return conversation
 
 
@@ -149,6 +189,104 @@ async def get_conversation(conversation_id: str):
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
+
+
+@app.delete("/api/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str):
+    """Delete a conversation and its messages."""
+    success = storage.delete_conversation(conversation_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"status": "ok", "message": "Conversation deleted"}
+
+
+@app.put("/api/conversations/{conversation_id}/council")
+async def update_conversation_council(conversation_id: str, council_id: str = Body(..., embed=True)):
+    """Switch the council profile for an existing conversation."""
+    conversation = storage.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    c_obj = councils.get_council_by_id(council_id)
+    if not c_obj:
+        raise HTTPException(status_code=400, detail="Council profile not found")
+    conversation["council_id"] = c_obj["id"]
+    conversation["council_name"] = c_obj["name"]
+    conversation["council_models"] = c_obj["council_models"]
+    conversation["chairman_model"] = c_obj["chairman_model"]
+    storage.save_conversation(conversation)
+    return conversation
+
+
+# ============================================================================
+# Council Profile Endpoints
+# ============================================================================
+
+@app.get("/api/councils")
+async def get_councils():
+    """List all council profiles (built-in and custom) and the active council."""
+    return {
+        "councils": councils.get_all_councils(),
+        "active_council_id": councils.get_active_council_id(),
+    }
+
+
+@app.get("/api/councils/active")
+async def get_current_active_council():
+    """Get the currently active council profile."""
+    return councils.get_active_council()
+
+
+@app.post("/api/councils/{council_id}/activate")
+async def activate_council_profile(council_id: str):
+    """Activate a council profile as current default."""
+    target = councils.set_active_council(council_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Council profile not found")
+    # Also sync global config so non-scoped calls use active council
+    try:
+        config_api.save_config({
+            "council_models": target["council_models"],
+            "chairman_model": target["chairman_model"],
+        })
+    except Exception:
+        pass
+    return target
+
+
+@app.post("/api/councils")
+async def create_new_council(request: CreateCouncilRequest):
+    """Create a new custom council profile."""
+    if len(request.council_models) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 council models are required")
+    if not request.chairman_model:
+        raise HTTPException(status_code=400, detail="Chairman model is required")
+    created = councils.create_custom_council(
+        name=request.name,
+        council_models=request.council_models,
+        chairman_model=request.chairman_model,
+        icon=request.icon,
+        description=request.description,
+    )
+    return created
+
+
+@app.put("/api/councils/{council_id}")
+async def update_council_profile(council_id: str, request: UpdateCouncilRequest):
+    """Update an existing council profile."""
+    updates = {k: v for k, v in request.dict().items() if v is not None}
+    updated = councils.update_council(council_id, updates)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Council profile not found")
+    return updated
+
+
+@app.delete("/api/councils/{council_id}")
+async def delete_council_profile(council_id: str):
+    """Delete a custom council profile."""
+    success = councils.delete_council(council_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="Cannot delete built-in or non-existent council profile")
+    return {"status": "ok", "deleted_id": council_id}
 
 
 @app.put("/api/conversations/{conversation_id}/tags")
@@ -200,6 +338,19 @@ async def reset_config():
 async def get_available_models():
     """Get list of suggested models for the dropdown."""
     return {"models": config_api.AVAILABLE_MODELS}
+
+
+@app.get("/api/skills")
+async def get_skills():
+    """Get list of available domain skills from dev-agent-kit."""
+    from backend.skills import get_available_skills
+    return {"skills": get_available_skills()}
+
+
+@app.get("/api/workspaces")
+async def get_workspaces():
+    """Get list of discoverable local workspace projects for context evaluation."""
+    return {"workspaces": ingestion.discover_workspaces()}
 
 
 # ============================================================================
@@ -478,13 +629,44 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
         title = await generate_conversation_title(request.content)
         storage.update_conversation_title(conversation_id, title)
 
+    # Ingest and enrich evaluation context if GitHub URLs or workspace references exist
+    effective_query, ingest_meta = await ingestion.resolve_evaluation_context(
+        request.content,
+        target_workspace=request.target_workspace
+    )
+
+    # Resolve council models and chairman model for the conversation
+    c_target = None
+    if request.council_id:
+        c_target = councils.get_council_by_id(request.council_id)
+    elif conversation and conversation.get("council_id"):
+        c_target = councils.get_council_by_id(conversation["council_id"])
+
+    if not c_target:
+        c_target = councils.get_active_council()
+
+    if c_target and c_target.get("council_models"):
+        active_council_models = list(c_target["council_models"])
+        active_chairman_model = request.chairman_model or c_target.get("chairman_model")
+    elif conversation and conversation.get("council_models"):
+        active_council_models = list(conversation["council_models"])
+        active_chairman_model = request.chairman_model or conversation.get("chairman_model")
+    else:
+        active_council_models = None
+        active_chairman_model = request.chairman_model
+
     # Run the 3-stage council process
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-        request.content,
+        effective_query,
         system_prompt=request.system_prompt,
         use_cot=request.use_cot,
-        use_weighted_consensus=request.use_weighted_consensus
+        use_weighted_consensus=request.use_weighted_consensus,
+        use_early_consensus=request.use_early_consensus,
+        council_models=active_council_models,
+        chairman_model=active_chairman_model,
     )
+    if ingest_meta.get("enriched"):
+        metadata["ingestion"] = ingest_meta
 
     # Add assistant message with all stages
     storage.add_assistant_message(
@@ -594,6 +776,32 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             # Add user message
             storage.add_user_message(conversation_id, request.content)
 
+            # Ingest and enrich evaluation context if GitHub URLs or workspace references exist
+            effective_query, ingest_meta = await ingestion.resolve_evaluation_context(
+                request.content,
+                target_workspace=request.target_workspace
+            )
+
+            if ingest_meta.get("enriched"):
+                target_ws = ingest_meta.get("target_workspace")
+                ext_repos = ingest_meta.get("external_repos", [])
+                repo_names = [r.replace("https://github.com/", "") for r in ext_repos]
+                details = []
+                if target_ws:
+                    details.append(f"Workspace: {target_ws}")
+                if repo_names:
+                    details.append(f"Repos: {', '.join(repo_names)}")
+
+                proc_event = emit_process(pl.create_process_event(
+                    f"Context Ingested: {' | '.join(details)}",
+                    pl.EventCategory.INFO,
+                    pl.Verbosity.BASIC
+                ))
+                if proc_event:
+                    yield proc_event
+
+                yield f"data: {json.dumps({'type': 'context_ingested', 'metadata': ingest_meta})}\n\n"
+
             # Start title generation in parallel (don't await yet)
             title_task = None
             if is_first_message:
@@ -601,8 +809,35 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
             # Get council models for process events
             from .config_api import get_council_models, get_chairman_model, get_routing_pools
-            council_models = get_council_models()
-            chairman_model = get_chairman_model()
+
+            # Resolve council from request override, conversation binding, or active council
+            conv_data = storage.get_conversation(conversation_id)
+            c_target = None
+            if request.council_id:
+                c_target = councils.get_council_by_id(request.council_id)
+            elif conv_data and conv_data.get("council_id"):
+                c_target = councils.get_council_by_id(conv_data["council_id"])
+
+            if not c_target:
+                c_target = councils.get_active_council()
+
+            if c_target and c_target.get("council_models"):
+                council_models = list(c_target["council_models"])
+                chairman_model = request.chairman_model or c_target.get("chairman_model") or get_chairman_model()
+            elif conv_data and conv_data.get("council_models"):
+                council_models = list(conv_data["council_models"])
+                chairman_model = request.chairman_model or conv_data.get("chairman_model") or get_chairman_model()
+            else:
+                council_models = get_council_models()
+                chairman_model = request.chairman_model or get_chairman_model()
+
+            # Ensure conversation records council profile info if missing
+            if conv_data and c_target and not conv_data.get("council_id"):
+                conv_data["council_id"] = c_target["id"]
+                conv_data["council_name"] = c_target["name"]
+                conv_data["council_models"] = council_models
+                conv_data["chairman_model"] = chairman_model
+                storage.save_conversation(conv_data)
 
             # ================================================================
             # CACHE CHECK - Return cached response if similar query found
@@ -715,7 +950,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 # Run the full debate with streaming
                 debate_result = None
                 async for event in debate.run_debate_streaming(
-                    request.content,
+                    effective_query,
                     include_rebuttal=request.include_rebuttal,
                     council_models=council_models,
                     chairman_model=chairman_model,
@@ -940,7 +1175,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 # Run the full decomposition with streaming
                 decomposition_result = None
                 async for event in decompose.run_decomposition_streaming(
-                    request.content,
+                    effective_query,
                     council_models=council_models,
                     chairman_model=chairman_model,
                 ):
@@ -1161,7 +1396,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
                 # Classify the question
                 custom_pools = get_routing_pools()
-                routing_info = await router.route_query(request.content, council_models, custom_pools)
+                routing_info = await router.route_query(effective_query, council_models, custom_pools)
                 routed_models = routing_info.get("models")
 
                 # Emit routing complete event
@@ -1225,9 +1460,9 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             stage1_results = []
             aggregate_confidence = None
             model_token_counts = {}  # Track token counts for verbose logging
-            models_to_use = routed_models if use_dynamic_routing else (council_models if use_escalation else None)
+            models_to_use = routed_models if use_dynamic_routing else council_models
 
-            async for event in stage1_collect_responses_streaming(request.content, request.system_prompt, use_cot, models_to_use):
+            async for event in stage1_collect_responses_streaming(effective_query, request.system_prompt, use_cot, models_to_use):
                 if event["type"] == "stage1_token":
                     # Stream individual tokens to frontend
                     token_event = {'type': 'stage1_token', 'model': event['model'], 'content': event['content']}
@@ -1324,7 +1559,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                             current_tier = 2
                             tier2_results = []
 
-                            async for tier2_event in stage1_collect_responses_streaming(request.content, request.system_prompt, use_cot, tier2_models):
+                            async for tier2_event in stage1_collect_responses_streaming(effective_query, request.system_prompt, use_cot, tier2_models):
                                 if tier2_event["type"] == "stage1_token":
                                     token_event = {'type': 'stage1_token', 'model': tier2_event['model'], 'content': tier2_event['content'], 'tier': 2}
                                     yield f"data: {json.dumps(token_event)}\n\n"
@@ -1438,7 +1673,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             if proc_event:
                 yield proc_event
 
-            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results, use_cot)
+            stage2_results, label_to_model = await stage2_collect_rankings(effective_query, stage1_results, use_cot, models=council_models)
 
             # Calculate aggregate rankings (weighted or unweighted based on request)
             use_weighted = request.use_weighted_consensus
@@ -1582,7 +1817,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                     stage3_result = None
                     syntheses = []
 
-                    async for event in stage3_multi_chairman_streaming(request.content, stage1_results, stage2_results):
+                    async for event in stage3_multi_chairman_streaming(effective_query, stage1_results, stage2_results):
                         if event["type"] == "multi_synthesis_start":
                             yield f"data: {json.dumps({'type': 'multi_synthesis_start'})}\n\n"
 
@@ -1688,14 +1923,14 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                         yield proc_event
 
                     # Process event: Chairman synthesizing
-                    chairman_model = get_chairman_model()
+                    chairman_model = chairman_model or get_chairman_model()
                     proc_event = emit_process(pl.chairman_synthesizing(chairman_model))
                     if proc_event:
                         yield proc_event
 
                     stage3_result = None
 
-                    async for event in stage3_synthesize_final_streaming(request.content, stage1_results, stage2_results):
+                    async for event in stage3_synthesize_final_streaming(effective_query, stage1_results, stage2_results, model=chairman_model):
                         if event["type"] == "stage3_token":
                             # Stream tokens from chairman
                             yield f"data: {json.dumps({'type': 'stage3_token', 'content': event['content'], 'model': event['model']})}\n\n"
@@ -1759,7 +1994,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 refinement_cost = {"prompt_tokens": 0, "completion_tokens": 0, "total": 0}
 
                 async for ref_event in refinement.run_refinement_loop_streaming(
-                    question=request.content,
+                    question=effective_query,
                     initial_draft=initial_draft,
                     max_iterations=max_iterations,
                 ):
@@ -1913,7 +2148,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 adversary_cost = {"prompt_tokens": 0, "completion_tokens": 0, "total": 0}
 
                 async for adv_event in adversary.run_adversarial_validation_streaming(
-                    question=request.content,
+                    question=effective_query,
                     synthesis=current_synthesis,
                 ):
                     if adv_event["type"] == "adversary_start":

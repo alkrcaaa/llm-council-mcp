@@ -66,71 +66,92 @@ export default function CostDisplay({ costs, expanded = false }) {
       </div>
 
       <div className="cost-stages">
-        {/* Stage 1 */}
-        <div className="cost-stage">
-          <div className="cost-stage-header">
-            <span className="cost-stage-name">Stage 1</span>
-            <span className="cost-stage-value">{formatCost(stage1?.total_cost)}</span>
-            <span className="cost-stage-percent">({getPercentage(stage1?.total_cost)}%)</span>
+        {costs.debate ? (
+          <div className="cost-stage">
+            <div className="cost-stage-header">
+              <span className="cost-stage-name">Council Debate (Münazara)</span>
+              <span className="cost-stage-value">{formatCost(total.total_cost ?? total.total)}</span>
+              <span className="cost-stage-percent">(100%)</span>
+            </div>
+            <div className="cost-stage-details">
+              <span className="cost-detail">
+                {formatTokens(total.total_prompt_tokens ?? total.prompt_tokens ?? 0)} prompt +{' '}
+                {formatTokens(total.total_completion_tokens ?? total.completion_tokens ?? 0)} completion
+              </span>
+              <span className="cost-detail-models">Multi-Round Debate & Chairman</span>
+            </div>
           </div>
-          <div className="cost-stage-details">
-            <span className="cost-detail">
-              {formatTokens(stage1?.total_prompt_tokens)} prompt +{' '}
-              {formatTokens(stage1?.total_completion_tokens)} completion
-            </span>
-            <span className="cost-detail-models">
-              {stage1?.model_count} model{stage1?.model_count !== 1 ? 's' : ''}
-            </span>
-          </div>
-        </div>
+        ) : (
+          <>
+            {/* Stage 1 */}
+            <div className="cost-stage">
+              <div className="cost-stage-header">
+                <span className="cost-stage-name">Stage 1</span>
+                <span className="cost-stage-value">{formatCost(stage1?.total_cost)}</span>
+                <span className="cost-stage-percent">({getPercentage(stage1?.total_cost)}%)</span>
+              </div>
+              <div className="cost-stage-details">
+                <span className="cost-detail">
+                  {formatTokens(stage1?.total_prompt_tokens)} prompt +{' '}
+                  {formatTokens(stage1?.total_completion_tokens)} completion
+                </span>
+                <span className="cost-detail-models">
+                  {stage1?.model_count} model{stage1?.model_count !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
 
-        {/* Stage 2 */}
-        <div className="cost-stage">
-          <div className="cost-stage-header">
-            <span className="cost-stage-name">Stage 2</span>
-            <span className="cost-stage-value">{formatCost(stage2?.total_cost)}</span>
-            <span className="cost-stage-percent">({getPercentage(stage2?.total_cost)}%)</span>
-          </div>
-          <div className="cost-stage-details">
-            <span className="cost-detail">
-              {formatTokens(stage2?.total_prompt_tokens)} prompt +{' '}
-              {formatTokens(stage2?.total_completion_tokens)} completion
-            </span>
-            <span className="cost-detail-models">
-              {stage2?.model_count} model{stage2?.model_count !== 1 ? 's' : ''}
-            </span>
-          </div>
-        </div>
+            {/* Stage 2 */}
+            <div className="cost-stage">
+              <div className="cost-stage-header">
+                <span className="cost-stage-name">Stage 2</span>
+                <span className="cost-stage-value">{formatCost(stage2?.total_cost)}</span>
+                <span className="cost-stage-percent">({getPercentage(stage2?.total_cost)}%)</span>
+              </div>
+              <div className="cost-stage-details">
+                <span className="cost-detail">
+                  {formatTokens(stage2?.total_prompt_tokens)} prompt +{' '}
+                  {formatTokens(stage2?.total_completion_tokens)} completion
+                </span>
+                <span className="cost-detail-models">
+                  {stage2?.model_count} model{stage2?.model_count !== 1 ? 's' : ''}
+                </span>
+              </div>
+            </div>
 
-        {/* Stage 3 */}
-        <div className="cost-stage">
-          <div className="cost-stage-header">
-            <span className="cost-stage-name">Stage 3</span>
-            <span className="cost-stage-value">{formatCost(stage3?.total_cost)}</span>
-            <span className="cost-stage-percent">({getPercentage(stage3?.total_cost)}%)</span>
-          </div>
-          <div className="cost-stage-details">
-            <span className="cost-detail">
-              {formatTokens(stage3?.total_prompt_tokens)} prompt +{' '}
-              {formatTokens(stage3?.total_completion_tokens)} completion
-            </span>
-            <span className="cost-detail-models">Chairman</span>
-          </div>
-        </div>
+            {/* Stage 3 */}
+            <div className="cost-stage">
+              <div className="cost-stage-header">
+                <span className="cost-stage-name">Stage 3</span>
+                <span className="cost-stage-value">{formatCost(stage3?.total_cost)}</span>
+                <span className="cost-stage-percent">({getPercentage(stage3?.total_cost)}%)</span>
+              </div>
+              <div className="cost-stage-details">
+                <span className="cost-detail">
+                  {formatTokens(stage3?.total_prompt_tokens)} prompt +{' '}
+                  {formatTokens(stage3?.total_completion_tokens)} completion
+                </span>
+                <span className="cost-detail-models">Chairman</span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="cost-footer">
         <div className="cost-footer-item">
           <span className="cost-footer-label">Total Tokens:</span>
-          <span className="cost-footer-value">{formatTokens(total.total_tokens)}</span>
+          <span className="cost-footer-value">
+            {formatTokens(total.total_tokens ?? ((total.prompt_tokens || 0) + (total.completion_tokens || 0)))}
+          </span>
         </div>
         <div className="cost-footer-item">
           <span className="cost-footer-label">Input Cost:</span>
-          <span className="cost-footer-value">{formatCost(total.total_input_cost)}</span>
+          <span className="cost-footer-value">{formatCost(total.total_input_cost ?? total.input_cost ?? 0)}</span>
         </div>
         <div className="cost-footer-item">
           <span className="cost-footer-label">Output Cost:</span>
-          <span className="cost-footer-value">{formatCost(total.total_output_cost)}</span>
+          <span className="cost-footer-value">{formatCost(total.total_output_cost ?? total.output_cost ?? total.total ?? total.total_cost ?? 0)}</span>
         </div>
       </div>
     </div>

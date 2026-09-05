@@ -8,11 +8,11 @@
 .cost-display-compact {
   display: inline-flex;
   align-items: center;
-  padding: 6px 12px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 6px;
-  color: #166534;
+  padding: 4px 10px;
+  background: var(--accent-brass-subtle);
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius-sm);
+  color: var(--accent-brass);
 }
 
 .cost-summary {
@@ -22,25 +22,31 @@
 }
 
 .cost-label {
-  font-weight: 500;
-  color: #15803d;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--accent-brass);
 }
 
 .cost-value {
-  font-weight: 600;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
 }
 
 .cost-tokens {
-  color: #4ade80;
-  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 
 /* Expanded View (full breakdown) */
 .cost-display-expanded {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
   padding: 16px;
   margin-top: 16px;
 }

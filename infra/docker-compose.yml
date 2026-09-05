@@ -1,0 +1,47 @@
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: infra/backend.Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      CLAUDE_SHIM_SECRET: "${CLAUDE_SHIM_SECRET:-}"
+      ANTIGRAVITY_SHIM_SECRET: "${ANTIGRAVITY_SHIM_SECRET:-}"
+      QWEN_BASE_URL: "${QWEN_BASE_URL:-http://host.docker.internal:8002/v1}"
+      QWEN_MODEL_ID: "${QWEN_MODEL_ID:-/models/qwen3.6-27b}"
+      QWEN_API_KEY: "${QWEN_API_KEY:-not-needed}"
+      CLAUDE_SHIM_BASE_URL: "${CLAUDE_SHIM_BASE_URL:-http://host.docker.internal:8600/v1}"
+      ANTIGRAVITY_SHIM_BASE_URL: "${ANTIGRAVITY_SHIM_BASE_URL:-http://host.docker.internal:8601/v1}"
+    volumes:
+      - council-data:/app/data
+      - ../backend:/app/backend
+      - ${SKILLS_DIR:-${HOME}/.gemini/config/skills}:/app/skills:ro
+      - ${WORKSPACE_DIR:-..}:/app/workspace:ro
+    extra_hosts:
+      # Lets the container reach the claude-code-shim running on the host
+      # (infra/local-models/claude_code_shim.py) regardless of the host's LAN IP.
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "uv", "run", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/')"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: infra/frontend.Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../frontend/src:/app/src
+      - ../frontend/index.html:/app/index.html
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  council-data:

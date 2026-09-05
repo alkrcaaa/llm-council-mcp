@@ -1,259 +1,214 @@
 .stage3 {
-  background: #f0fff0;
-  border-color: #c8e6c8;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-active);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 24px rgba(229, 169, 60, 0.06);
+  position: relative;
 }
 
-.final-response {
-  background: #ffffff;
-  padding: 20px;
-  border-radius: 6px;
-  border: 1px solid #c8e6c8;
+.stage3 .stage-title::before {
+  content: '03';
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-inverse);
+  background: var(--accent-brass);
+  border: 1px solid var(--accent-brass);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 8px var(--accent-brass-glow);
 }
 
-.chairman-label {
-  color: #2d8a2d;
-  font-size: 12px;
-  font-family: monospace;
-  margin-bottom: 12px;
-  font-weight: 600;
-}
-
-.final-text {
-  color: #333;
-  line-height: 1.7;
-  font-size: 15px;
-}
-
-/* Stage 3 Header */
 .stage3-header {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Final Response Container */
+.final-response {
+  background: var(--bg-canvas);
+  padding: 24px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-medium);
+  border-top: 3px solid var(--accent-brass);
+  box-shadow: var(--shadow-sm);
+}
+
+.chairman-label {
+  color: var(--accent-brass);
+  font-size: 12px;
+  font-family: var(--font-mono);
   margin-bottom: 16px;
-}
-
-/* Streaming Indicators - Stage 3 specific */
-.stage3 .streaming-indicator {
-  display: inline-block;
-  padding: 4px 10px;
-  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
-  border: 1px solid #4ade80;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #166534;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-/* Refining indicator - purple theme */
-.stage3 .streaming-indicator.refining {
-  background: linear-gradient(135deg, #f3e8ff 0%, #ede9fe 100%);
-  border-color: #a78bfa;
-  color: #6d28d9;
-}
-
-.stage3 .streaming-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
-  border: 1px solid #4ade80;
-  border-radius: 12px;
-  font-size: 10px;
-  font-weight: 600;
-  color: #166534;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-left: 8px;
-  animation: pulse 1.5s ease-in-out infinite;
+  letter-spacing: 0.06em;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+.chairman-label::before {
+  content: '⚖';
+  font-size: 14px;
 }
 
-/* Streaming cursor */
-.stage3 .streaming-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  background: #22c55e;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  animation: blink 0.8s step-end infinite;
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+.final-text {
+  color: var(--text-primary);
+  line-height: 1.7;
+  font-size: 14.5px;
 }
 
 .final-text.streaming {
   min-height: 40px;
 }
 
-/* Multi-Chairman Badge */
-.multi-chairman-badge {
+/* Streaming & Status Indicators */
+.stage3 .streaming-indicator,
+.stage3 .streaming-badge {
   display: inline-block;
-  padding: 3px 10px;
-  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-  border: 1px solid #60a5fa;
-  border-radius: 12px;
-  font-size: 10px;
-  font-weight: 600;
-  color: #1d4ed8;
+  padding: 3px 8px;
+  background: var(--accent-brass-subtle);
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--accent-brass);
+  animation: pulse 1.5s ease-in-out infinite;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
-/* Selecting indicator variation */
-.stage3 .streaming-indicator.selecting {
-  background: linear-gradient(135deg, #fef9c3 0%, #fef08a 100%);
-  border: 1px solid #facc15;
-  color: #854d0e;
+.stage3 .streaming-indicator.refining {
+  background: rgba(168, 85, 247, 0.15);
+  border-color: rgba(168, 85, 247, 0.4);
+  color: #d8b4fe;
 }
 
-/* ===== EARLY CONSENSUS EXIT STYLES ===== */
+.stage3 .streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background: var(--accent-brass);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 0.8s step-end infinite;
+}
 
-.stage3.consensus-mode {
-  background: linear-gradient(135deg, #ecfeff 0%, #cffafe 100%);
-  border-color: #67e8f9;
+/* Badges */
+.multi-chairman-badge,
+.consensus-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.multi-chairman-badge {
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  color: #a5b4fc;
 }
 
 .consensus-badge {
-  display: inline-block;
-  padding: 3px 10px;
-  background: linear-gradient(135deg, #22d3ee 0%, #06b6d4 100%);
-  border-radius: 12px;
-  font-size: 10px;
-  font-weight: 700;
-  color: white;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  background: var(--status-consensus-subtle);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: var(--status-consensus);
+}
+
+/* Early Consensus Mode */
+.stage3.consensus-mode {
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 24px rgba(16, 185, 129, 0.06);
 }
 
 .consensus-notice {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 16px;
-  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
-  border: 1px solid #6ee7b7;
-  border-radius: 8px;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: var(--bg-surface-elevated);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--status-consensus);
   margin-bottom: 16px;
 }
 
 .consensus-icon {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #10b981;
-  color: white;
-  border-radius: 50%;
-  font-size: 14px;
-  font-weight: bold;
+  font-size: 18px;
+  color: var(--status-consensus);
+  font-weight: 800;
 }
 
 .consensus-text strong {
   display: block;
-  color: #047857;
   font-size: 13px;
-  margin-bottom: 4px;
+  color: var(--status-consensus);
+  margin-bottom: 2px;
 }
 
 .consensus-text p {
   margin: 0;
-  color: #065f46;
   font-size: 12px;
-  line-height: 1.4;
+  color: var(--text-secondary);
 }
 
 .consensus-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
   margin-bottom: 16px;
 }
 
 .consensus-metrics .metric {
-  flex: 1;
-  min-width: 120px;
+  background: var(--bg-surface-elevated);
   padding: 10px 14px;
-  background: white;
-  border: 1px solid #a5f3fc;
-  border-radius: 8px;
-  text-align: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.consensus-metrics .metric-label {
-  display: block;
+.metric-label {
   font-size: 10px;
+  font-family: var(--font-mono);
   font-weight: 600;
-  color: #0e7490;
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  letter-spacing: 0.05em;
 }
 
-.consensus-metrics .metric-value {
-  display: block;
-  font-size: 15px;
+.metric-value {
+  font-size: 14px;
+  font-family: var(--font-mono);
   font-weight: 700;
-  color: #155e75;
-  font-family: monospace;
+  color: var(--text-primary);
 }
 
-.consensus-metrics .metric-value.model-name {
-  font-size: 12px;
-  word-break: break-all;
+.metric-value.model-name {
+  color: var(--status-consensus);
 }
 
-.consensus-response {
-  background: white;
-  border: 2px solid #22d3ee;
+.final-response.consensus-response {
+  border-top-color: var(--status-consensus);
 }
 
 .chairman-label.consensus-winner {
-  color: #0891b2;
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--status-consensus);
 }
 
-/* ===== SUB-QUESTION DECOMPOSITION STYLES ===== */
-
-.stage3.decomposition-mode {
-  background: linear-gradient(135deg, #ecfeff 0%, #cffafe 100%);
-  border-color: #22d3d1;
-}
-
-/* Decomposition streaming indicator - teal theme */
-.stage3 .streaming-indicator.decomposition {
-  background: linear-gradient(135deg, #cffafe 0%, #a5f3fc 100%);
-  border-color: #14b8a6;
-  color: #0e7490;
-}
-
-.stage3 .streaming-indicator.decomposition.merging {
-  background: linear-gradient(135deg, #a5f3fc 0%, #67e8f9 100%);
-  border-color: #0891b2;
-  color: #0e7490;
-}
-
-/* Adversary streaming indicator - red theme */
-.stage3 .streaming-indicator.adversary {
-  background: linear-gradient(135deg, #ffe4e6 0%, #fecdd3 100%);
-  border-color: #f87171;
-  color: #be123c;
-}
-
-/* Debate streaming indicator - amber theme */
-.stage3 .streaming-indicator.debate {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  border-color: #fbbf24;
-  color: #92400e;
+.chairman-label.consensus-winner::before {
+  content: '✓';
+  color: var(--status-consensus);
 }

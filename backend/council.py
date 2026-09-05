@@ -14,6 +14,9 @@ from . import router
 # Confidence prompt suffix added to Stage 1 queries
 CONFIDENCE_PROMPT_SUFFIX = """
 
+Guidelines:
+- Provide a direct, structured, and focused answer (maximum 200-300 words or clear bullet points). Avoid conversational preamble or repetitive filler.
+
 After your response, please provide a confidence score from 1-10 indicating how confident you are in your answer. Format it exactly as:
 CONFIDENCE: [score]
 where [score] is a number from 1 (very uncertain) to 10 (very confident).
@@ -438,17 +441,17 @@ async def stage1_collect_responses_streaming(
 async def stage3_synthesize_final_streaming(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
-    stage2_results: List[Dict[str, Any]]
+    stage2_results: List[Dict[str, Any]],
+    model: Optional[str] = None
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
-    Stage 3: Chairman synthesizes final response with streaming.
-
-    Yields token events as the chairman generates the response.
+    Stage 3: Chairman synthesizes final response with token streaming.
 
     Args:
         user_query: The original user query
         stage1_results: Individual model responses from Stage 1
         stage2_results: Rankings from Stage 2
+        model: Optional chairman model identifier
 
     Yields:
         Events with types:
@@ -477,17 +480,19 @@ STAGE 1 - Individual Responses:
 STAGE 2 - Peer Rankings:
 {stage2_text}
 
-Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
-- The individual responses and their insights
-- The peer rankings and what they reveal about response quality
-- Any patterns of agreement or disagreement
+Your task as Chairman is to synthesize all of this information into a single, accurate, well-crafted answer to the user's original question.
 
-Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
+Guidelines:
+- Match the user's language: If the user writes in Turkish, respond fluently and naturally in Turkish.
+- Match the scale and intent: If the user query is a simple greeting (e.g. "selam", "merhaba", "hello"), brief conversation opener, or simple check, reply warmly, directly, and concisely without unnecessary essays, jargon, or excessive formality.
+- For technical, complex, or analytical inquiries, synthesize the council's perspectives into a comprehensive, well-structured final answer using concise bullet points and direct takeaways. Avoid unnecessary fluff.
+
+Provide the final answer:"""
 
     messages = [{"role": "user", "content": chairman_prompt}]
 
-    # Get current chairman dynamically
-    chairman_model = get_chairman_model()
+    # Get chairman model (provided or current active config)
+    chairman_model = model if model else get_chairman_model()
 
     # Stream from chairman
     async for event in query_model_streaming(chairman_model, messages):
@@ -518,7 +523,8 @@ Provide a clear, well-reasoned final answer that represents the council's collec
 async def stage2_collect_rankings(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
-    use_cot: bool = False
+    use_cot: bool = False,
+    models: Optional[List[str]] = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
     Stage 2: Each model ranks the anonymized responses.
@@ -530,6 +536,7 @@ async def stage2_collect_rankings(
         user_query: The original user query
         stage1_results: Results from Stage 1
         use_cot: If True, include and evaluate Chain-of-Thought reasoning
+        models: Optional list of council models to participate in ranking
 
     Returns:
         Tuple of (rankings list with cost data, label_to_model mapping)
@@ -575,7 +582,7 @@ Here are the responses from different models (anonymized):
 {responses_text}
 
 Your task:
-1. Evaluate each response individually, considering:
+1. Evaluate each response individually and concisely (1-2 sentences per response focusing on reasoning and answer quality):
    - **Reasoning Quality**: Is the THINKING section thorough? Does it identify key aspects?
    - **Analysis Depth**: Does the ANALYSIS section consider multiple perspectives and trade-offs?
    - **Conclusion Accuracy**: Is the CONCLUSION well-supported by the reasoning?
@@ -605,7 +612,7 @@ Here are the responses from different models (anonymized):
 {responses_text}
 
 Your task:
-1. First, evaluate each response individually. For each response, explain what it does well and what it does poorly.
+1. First, evaluate each response concisely (1-2 sentences per response explaining what it does well and what it does poorly).
 2. Then, at the very end of your response, provide a final ranking.
 
 IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
@@ -629,8 +636,8 @@ Now provide your evaluation and ranking:"""
 
     messages = [{"role": "user", "content": ranking_prompt}]
 
-    # Get rankings from all council models in parallel (get current council models dynamically)
-    council_models = get_council_models()
+    # Get rankings from all council models in parallel (use provided models or fallback to dynamic config)
+    council_models = models if models else get_council_models()
     responses = await query_models_parallel(council_models, messages)
 
     # Format results with cost data
@@ -653,7 +660,8 @@ Now provide your evaluation and ranking:"""
 async def stage3_synthesize_final(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
-    stage2_results: List[Dict[str, Any]]
+    stage2_results: List[Dict[str, Any]],
+    model: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Stage 3: Chairman synthesizes final response.
@@ -662,6 +670,7 @@ async def stage3_synthesize_final(
         user_query: The original user query
         stage1_results: Individual model responses from Stage 1
         stage2_results: Rankings from Stage 2
+        model: Optional chairman model identifier
 
     Returns:
         Dict with 'model', 'response', 'usage', and 'cost' keys
@@ -687,17 +696,23 @@ STAGE 1 - Individual Responses:
 STAGE 2 - Peer Rankings:
 {stage2_text}
 
-Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
-- The individual responses and their insights
-- The peer rankings and what they reveal about response quality
-- Any patterns of agreement or disagreement
+Your task as Chairman is to synthesize all of this information into a single, accurate, well-crafted answer to the user's original question.
 
-Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
+Guidelines:
+- Match the user's language: If the user writes in Turkish, respond fluently and naturally in Turkish.
+- Match the scale and intent: If the user query is a simple greeting (e.g. "selam", "merhaba", "hello"), brief conversation opener, or simple check, reply warmly, directly, and concisely without unnecessary essays, jargon, or excessive formality.
+- For technical, complex, or analytical inquiries, synthesize the council's perspectives into a comprehensive, well-structured final answer using concise bullet points and direct takeaways. Avoid unnecessary fluff.
+- For architectural decisions, library comparisons, or strategy evaluations, structure your response clearly:
+  ## Verdict: <One clear, decisive conclusion>
+  **Recommendation:** <Concrete action items and direct rationale>
+  **Dissenting risk:** <The most critical counterargument, tradeoff, or failure mode raised by any seat, or "None material">
+
+Provide the final answer:"""
 
     messages = [{"role": "user", "content": chairman_prompt}]
 
-    # Query the chairman model (get current chairman dynamically)
-    chairman_model = get_chairman_model()
+    # Query the chairman model (use provided model or fallback to dynamic config)
+    chairman_model = model if model else get_chairman_model()
     response = await query_model(chairman_model, messages)
 
     if response is None:
@@ -971,6 +986,14 @@ async def generate_conversation_title(user_query: str) -> str:
     Returns:
         A short title (3-5 words)
     """
+    clean_q = user_query.strip()
+    words = clean_q.split()
+    if len(words) <= 3 and len(clean_q) <= 30:
+        return clean_q.capitalize()
+
+    from .config import OPENROUTER_API_KEY
+    title_model = "google/gemini-2.5-flash" if (OPENROUTER_API_KEY and OPENROUTER_API_KEY.strip()) else get_chairman_model()
+
     title_prompt = f"""Generate a very short title (3-5 words maximum) that summarizes the following question.
 The title should be concise and descriptive. Do not use quotes or punctuation in the title.
 
@@ -979,13 +1002,10 @@ Question: {user_query}
 Title:"""
 
     messages = [{"role": "user", "content": title_prompt}]
-
-    # Use gemini-2.5-flash for title generation (fast and cheap)
-    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
+    response = await query_model(title_model, messages, timeout=20.0)
 
     if response is None:
-        # Fallback to a generic title
-        return "New Conversation"
+        return " ".join(words[:4])[:40].capitalize() or "New Conversation"
 
     title = response.get('content', 'New Conversation').strip()
 
@@ -1005,7 +1025,9 @@ async def run_full_council(
     use_cot: bool = False,
     use_weighted_consensus: bool = True,
     use_early_consensus: bool = False,
-    use_dynamic_routing: bool = False
+    use_dynamic_routing: bool = False,
+    council_models: Optional[List[str]] = None,
+    chairman_model: Optional[str] = None
 ) -> Tuple[List, List, Dict, Dict]:
     """
     Run the complete 3-stage council process.
@@ -1017,6 +1039,8 @@ async def run_full_council(
         use_weighted_consensus: If True, weight model votes by historical performance
         use_early_consensus: If True, skip Stage 3 if clear consensus is detected
         use_dynamic_routing: If True, classify question and route to specialized model pool
+        council_models: Optional list of council models to participate
+        chairman_model: Optional chairman model for Stage 3 synthesis
 
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
@@ -1029,13 +1053,14 @@ async def run_full_council(
     routed_models = None
 
     if use_dynamic_routing:
-        all_models = get_council_models()
+        all_models = council_models if council_models else get_council_models()
         custom_pools = get_routing_pools()
         routing_info = await router.route_query(user_query, all_models, custom_pools)
         routed_models = routing_info.get("models")
 
     # Stage 1: Collect individual responses (using routed models if routing is enabled)
-    stage1_results = await stage1_collect_responses(user_query, system_prompt, use_cot, routed_models)
+    models_for_stage1 = routed_models if use_dynamic_routing else council_models
+    stage1_results = await stage1_collect_responses(user_query, system_prompt, use_cot, models_for_stage1)
 
     # If no models responded successfully, return error
     if not stage1_results:
@@ -1047,7 +1072,7 @@ async def run_full_council(
         }, {}
 
     # Stage 2: Collect rankings
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results, use_cot)
+    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results, use_cot, models=council_models)
 
     # Calculate aggregate rankings (weighted or unweighted)
     aggregate_rankings = weights.calculate_weighted_aggregate_rankings(
@@ -1086,14 +1111,16 @@ async def run_full_council(
             stage3_result = await stage3_synthesize_final(
                 user_query,
                 stage1_results,
-                stage2_results
+                stage2_results,
+                model=chairman_model
             )
     else:
         # Early consensus disabled, always run Stage 3
         stage3_result = await stage3_synthesize_final(
             user_query,
             stage1_results,
-            stage2_results
+            stage2_results,
+            model=chairman_model
         )
 
     # Calculate total costs across all stages

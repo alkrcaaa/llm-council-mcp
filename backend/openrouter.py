@@ -3,8 +3,75 @@
 import httpx
 import json
 from typing import List, Dict, Any, Optional, AsyncGenerator
-from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL
+from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL, LOCAL_MODELS
 from .pricing import calculate_cost
+
+
+def _resolve_endpoint(model: str):
+    """
+    Resolve the API endpoint, headers, and outgoing model id for a council
+    model identifier. Models registered in LOCAL_MODELS are routed to their
+    own OpenAI-compatible endpoint (e.g. a self-hosted vLLM server); every
+    other model goes to OpenRouter as before.
+    Supports model@skill_id syntax by stripping the skill persona suffix.
+
+    Returns:
+        (url, headers, outgoing_model_id)
+    """
+    base_model = model.split("@")[0] if "@" in model else model
+
+    local = LOCAL_MODELS.get(base_model)
+    if local:
+        headers = {"Content-Type": "application/json"}
+        if local["api_key"]:
+            headers["Authorization"] = f"Bearer {local['api_key']}"
+        return local["base_url"], headers, local["model_id"]
+
+    headers = {
+        "Content-Type": "application/json",
+    }
+    if OPENROUTER_API_KEY and OPENROUTER_API_KEY.strip():
+        headers["Authorization"] = f"Bearer {OPENROUTER_API_KEY.strip()}"
+    return OPENROUTER_API_URL, headers, base_model
+
+
+def _prepare_messages_for_model(model: str, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """Inject domain skill instructions into system prompt if model identifier has @skill."""
+    if "@" not in model:
+        return messages
+
+    try:
+        from .skills import parse_model_identifier, get_skill_instructions
+        _, skill_id = parse_model_identifier(model)
+        if not skill_id:
+            return messages
+
+        skill_prompt = get_skill_instructions(skill_id)
+        if not skill_prompt:
+            return messages
+
+        augmented = []
+        has_system = False
+        for msg in messages:
+            if msg.get("role") == "system":
+                has_system = True
+                augmented.append({
+                    "role": "system",
+                    "content": f"{msg.get('content', '')}\n\n{skill_prompt}".strip()
+                })
+            else:
+                augmented.append(msg)
+
+        if not has_system:
+            augmented.insert(0, {
+                "role": "system",
+                "content": skill_prompt
+            })
+
+        return augmented
+    except Exception as e:
+        print(f"Error preparing skill messages for {model}: {e}")
+        return messages
 
 
 async def query_model(
@@ -16,32 +83,25 @@ async def query_model(
     Query a single model via OpenRouter API.
 
     Args:
-        model: OpenRouter model identifier (e.g., "openai/gpt-4o")
+        model: OpenRouter model identifier (e.g., "openai/gpt-4o" or "local/qwen3.6-27b@owasp-security")
         messages: List of message dicts with 'role' and 'content'
         timeout: Request timeout in seconds
 
     Returns:
-        Response dict with:
-        - content: The model's response text
-        - reasoning_details: Optional chain-of-thought (for reasoning models)
-        - usage: Token usage stats (prompt_tokens, completion_tokens, total_tokens)
-        - cost: Cost breakdown (input_cost, output_cost, total_cost, pricing)
-        Returns None if the request failed.
+        Response dict with content, reasoning_details, usage, and cost.
     """
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-    }
+    url, headers, outgoing_model = _resolve_endpoint(model)
+    model_messages = _prepare_messages_for_model(model, messages)
 
     payload = {
-        "model": model,
-        "messages": messages,
+        "model": outgoing_model,
+        "messages": model_messages,
     }
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
-                OPENROUTER_API_URL,
+                url,
                 headers=headers,
                 json=payload
             )
@@ -123,14 +183,12 @@ async def query_model_streaming(
         - {'type': 'complete', 'model': str, 'content': str, 'reasoning_details': str|None, 'usage': dict, 'cost': dict}
         - {'type': 'error', 'model': str, 'error': str}
     """
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-    }
+    url, headers, outgoing_model = _resolve_endpoint(model)
+    model_messages = _prepare_messages_for_model(model, messages)
 
     payload = {
-        "model": model,
-        "messages": messages,
+        "model": outgoing_model,
+        "messages": model_messages,
         "stream": True,
     }
 
@@ -142,7 +200,7 @@ async def query_model_streaming(
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream(
                 "POST",
-                OPENROUTER_API_URL,
+                url,
                 headers=headers,
                 json=payload
             ) as response:

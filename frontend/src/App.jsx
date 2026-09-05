@@ -1,17 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import ConfigPanel from './components/ConfigPanel';
 import PerformanceDashboard from './components/PerformanceDashboard';
 import ProcessMonitor from './components/ProcessMonitor';
+import DeleteConfirmModal from './components/DeleteConfirmModal';
 import { api } from './api';
 import './App.css';
 
 function App() {
   const [conversations, setConversations] = useState([]);
-  const [currentConversationId, setCurrentConversationId] = useState(null);
-  const [currentConversation, setCurrentConversation] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [currentConversationId, setCurrentConversationId] = useState(
+    () => localStorage.getItem('currentConversationId') || null
+  );
+  const [currentConversation, _setCurrentConversation] = useState(null);
+  const setCurrentConversation = _setCurrentConversation;
+  const [loadingConversationId, setLoadingConversationId] = useState(null);
+  const activeStreamRef = useRef({});
+  const isLoading = !!loadingConversationId;
   const [systemPrompt, setSystemPrompt] = useState(
     () => localStorage.getItem('systemPrompt') || ''
   );
@@ -20,6 +26,8 @@ function App() {
   const [selectedTag, setSelectedTag] = useState(null);
   const [showConfigPanel, setShowConfigPanel] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [conversationToDelete, setConversationToDelete] = useState(null);
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
 
   // Process Monitor state
   const [showProcessMonitor, setShowProcessMonitor] = useState(false);
@@ -89,11 +97,83 @@ function App() {
     () => localStorage.getItem('useCache') === 'true'
   );
 
-  // Load conversations and tags on mount
+  // Council profiles state
+  const [councilsList, setCouncilsList] = useState([]);
+  const [activeCouncil, setActiveCouncil] = useState(null);
+  const [showCouncilDropdown, setShowCouncilDropdown] = useState(false);
+
+  // Local workspaces state
+  const [workspaces, setWorkspaces] = useState([]);
+  const [selectedWorkspace, setSelectedWorkspace] = useState('');
+
+  // Load conversations, tags, councils, and workspaces on mount
   useEffect(() => {
     loadConversations();
     loadAllTags();
+    loadCouncils();
+    loadWorkspaces();
   }, []);
+
+  const loadWorkspaces = async () => {
+    try {
+      const res = await api.getWorkspaces();
+      setWorkspaces(res.workspaces || []);
+    } catch (e) {
+      console.warn('Failed to load workspaces:', e);
+    }
+  };
+
+  const loadCouncils = async () => {
+    try {
+      const res = await api.getCouncils();
+      const list = res.councils || [];
+      setCouncilsList(list);
+      const active = list.find((c) => c.id === res.active_council_id) || list[0];
+      setActiveCouncil(active);
+      if (active) {
+        setCurrentConversation((prev) => {
+          if (!prev) return null;
+          if (prev.council_id === active.id || (!prev.messages || prev.messages.length === 0)) {
+            return {
+              ...prev,
+              council_id: active.id,
+              council_name: active.name,
+              council_models: active.council_models,
+              chairman_model: active.chairman_model,
+            };
+          }
+          return prev;
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load councils:', err);
+    }
+  };
+
+  const handleSelectCouncil = async (council) => {
+    setActiveCouncil(council);
+    setShowCouncilDropdown(false);
+    try {
+      await api.activateCouncil(council.id);
+      if (currentConversationId) {
+        await api.updateConversationCouncil(currentConversationId, council.id);
+        setCurrentConversation((prev) => (prev ? {
+          ...prev,
+          council_id: council.id,
+          council_name: council.name,
+          council_models: council.council_models,
+          chairman_model: council.chairman_model,
+        } : null));
+        setConversations((prev) => prev.map((c) => (c.id === currentConversationId ? {
+          ...c,
+          council_id: council.id,
+          council_name: council.name,
+        } : c)));
+      }
+    } catch (err) {
+      console.error('Failed to activate council:', err);
+    }
+  };
 
   // Reload conversations when tag filter changes
   useEffect(() => {
@@ -111,6 +191,15 @@ function App() {
     try {
       const convs = await api.listConversations(tag);
       setConversations(convs);
+      const savedId = localStorage.getItem('currentConversationId');
+      if (savedId && convs.some((c) => c.id === savedId)) {
+        if (!currentConversationId) {
+          setCurrentConversationId(savedId);
+        }
+      } else if (!savedId && convs.length > 0 && !currentConversationId) {
+        setCurrentConversationId(convs[0].id);
+        localStorage.setItem('currentConversationId', convs[0].id);
+      }
     } catch (error) {
       console.error('Failed to load conversations:', error);
     }
@@ -128,24 +217,81 @@ function App() {
   const loadConversation = async (id) => {
     try {
       const conv = await api.getConversation(id);
+      // If this conversation is actively streaming, attach in-flight assistant message
+      if (activeStreamRef.current && activeStreamRef.current[id]) {
+        conv.messages = [...(conv.messages || []), activeStreamRef.current[id]];
+      }
       setCurrentConversation(conv);
+      // If conversation has its own bound council, sync activeCouncil view
+      if (conv.council_id && councilsList.length > 0) {
+        const matching = councilsList.find((c) => c.id === conv.council_id);
+        if (matching) {
+          setActiveCouncil(matching);
+        }
+      }
     } catch (error) {
       console.error('Failed to load conversation:', error);
     }
   };
 
-  const handleNewConversation = async () => {
+  const handleNewConversation = async (councilId = null) => {
     try {
-      const newConv = await api.createConversation();
+      const targetCouncilId = (typeof councilId === 'string' && councilId.trim()) ? councilId.trim() : activeCouncil?.id;
+      const newConv = await api.createConversation(targetCouncilId);
       // Clear tag filter when creating new conversation
       setSelectedTag(null);
-      setConversations([
-        { id: newConv.id, created_at: newConv.created_at, tags: [], message_count: 0 },
-        ...conversations,
+      setConversations((prev) => [
+        {
+          id: newConv.id,
+          created_at: newConv.created_at,
+          tags: [],
+          council_id: newConv.council_id,
+          council_name: newConv.council_name,
+          message_count: 0,
+        },
+        ...prev,
       ]);
       setCurrentConversationId(newConv.id);
+      setCurrentConversation(newConv);
+      localStorage.setItem('currentConversationId', newConv.id);
     } catch (error) {
       console.error('Failed to create conversation:', error);
+    }
+  };
+
+  const handleDeleteConversation = (conv, e) => {
+    if (e) e.stopPropagation();
+    if (typeof conv === 'string') {
+      const found = conversations.find((c) => c.id === conv) || { id: conv };
+      setConversationToDelete(found);
+    } else {
+      setConversationToDelete(conv);
+    }
+  };
+
+  const handleConfirmDeleteConversation = async () => {
+    if (!conversationToDelete) return;
+    const id = conversationToDelete.id;
+    setIsDeletingConversation(true);
+    try {
+      await api.deleteConversation(id);
+      const updated = conversations.filter((c) => c.id !== id);
+      setConversations(updated);
+      if (currentConversationId === id) {
+        if (updated.length > 0) {
+          setCurrentConversationId(updated[0].id);
+          localStorage.setItem('currentConversationId', updated[0].id);
+        } else {
+          setCurrentConversationId(null);
+          setCurrentConversation(null);
+          localStorage.removeItem('currentConversationId');
+        }
+      }
+      setConversationToDelete(null);
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+    } finally {
+      setIsDeletingConversation(false);
     }
   };
 
@@ -174,6 +320,11 @@ function App() {
 
   const handleSelectConversation = (id) => {
     setCurrentConversationId(id);
+    if (id) {
+      localStorage.setItem('currentConversationId', id);
+    } else {
+      localStorage.removeItem('currentConversationId');
+    }
   };
 
   const handleSystemPromptChange = (value) => {
@@ -251,21 +402,46 @@ function App() {
     localStorage.setItem('useCache', value.toString());
   };
 
-  const handleSendMessage = async (content) => {
+  const handleSendMessage = async (content, isRetry = false) => {
     if (!currentConversationId) return;
+    const targetConversationId = currentConversationId;
 
-    setIsLoading(true);
+    setLoadingConversationId(targetConversationId);
 
     // Clear process events for new query
     setProcessEvents([]);
 
+    // Scoped updater that only mutates state if the target conversation is currently displayed
+    // and caches the in-flight assistant message for seamless tab switching
+    const setCurrentConversation = (updater) => {
+      let updatedAssistantMsg = null;
+      _setCurrentConversation((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        if (next && next.messages && next.messages.length > 0) {
+          const last = next.messages[next.messages.length - 1];
+          if (last && last.role === 'assistant') {
+            updatedAssistantMsg = last;
+          }
+        }
+        if (!prev || prev.id !== targetConversationId) {
+          return prev;
+        }
+        return next;
+      });
+      if (updatedAssistantMsg) {
+        activeStreamRef.current[targetConversationId] = updatedAssistantMsg;
+      }
+    };
+
     try {
-      // Optimistically add user message to UI
-      const userMessage = { role: 'user', content };
-      setCurrentConversation((prev) => ({
-        ...prev,
-        messages: [...prev.messages, userMessage],
-      }));
+      // Optimistically add user message to UI only if not a retry
+      if (!isRetry) {
+        const userMessage = { role: 'user', content };
+        setCurrentConversation((prev) => ({
+          ...prev,
+          messages: [...prev.messages, userMessage],
+        }));
+      }
 
       // Create a partial assistant message that will be updated progressively
       const assistantMessage = {
@@ -317,8 +493,8 @@ function App() {
         // Debate state
         useDebate: useDebate,
         includeRebuttal: includeRebuttal,
-        isDebating: false,
-        debateRound: 0,
+        isDebating: useDebate,
+        debateRound: useDebate ? 1 : 0,
         debatePositions: [],
         debateCritiques: [],
         debateRebuttals: [],
@@ -327,7 +503,7 @@ function App() {
         isJudging: false,
         debateModelToLabel: {},
         debateLabelToModel: {},
-        debateNumRounds: 3,
+        debateNumRounds: includeRebuttal ? 3 : 2,
         // Decomposition state
         useDecomposition: useDecomposition,
         isDecomposing: false,
@@ -359,6 +535,16 @@ function App() {
         content,
         (eventType, event) => {
         switch (eventType) {
+          case 'context_ingested':
+            // Evaluation context enriched with local workspace & external repos
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.ingestMeta = event.metadata;
+              return { ...prev, messages };
+            });
+            break;
+
           case 'routing_start':
             // Dynamic routing classification starting
             setCurrentConversation((prev) => {
@@ -687,14 +873,21 @@ function App() {
             break;
 
           case 'complete':
-            // Stream complete, reload conversations list
+            // Stream complete, reload conversations list and clean active stream cache
+            if (activeStreamRef.current) {
+              delete activeStreamRef.current[targetConversationId];
+            }
+            loadConversation(targetConversationId);
             loadConversations();
-            setIsLoading(false);
+            setLoadingConversationId(null);
             break;
 
           case 'error':
             console.error('Stream error:', event.message);
-            setIsLoading(false);
+            if (activeStreamRef.current) {
+              delete activeStreamRef.current[targetConversationId];
+            }
+            setLoadingConversationId(null);
             break;
 
           case 'refinement_start':
@@ -1405,16 +1598,22 @@ function App() {
         useDebate,
         includeRebuttal,
         useDecomposition,
-        useCache
+        useCache,
+        0.92,
+        currentConversation?.council_id || activeCouncil?.id,
+        selectedWorkspace || null
       );
     } catch (error) {
       console.error('Failed to send message:', error);
+      if (activeStreamRef.current) {
+        delete activeStreamRef.current[targetConversationId];
+      }
       // Remove optimistic messages on error
       setCurrentConversation((prev) => ({
         ...prev,
-        messages: prev.messages.slice(0, -2),
+        messages: isRetry ? prev.messages.slice(0, -1) : prev.messages.slice(0, -2),
       }));
-      setIsLoading(false);
+      setLoadingConversationId(null);
     }
   };
 
@@ -1423,11 +1622,14 @@ function App() {
       <Sidebar
         conversations={conversations}
         currentConversationId={currentConversationId}
+        loadingConversationId={loadingConversationId}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
+        onDeleteConversation={handleDeleteConversation}
         allTags={allTags}
         selectedTag={selectedTag}
         onTagFilterChange={handleTagFilterChange}
+        activeCouncil={activeCouncil}
       />
       <div className="main-content">
         <div className="settings-bar">
@@ -1451,24 +1653,143 @@ function App() {
               {useCache && <span className="settings-cache-indicator" title="Semantic Response Caching active">CA</span>}
             </button>
             <div className="settings-bar-controls">
+              {/* Council Selector Pill & Dropdown */}
+              <div className="council-selector-pill-wrap">
+                <button
+                  type="button"
+                  className={`council-selector-pill ${showCouncilDropdown ? 'active' : ''}`}
+                  onClick={() => setShowCouncilDropdown(!showCouncilDropdown)}
+                  title="Select or switch active Council"
+                >
+                  <span className="council-selector-icon">{activeCouncil?.icon || '🏛️'}</span>
+                  <span className="council-selector-name">{activeCouncil?.name || 'Council'}</span>
+                  <svg className="council-selector-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+
+                {showCouncilDropdown && (
+                  <>
+                    <div
+                      className="council-dropdown-backdrop"
+                      onClick={() => setShowCouncilDropdown(false)}
+                    />
+                    <div className="council-dropdown-menu">
+                      <div className="council-dropdown-header">
+                        <span>SELECT COUNCIL PROFILE</span>
+                        <button
+                          type="button"
+                          className="council-dropdown-manage-link"
+                          onClick={() => {
+                            setShowCouncilDropdown(false);
+                            setShowConfigPanel(true);
+                          }}
+                        >
+                          Manage Profiles
+                        </button>
+                      </div>
+                      <div className="council-dropdown-list">
+                        {councilsList.map((c) => {
+                          const isSelected = activeCouncil?.id === c.id;
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              className={`council-dropdown-item ${isSelected ? 'selected' : ''}`}
+                              onClick={() => handleSelectCouncil(c)}
+                            >
+                              <span className="council-item-icon">{c.icon || '🏛️'}</span>
+                              <div className="council-item-info">
+                                <div className="council-item-name-row">
+                                  <span className="council-item-name">{c.name}</span>
+                                  {c.is_builtin ? (
+                                    <span className="council-type-tag builtin">Built-in</span>
+                                  ) : (
+                                    <span className="council-type-tag custom">Custom</span>
+                                  )}
+                                </div>
+                                <span className="council-item-desc">{c.description}</span>
+                              </div>
+                              {isSelected && (
+                                <svg className="council-item-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12"></polyline>
+                                </svg>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="council-dropdown-footer">
+                        <button
+                          type="button"
+                          className="council-dropdown-create-btn"
+                          onClick={() => {
+                            setShowCouncilDropdown(false);
+                            setShowConfigPanel(true);
+                          }}
+                        >
+                          + New Custom Council
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Workspace Context Selector */}
+              {workspaces.length > 0 && (
+                <div className="workspace-selector-pill-wrap">
+                  <select
+                    className="workspace-selector-select"
+                    value={selectedWorkspace}
+                    onChange={(e) => setSelectedWorkspace(e.target.value)}
+                    title="Target local workspace project to evaluate against (auto-detected if blank)"
+                  >
+                    <option value="">📁 Auto Workspace</option>
+                    {workspaces.map((ws) => (
+                      <option key={ws.name} value={ws.name}>
+                        📁 {ws.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <button
-                className={`process-monitor-btn ${processVerbosity > 0 ? 'active' : ''}`}
+                className={`process-monitor-btn ${showProcessMonitor ? 'panel-open' : ''} ${processVerbosity > 0 ? 'active' : ''}`}
                 onClick={() => setShowProcessMonitor(!showProcessMonitor)}
-                title="Toggle Process Monitor"
+                title="Toggle Process Telemetry Panel"
               >
-                Process {processVerbosity > 0 ? `(${processVerbosity})` : ''}
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                </svg>
+                <span>Process</span>
+                {processVerbosity > 0 && (
+                  <span className="btn-badge">v{processVerbosity}</span>
+                )}
               </button>
               <button
-                className="dashboard-btn"
+                className={`dashboard-btn ${showDashboard ? 'active' : ''}`}
                 onClick={() => setShowDashboard(true)}
+                title="Open Performance Analytics Dashboard"
               >
-                Dashboard
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="20" x2="18" y2="10"></line>
+                  <line x1="12" y1="20" x2="12" y2="4"></line>
+                  <line x1="6" y1="20" x2="6" y2="14"></line>
+                </svg>
+                <span>Dashboard</span>
               </button>
               <button
-                className="config-models-btn"
+                className={`config-models-btn ${showConfigPanel ? 'active' : ''}`}
                 onClick={() => setShowConfigPanel(true)}
+                title="Configure Council Roster & Chairman"
               >
-                Configure Models
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                <span>Configure Models</span>
               </button>
             </div>
           </div>
@@ -1711,8 +2032,10 @@ function App() {
         </div>
         <ChatInterface
           conversation={currentConversation}
+          activeCouncil={activeCouncil}
           onSendMessage={handleSendMessage}
-          isLoading={isLoading}
+          onNewConversation={handleNewConversation}
+          isLoading={loadingConversationId === currentConversationId}
           onTagsChange={handleTagsChange}
         />
       </div>
@@ -1724,7 +2047,10 @@ function App() {
             className="config-overlay"
             onClick={() => setShowConfigPanel(false)}
           />
-          <ConfigPanel onClose={() => setShowConfigPanel(false)} />
+          <ConfigPanel
+            onClose={() => setShowConfigPanel(false)}
+            onCouncilsUpdated={loadCouncils}
+          />
         </>
       )}
 
@@ -1737,6 +2063,16 @@ function App() {
           />
           <PerformanceDashboard onClose={() => setShowDashboard(false)} />
         </>
+      )}
+
+      {/* In-App Delete Conversation Confirmation Modal */}
+      {conversationToDelete && (
+        <DeleteConfirmModal
+          conversation={conversationToDelete}
+          onConfirm={handleConfirmDeleteConversation}
+          onCancel={() => !isDeletingConversation && setConversationToDelete(null)}
+          isDeleting={isDeletingConversation}
+        />
       )}
 
       {/* Process Monitor Side Panel */}

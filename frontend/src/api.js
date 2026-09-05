@@ -2,7 +2,9 @@
  * API client for the LLM Council backend.
  */
 
-const API_BASE = 'http://localhost:8001';
+// Use the same host the frontend was loaded from so this also works when
+// viewed from another device on the LAN (e.g. http://192.168.x.x:5173).
+const API_BASE = `http://${window.location.hostname}:8001`;
 
 export const api = {
   /**
@@ -22,17 +24,122 @@ export const api = {
 
   /**
    * Create a new conversation.
+   * @param {string} [councilId] - Optional council profile ID to bind
    */
-  async createConversation() {
+  async createConversation(councilId = null) {
+    const validCouncilId = typeof councilId === 'string' && councilId.trim() ? councilId.trim() : null;
     const response = await fetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify(validCouncilId ? { council_id: validCouncilId } : {}),
     });
     if (!response.ok) {
-      throw new Error('Failed to create conversation');
+      const err = await response.json().catch(() => ({ detail: 'Failed to create conversation' }));
+      throw new Error(err.detail || 'Failed to create conversation');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get all council profiles and active council ID.
+   */
+  async getCouncils() {
+    const response = await fetch(`${API_BASE}/api/councils`);
+    if (!response.ok) {
+      throw new Error('Failed to get councils');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get currently active council profile.
+   */
+  async getActiveCouncil() {
+    const response = await fetch(`${API_BASE}/api/councils/active`);
+    if (!response.ok) {
+      throw new Error('Failed to get active council');
+    }
+    return response.json();
+  },
+
+  /**
+   * Activate a council profile by ID.
+   */
+  async activateCouncil(councilId) {
+    const response = await fetch(`${API_BASE}/api/councils/${encodeURIComponent(councilId)}/activate`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to activate council');
+    }
+    return response.json();
+  },
+
+  /**
+   * Create a new custom council profile.
+   */
+  async createCouncil(councilData) {
+    const response = await fetch(`${API_BASE}/api/councils`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(councilData),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to create council' }));
+      throw new Error(err.detail || 'Failed to create council');
+    }
+    return response.json();
+  },
+
+  /**
+   * Update a council profile.
+   */
+  async updateCouncil(councilId, updates) {
+    const response = await fetch(`${API_BASE}/api/councils/${encodeURIComponent(councilId)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updates),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to update council' }));
+      throw new Error(err.detail || 'Failed to update council');
+    }
+    return response.json();
+  },
+
+  /**
+   * Delete a custom council profile.
+   */
+  async deleteCouncil(councilId) {
+    const response = await fetch(`${API_BASE}/api/councils/${encodeURIComponent(councilId)}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to delete council' }));
+      throw new Error(err.detail || 'Failed to delete council');
+    }
+    return response.json();
+  },
+
+  /**
+   * Switch the council bound to a specific conversation.
+   */
+  async updateConversationCouncil(conversationId, councilId) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/council`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ council_id: councilId }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update conversation council');
     }
     return response.json();
   },
@@ -46,6 +153,23 @@ export const api = {
     );
     if (!response.ok) {
       throw new Error('Failed to get conversation');
+    }
+    return response.json();
+  },
+
+  /**
+   * Delete a specific conversation.
+   * @param {string} conversationId - The conversation ID
+   */
+  async deleteConversation(conversationId) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to delete conversation');
     }
     return response.json();
   },
@@ -146,15 +270,42 @@ export const api = {
   },
 
   /**
+   * Get list of available domain skills from dev-agent-kit.
+   * @returns {Promise<{skills: Array<{id: string, title: string, description: string, category: string, badge: string}>}>}
+   */
+  async getSkills() {
+    const response = await fetch(`${API_BASE}/api/skills`);
+    if (!response.ok) {
+      throw new Error('Failed to get skills');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get list of discoverable local workspace projects for context evaluation.
+   */
+  async getWorkspaces() {
+    const response = await fetch(`${API_BASE}/api/workspaces`);
+    if (!response.ok) {
+      throw new Error('Failed to get workspaces');
+    }
+    return response.json();
+  },
+
+  /**
    * Send a message in a conversation.
    * @param {string} conversationId - The conversation ID
    * @param {string} content - The message content
    * @param {string} systemPrompt - Optional system prompt
+   * @param {string} targetWorkspace - Optional local workspace project
    */
-  async sendMessage(conversationId, content, systemPrompt = null) {
+  async sendMessage(conversationId, content, systemPrompt = null, targetWorkspace = null) {
     const body = { content };
     if (systemPrompt) {
       body.system_prompt = systemPrompt;
+    }
+    if (targetWorkspace) {
+      body.target_workspace = targetWorkspace;
     }
 
     const response = await fetch(
@@ -535,9 +686,10 @@ export const api = {
    * @param {boolean} useDecomposition - Enable Sub-Question Decomposition (default false)
    * @param {boolean} useCache - Enable Response Caching (default false)
    * @param {number} cacheSimilarityThreshold - Minimum similarity for cache hit (default 0.92)
+   * @param {string} targetWorkspace - Optional local workspace project
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent, systemPrompt = null, verbosity = 0, useCot = false, useMultiChairman = false, useWeightedConsensus = true, useEarlyConsensus = false, useDynamicRouting = false, useEscalation = false, useRefinement = false, refinementMaxIterations = 2, useAdversary = false, useDebate = false, includeRebuttal = true, useDecomposition = false, useCache = false, cacheSimilarityThreshold = 0.92) {
+  async sendMessageStream(conversationId, content, onEvent, systemPrompt = null, verbosity = 0, useCot = false, useMultiChairman = false, useWeightedConsensus = true, useEarlyConsensus = false, useDynamicRouting = false, useEscalation = false, useRefinement = false, refinementMaxIterations = 2, useAdversary = false, useDebate = false, includeRebuttal = true, useDecomposition = false, useCache = false, cacheSimilarityThreshold = 0.92, councilId = null, targetWorkspace = null) {
     const body = {
       content,
       verbosity,
@@ -556,8 +708,14 @@ export const api = {
       use_cache: useCache,
       cache_similarity_threshold: cacheSimilarityThreshold,
     };
+    if (councilId) {
+      body.council_id = councilId;
+    }
     if (systemPrompt) {
       body.system_prompt = systemPrompt;
+    }
+    if (targetWorkspace) {
+      body.target_workspace = targetWorkspace;
     }
 
     const response = await fetch(

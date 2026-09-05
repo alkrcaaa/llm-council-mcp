@@ -7,7 +7,7 @@ Note: Prices may change over time. Update this file periodically
 or consider fetching from OpenRouter's API for real-time pricing.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 # Pricing per 1M tokens (input/output) - Updated November 2024
 # Format: "provider/model": {"input": price_per_1M, "output": price_per_1M}
@@ -70,6 +70,11 @@ MODEL_PRICING: Dict[str, Dict[str, float]] = {
     # Cohere Models
     "cohere/command-r-plus": {"input": 2.50, "output": 10.00},
     "cohere/command-r": {"input": 0.15, "output": 0.60},
+
+    # Local / self-hosted models
+    "local/qwen3.6-27b": {"input": 0.0, "output": 0.0},  # self-hosted GPU, no per-token API cost
+    "local/claude-code": {"input": 3.00, "output": 15.00},  # real API cost via claude-code-shim; approximated as Sonnet pricing
+    "local/antigravity": {"input": 1.25, "output": 5.00},  # real API cost via antigravity-shim; approximated as Gemini 3 Pro pricing
 }
 
 # Default pricing for unknown models (conservative estimate)
@@ -81,12 +86,13 @@ def get_model_pricing(model: str) -> Dict[str, float]:
     Get pricing for a specific model.
 
     Args:
-        model: OpenRouter model identifier (e.g., "openai/gpt-4o")
+        model: OpenRouter model identifier (e.g., "openai/gpt-4o" or "local/qwen3.6-27b@owasp-security")
 
     Returns:
         Dict with 'input' and 'output' prices per 1M tokens
     """
-    return MODEL_PRICING.get(model, DEFAULT_PRICING)
+    base_model = model.split("@")[0] if "@" in model else model
+    return MODEL_PRICING.get(base_model, DEFAULT_PRICING)
 
 
 def calculate_cost(

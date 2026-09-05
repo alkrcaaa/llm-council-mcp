@@ -7,34 +7,35 @@
 }
 
 /* Color scheme based on confidence level */
+/* Color scheme based on confidence level - Dark Obsidian Native */
 .confidence-very-high {
-  --confidence-color: #059669;
-  --confidence-bg: #ecfdf5;
-  --confidence-border: #a7f3d0;
+  --confidence-color: #34d399;
+  --confidence-bg: rgba(16, 185, 129, 0.12);
+  --confidence-border: rgba(16, 185, 129, 0.35);
 }
 
 .confidence-high {
-  --confidence-color: #0d9488;
-  --confidence-bg: #f0fdfa;
-  --confidence-border: #99f6e4;
+  --confidence-color: #2dd4bf;
+  --confidence-bg: rgba(20, 184, 166, 0.12);
+  --confidence-border: rgba(20, 184, 166, 0.35);
 }
 
 .confidence-medium {
-  --confidence-color: #d97706;
-  --confidence-bg: #fffbeb;
-  --confidence-border: #fde68a;
+  --confidence-color: #fbbf24;
+  --confidence-bg: rgba(245, 158, 11, 0.12);
+  --confidence-border: rgba(245, 158, 11, 0.35);
 }
 
 .confidence-low {
-  --confidence-color: #ea580c;
-  --confidence-bg: #fff7ed;
-  --confidence-border: #fed7aa;
+  --confidence-color: #fb923c;
+  --confidence-bg: rgba(234, 88, 12, 0.12);
+  --confidence-border: rgba(234, 88, 12, 0.35);
 }
 
 .confidence-very-low {
-  --confidence-color: #dc2626;
-  --confidence-bg: #fef2f2;
-  --confidence-border: #fecaca;
+  --confidence-color: #f87171;
+  --confidence-bg: rgba(239, 68, 68, 0.12);
+  --confidence-border: rgba(239, 68, 68, 0.35);
 }
 
 /* Compact view */

@@ -51,10 +51,21 @@ export default function DebateView({
     }));
   };
 
+  const getModelDetails = (modelStr) => {
+    if (!modelStr) return { name: 'Unknown', skill: '', colorClass: 'model-neutral' };
+    const [baseModel, skill] = modelStr.split('@');
+    const rawName = baseModel.split('/').pop() || baseModel;
+    let colorClass = 'model-neutral';
+    if (rawName.includes('claude')) colorClass = 'model-claude';
+    else if (rawName.includes('qwen')) colorClass = 'model-qwen';
+    else if (rawName.includes('antigravity') || rawName.includes('gemini')) colorClass = 'model-antigravity';
+    else if (rawName.includes('gpt') || rawName.includes('openai')) colorClass = 'model-openai';
+
+    return { name: rawName, skill, colorClass };
+  };
+
   const getModelShortName = (model) => {
-    if (!model) return 'Unknown';
-    const parts = model.split('/');
-    return parts[parts.length - 1];
+    return getModelDetails(model).name;
   };
 
   const getLabel = (model) => {
@@ -124,17 +135,25 @@ export default function DebateView({
           {expandedRounds[1] && (
             <div className="round-content">
               <div className="positions-grid">
-                {positions.map((pos, idx) => (
-                  <div key={idx} className="position-card">
-                    <div className="position-header">
-                      <span className="position-label">{getLabel(pos.model)}</span>
-                      <span className="position-model">{getModelShortName(pos.model)}</span>
+                {positions.map((pos, idx) => {
+                  const details = getModelDetails(pos.model);
+                  return (
+                    <div key={idx} className={`position-card card-${details.colorClass}`}>
+                      <div className="position-header">
+                        <div className="speaker-identity">
+                          <span className={`model-avatar-tag ${details.colorClass}`}>
+                            {details.name}
+                          </span>
+                          {details.skill && <span className="speaker-skill-tag">@{details.skill}</span>}
+                        </div>
+                        <span className="position-label-pill">{modelToLabel[pos.model] || `Position ${String.fromCharCode(65 + idx)}`}</span>
+                      </div>
+                      <div className="position-content markdown-content">
+                        <ReactMarkdown>{pos.position}</ReactMarkdown>
+                      </div>
                     </div>
-                    <div className="position-content markdown-content">
-                      <ReactMarkdown>{pos.position}</ReactMarkdown>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -150,7 +169,7 @@ export default function DebateView({
           >
             <div className="round-info">
               <span className="round-number">Round 2</span>
-              <span className="round-name">Critiques</span>
+              <span className="round-name">Critiques (Karşılıklı Eleştiri)</span>
               {currentRound === 2 && isDebating && (
                 <span className="round-status streaming">Collecting...</span>
               )}
@@ -165,20 +184,33 @@ export default function DebateView({
           {expandedRounds[2] && (
             <div className="round-content">
               <div className="critiques-list">
-                {critiques.map((crit, idx) => (
-                  <div key={idx} className="critique-card">
-                    <div className="critique-header">
-                      <div className="critique-flow">
-                        <span className="critic-label">{modelToLabel[crit.critic] || getModelShortName(crit.critic)}</span>
-                        <span className="critique-arrow">&#10132;</span>
-                        <span className="target-label">{modelToLabel[crit.target] || getModelShortName(crit.target)}</span>
+                {critiques.map((crit, idx) => {
+                  const criticDetails = getModelDetails(crit.critic);
+                  const targetDetails = getModelDetails(crit.target);
+                  return (
+                    <div key={idx} className="critique-card">
+                      <div className="critique-header">
+                        <div className="critique-flow">
+                          <div className={`participant-chip chip-${criticDetails.colorClass}`}>
+                            <span className="chip-model-name">{criticDetails.name}</span>
+                            <span className="chip-role-tag">{modelToLabel[crit.critic] || 'Critic'}</span>
+                          </div>
+                          <div className="flow-direction-indicator">
+                            <span className="flow-action-text">eleştiriyor</span>
+                            <span className="critique-arrow">&#10132;</span>
+                          </div>
+                          <div className={`participant-chip chip-${targetDetails.colorClass}`}>
+                            <span className="chip-model-name">{targetDetails.name}</span>
+                            <span className="chip-role-tag">{modelToLabel[crit.target] || 'Target'}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="critique-content markdown-content">
+                        <ReactMarkdown>{crit.critique}</ReactMarkdown>
                       </div>
                     </div>
-                    <div className="critique-content markdown-content">
-                      <ReactMarkdown>{crit.critique}</ReactMarkdown>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -194,7 +226,7 @@ export default function DebateView({
           >
             <div className="round-info">
               <span className="round-number">Round 3</span>
-              <span className="round-name">Rebuttals</span>
+              <span className="round-name">Rebuttals (Savunma & Karşı Tez)</span>
               {currentRound === 3 && isDebating && (
                 <span className="round-status streaming">Collecting...</span>
               )}
@@ -209,18 +241,26 @@ export default function DebateView({
           {expandedRounds[3] && (
             <div className="round-content">
               <div className="rebuttals-list">
-                {rebuttals.map((reb, idx) => (
-                  <div key={idx} className="rebuttal-card">
-                    <div className="rebuttal-header">
-                      <span className="rebuttal-label">{getLabel(reb.model)}</span>
-                      <span className="rebuttal-model">{getModelShortName(reb.model)}</span>
-                      <span className="rebuttal-badge">Defense</span>
+                {rebuttals.map((reb, idx) => {
+                  const defenderDetails = getModelDetails(reb.model);
+                  return (
+                    <div key={idx} className={`rebuttal-card card-${defenderDetails.colorClass}`}>
+                      <div className="rebuttal-header">
+                        <div className="speaker-identity">
+                          <span className={`model-avatar-tag ${defenderDetails.colorClass}`}>
+                            {defenderDetails.name}
+                          </span>
+                          {defenderDetails.skill && <span className="speaker-skill-tag">@{defenderDetails.skill}</span>}
+                          <span className="position-label-pill">{getLabel(reb.model)}</span>
+                        </div>
+                        <span className="rebuttal-badge">Savunma / Karşı Tez</span>
+                      </div>
+                      <div className="rebuttal-content markdown-content">
+                        <ReactMarkdown>{reb.rebuttal}</ReactMarkdown>
+                      </div>
                     </div>
-                    <div className="rebuttal-content markdown-content">
-                      <ReactMarkdown>{reb.rebuttal}</ReactMarkdown>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

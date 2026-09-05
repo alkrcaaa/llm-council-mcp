@@ -41,6 +41,27 @@ const CATEGORY_COLORS = {
  * @param {Object} props.escalationInfo - Escalation information (optional)
  *   Contains: escalated, tier1_model_count, tier2_model_count, total_model_count, reasons, metrics
  */
+// Helper to parse model string like "local/qwen3.6-27b@owasp-security"
+const parseModelSkill = (modelStr) => {
+  if (!modelStr) return { baseModel: '', shortName: '', skillId: '', skillLabel: '' };
+  const [baseModel, skillId = ''] = modelStr.split('@');
+  const shortName = baseModel.split('/')[1] || baseModel;
+
+  let skillLabel = '';
+  if (skillId) {
+    if (skillId.includes('security')) skillLabel = 'Security';
+    else if (skillId.includes('karpathy') || skillId.includes('architect')) skillLabel = 'Architect';
+    else if (skillId.includes('devops')) skillLabel = 'DevOps';
+    else if (skillId.includes('testing') || skillId.includes('qa')) skillLabel = 'Quality';
+    else if (skillId.includes('review')) skillLabel = 'Reviewer';
+    else {
+      const clean = skillId.replace(/-(guidelines|handbook|audit|security)/g, '');
+      skillLabel = clean.charAt(0).toUpperCase() + clean.slice(1);
+    }
+  }
+  return { baseModel, shortName, skillId, skillLabel };
+};
+
 export default function Stage1({
   responses,
   aggregateConfidence,
@@ -144,26 +165,59 @@ export default function Stage1({
       )}
 
       <div className="tabs">
-        {allResponses.map((resp, index) => (
-          <button
-            key={resp.model}
-            className={`tab ${activeTab === index ? 'active' : ''} ${resp.reasoning_details ? 'has-reasoning' : ''} ${resp.cot ? 'has-cot' : ''} ${resp.isStreaming ? 'streaming' : ''}`}
-            onClick={() => setActiveTab(index)}
-            title={resp.isStreaming ? 'Model is still generating...' : (resp.cot ? 'Chain-of-Thought reasoning' : (resp.reasoning_details ? 'This model provided reasoning details' : ''))}
-          >
-            <span className="tab-model-name">{resp.model.split('/')[1] || resp.model}</span>
-            {resp.tier && <TierBadge tier={resp.tier} />}
-            {resp.isStreaming && <span className="streaming-dot"></span>}
-            {resp.cot && !resp.isStreaming && <CoTBadge />}
-            {resp.reasoning_details && !resp.cot && !resp.isStreaming && <span className="reasoning-indicator">*</span>}
-            {!resp.isStreaming && <ConfidenceBadge confidence={resp.confidence} />}
-          </button>
-        ))}
+        {allResponses.map((resp, index) => {
+          const { shortName, skillId, skillLabel } = parseModelSkill(resp.model);
+          return (
+            <button
+              key={resp.model}
+              className={`tab ${activeTab === index ? 'active' : ''} ${resp.reasoning_details ? 'has-reasoning' : ''} ${resp.cot ? 'has-cot' : ''} ${resp.isStreaming ? 'streaming' : ''}`}
+              onClick={() => setActiveTab(index)}
+              title={
+                resp.isStreaming
+                  ? 'Model is still generating...'
+                  : resp.cot
+                  ? 'Chain-of-Thought reasoning'
+                  : resp.reasoning_details
+                  ? 'This model provided reasoning details'
+                  : skillId
+                  ? `Specialist: ${skillId}`
+                  : ''
+              }
+            >
+              <span className="tab-model-name">{shortName}</span>
+              {skillId && (
+                <span className="tab-skill-pill" title={`Specialization: ${skillId}`}>
+                  {skillLabel}
+                </span>
+              )}
+              {resp.tier && <TierBadge tier={resp.tier} />}
+              {resp.isStreaming && <span className="streaming-dot"></span>}
+              {resp.cot && !resp.isStreaming && <CoTBadge />}
+              {resp.reasoning_details && !resp.cot && !resp.isStreaming && (
+                <span className="reasoning-indicator">*</span>
+              )}
+              {!resp.isStreaming && <ConfidenceBadge confidence={resp.confidence} />}
+            </button>
+          );
+        })}
       </div>
 
       <div className="tab-content">
         <div className="model-name">
-          {currentResponse.model}
+          {(() => {
+            const { baseModel, skillId, skillLabel } = parseModelSkill(currentResponse.model);
+            return (
+              <>
+                <span className="model-base-title">{baseModel}</span>
+                {skillId && (
+                  <span className="model-specialist-badge" title={`Domain Skill: ${skillId}`}>
+                    <span className="specialist-tag">SPECIALIST</span>
+                    <span className="specialist-name">{skillLabel} ({skillId})</span>
+                  </span>
+                )}
+              </>
+            );
+          })()}
           {isCurrentStreaming && (
             <span className="streaming-badge">Generating...</span>
           )}
