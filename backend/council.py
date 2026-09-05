@@ -438,6 +438,55 @@ async def stage1_collect_responses_streaming(
     }
 
 
+def get_stage3_fallback_chain(
+    primary_model: str,
+    stage1_results: Optional[List[Dict[str, Any]]] = None
+) -> List[str]:
+    """Build an ordered, deduplicated list of candidate models for Stage 3 synthesis.
+
+    Tries primary chairman first, followed by models that already succeeded in Stage 1,
+    and finally well-known local/fallback models.
+    """
+    chain: List[str] = []
+    seen = set()
+
+    def add_candidate(m: Optional[str]):
+        if not m:
+            return
+        clean_m = m.strip()
+        base_m = clean_m.split("@")[0].strip()
+        if base_m and base_m not in seen:
+            seen.add(base_m)
+            chain.append(base_m)
+
+    # 1. Primary requested chairman
+    add_candidate(primary_model)
+
+    # 2. Prefer counterpart peer if primary is claude or antigravity
+    if "claude" in primary_model:
+        add_candidate("local/antigravity")
+    elif "antigravity" in primary_model:
+        add_candidate("local/claude-code")
+
+    # 3. Models that successfully answered in Stage 1 are proven to be online
+    if stage1_results:
+        for r in stage1_results:
+            resp = r.get("response", "")
+            if resp and not resp.startswith("Error"):
+                add_candidate(r.get("model"))
+
+    # 4. Standard fallback options
+    try:
+        add_candidate(get_chairman_model())
+    except Exception:
+        pass
+
+    for standard_fallback in ["local/antigravity", "local/qwen3.6-27b", "google/gemini-3-pro-preview"]:
+        add_candidate(standard_fallback)
+
+    return chain
+
+
 async def stage3_synthesize_final_streaming(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
@@ -445,7 +494,7 @@ async def stage3_synthesize_final_streaming(
     model: Optional[str] = None
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
-    Stage 3: Chairman synthesizes final response with token streaming.
+    Stage 3: Chairman synthesizes final response with token streaming and fallback failover.
 
     Args:
         user_query: The original user query
@@ -496,32 +545,85 @@ Provide the final answer:"""
 
     messages = [{"role": "user", "content": chairman_prompt}]
 
-    # Get chairman model (provided or current active config)
+    # Get chairman model (provided or current active config) and candidate fallback chain
     chairman_model = model if model else get_chairman_model()
+    candidate_models = get_stage3_fallback_chain(chairman_model, stage1_results)
 
-    # Stream from chairman
-    async for event in query_model_streaming(chairman_model, messages):
-        if event["type"] == "token":
+    success = False
+    for candidate in candidate_models:
+        tokens_emitted = 0
+        try:
+            async for event in query_model_streaming(candidate, messages):
+                if event["type"] == "token":
+                    tokens_emitted += 1
+                    yield {
+                        "type": "stage3_token",
+                        "content": event["content"],
+                        "model": candidate,
+                    }
+
+                elif event["type"] == "complete":
+                    success = True
+                    yield {
+                        "type": "stage3_complete",
+                        "model": candidate,
+                        "response": event.get("content", ""),
+                        "usage": event.get("usage", {}),
+                        "cost": event.get("cost", {}),
+                    }
+                    return
+
+                elif event["type"] == "error":
+                    # If an error occurred before any tokens were emitted, try next candidate
+                    if tokens_emitted == 0:
+                        break
+                    else:
+                        yield {
+                            "type": "stage3_error",
+                            "model": candidate,
+                            "error": event.get("error", "Stream interrupted"),
+                        }
+                        return
+        except Exception:
+            if tokens_emitted > 0:
+                yield {
+                    "type": "stage3_error",
+                    "model": candidate,
+                    "error": f"Stream failed after partial output from {candidate}",
+                }
+                return
+            continue
+
+    if not success:
+        # Graceful degradation fallback: present leading Stage 1 response
+        best_candidate = next(
+            (r for r in stage1_results if r.get("response") and not r.get("response", "").startswith("Error")),
+            None
+        )
+        if best_candidate:
+            degraded_resp = (
+                f"## Verdict: Consensus Adopted (Chairman Failover)\n\n"
+                f"⚠️ **Notice:** Synthesis chairman ({chairman_model}) was unavailable. "
+                f"Presenting the leading consensus evaluation from **{best_candidate['model']}**:\n\n"
+                f"{best_candidate['response']}"
+            )
             yield {
                 "type": "stage3_token",
-                "content": event["content"],
-                "model": chairman_model,
+                "content": degraded_resp,
+                "model": f"{best_candidate['model']} (consensus-fallback)",
             }
-
-        elif event["type"] == "complete":
             yield {
                 "type": "stage3_complete",
-                "model": chairman_model,
-                "response": event.get("content", ""),
-                "usage": event.get("usage", {}),
-                "cost": event.get("cost", {}),
+                "model": f"{best_candidate['model']} (consensus-fallback)",
+                "response": degraded_resp,
+                "usage": best_candidate.get("usage", {}),
+                "cost": best_candidate.get("cost", {}),
             }
-
-        elif event["type"] == "error":
+        else:
             yield {
                 "type": "stage3_error",
                 "model": chairman_model,
-                "error": event.get("error", "Unknown error"),
+                "error": "Error: Unable to generate final synthesis across available models.",
             }
 
 
@@ -716,24 +818,50 @@ Provide the final answer:"""
 
     messages = [{"role": "user", "content": chairman_prompt}]
 
-    # Query the chairman model (use provided model or fallback to dynamic config)
+    # Query the chairman model with failover chain
     chairman_model = model if model else get_chairman_model()
-    response = await query_model(chairman_model, messages)
+    candidate_models = get_stage3_fallback_chain(chairman_model, stage1_results)
 
-    if response is None:
-        # Fallback if chairman fails
+    for candidate in candidate_models:
+        try:
+            response = await query_model(candidate, messages)
+            if response and response.get('content'):
+                return {
+                    "model": candidate,
+                    "response": response.get('content', ''),
+                    "usage": response.get('usage', {}),
+                    "cost": response.get('cost', {}),
+                    "is_fallback": candidate != chairman_model,
+                }
+        except Exception:
+            continue
+
+    # Graceful degradation fallback: present leading Stage 1 response
+    best_candidate = next(
+        (r for r in stage1_results if r.get("response") and not r.get("response", "").startswith("Error")),
+        None
+    )
+    if best_candidate:
+        fallback_text = (
+            f"## Verdict: Consensus Adopted (Chairman Failover)\n\n"
+            f"⚠️ **Notice:** Designated synthesis chairman ({chairman_model}) was unavailable. "
+            f"Presenting the leading consensus evaluation from **{best_candidate['model']}**:\n\n"
+            f"{best_candidate['response']}"
+        )
         return {
-            "model": chairman_model,
-            "response": "Error: Unable to generate final synthesis.",
-            "usage": {},
-            "cost": {},
+            "model": f"{best_candidate['model']} (consensus-fallback)",
+            "response": fallback_text,
+            "usage": best_candidate.get("usage", {}),
+            "cost": best_candidate.get("cost", {}),
+            "is_fallback": True,
+            "degraded": True,
         }
 
     return {
         "model": chairman_model,
-        "response": response.get('content', ''),
-        "usage": response.get('usage', {}),
-        "cost": response.get('cost', {}),
+        "response": "Error: Unable to generate final synthesis.",
+        "usage": {},
+        "cost": {},
     }
 
 
