@@ -836,12 +836,22 @@ export default function ConfigPanel({
 
                     {/* Chairman Override Selector */}
                     <div className="chairman-section">
-                      <label htmlFor="chairman-select">Chairman Model:</label>
+                      <div className="chairman-section-header">
+                        <span className="chairman-section-label">Chairman</span>
+                        <span className="chairman-current-model">{chairmanModel || 'None selected'}</span>
+                      </div>
+                      <label htmlFor="chairman-select">Change chairman model:</label>
                       <select
                         id="chairman-select"
                         value={chairmanModel}
                         onChange={(e) => setChairmanModel(e.target.value)}
                       >
+                        {/* Current chairman may be external (not one of the seats above) — keep it selectable */}
+                        {chairmanModel && !councilModels.includes(chairmanModel) && (
+                          <option key={chairmanModel} value={chairmanModel}>
+                            {chairmanModel} (external)
+                          </option>
+                        )}
                         {councilModels.map((model) => (
                           <option key={model} value={model}>
                             {model}
@@ -849,7 +859,7 @@ export default function ConfigPanel({
                         ))}
                       </select>
                       <span className="chairman-help">
-                        The chairman oversees the deliberation and compiles the final synthesis in Stage 3.
+                        The chairman oversees the deliberation and compiles the final synthesis in Stage 3. It does not have to be one of the seats above.
                       </span>
                     </div>
 

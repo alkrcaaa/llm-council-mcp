@@ -547,11 +547,36 @@
 
 /* Chairman Section */
 .chairman-section {
-  background: #161b22;
-  border: 1px solid #30363d;
+  background: rgba(229, 169, 60, 0.06);
+  border: 1px solid var(--border-active, rgba(229, 169, 60, 0.4));
   border-radius: 8px;
   padding: 1rem 1.25rem;
   margin-bottom: 1.5rem;
+}
+
+.chairman-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(229, 169, 60, 0.2);
+}
+
+.chairman-section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-brass, #e5a93c);
+}
+
+.chairman-current-model {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #f0f6fc;
 }
 
 .chairman-section label {
