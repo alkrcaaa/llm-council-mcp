@@ -16,9 +16,12 @@ services:
       QWEN_API_KEY: "${QWEN_API_KEY:-not-needed}"
       CLAUDE_SHIM_BASE_URL: "${CLAUDE_SHIM_BASE_URL:-http://host.docker.internal:8600/v1}"
       ANTIGRAVITY_SHIM_BASE_URL: "${ANTIGRAVITY_SHIM_BASE_URL:-http://host.docker.internal:8601/v1}"
+    env_file:
+      - ../.env
     volumes:
       - council-data:/app/data
       - ../backend:/app/backend
+      - ../.env:/app/.env:ro
       - ${SKILLS_DIR:-${HOME}/.gemini/config/skills}:/app/skills:ro
       - ${WORKSPACE_DIR:-..}:/app/workspace:ro
     extra_hosts:

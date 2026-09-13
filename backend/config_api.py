@@ -326,3 +326,14 @@ AVAILABLE_MODELS = [
     "mistralai/mistral-large",
 ]
 
+
+def get_all_available_models() -> List[str]:
+    """Get all suggested models including custom user-added providers."""
+    try:
+        from . import providers
+        custom_ids = [p["id"] for p in providers.load_providers() if p.get("id")]
+        # Prepend custom models so they appear at the top of suggestions
+        return custom_ids + [m for m in AVAILABLE_MODELS if m not in custom_ids]
+    except Exception:
+        return AVAILABLE_MODELS
+

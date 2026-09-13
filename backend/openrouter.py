@@ -10,9 +10,9 @@ from .pricing import calculate_cost
 def _resolve_endpoint(model: str):
     """
     Resolve the API endpoint, headers, and outgoing model id for a council
-    model identifier. Models registered in LOCAL_MODELS are routed to their
-    own OpenAI-compatible endpoint (e.g. a self-hosted vLLM server); every
-    other model goes to OpenRouter as before.
+    model identifier. Models registered in LOCAL_MODELS or custom providers
+    are routed to their own OpenAI-compatible endpoint (e.g. self-hosted vLLM or Ollama);
+    every other model goes to OpenRouter as before.
     Supports model@skill_id syntax by stripping the skill persona suffix.
 
     Returns:
@@ -20,13 +20,30 @@ def _resolve_endpoint(model: str):
     """
     base_model = model.split("@")[0] if "@" in model else model
 
+    # 1. Built-in local models (vLLM, shims)
     local = LOCAL_MODELS.get(base_model)
     if local:
         headers = {"Content-Type": "application/json"}
-        if local["api_key"]:
+        if local.get("api_key") and local["api_key"] != "not-needed":
             headers["Authorization"] = f"Bearer {local['api_key']}"
         return local["base_url"], headers, local["model_id"]
 
+    # 2. Dynamic custom providers saved via UI
+    try:
+        from . import providers
+        custom = providers.get_provider_by_id(base_model)
+        if custom:
+            base = custom.get("base_url", "").rstrip("/")
+            endpoint = base if base.endswith("/chat/completions") else f"{base}/chat/completions"
+            headers = {"Content-Type": "application/json"}
+            api_key = custom.get("api_key", "").strip()
+            if api_key and api_key != "not-needed":
+                headers["Authorization"] = f"Bearer {api_key}"
+            return endpoint, headers, custom.get("model_id", base_model)
+    except Exception as e:
+        print(f"[openrouter] Error resolving custom provider {base_model}: {e}")
+
+    # 3. Default to OpenRouter
     headers = {
         "Content-Type": "application/json",
     }

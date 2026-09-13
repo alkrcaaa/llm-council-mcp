@@ -100,9 +100,9 @@ export const api = {
     const validCouncilId = typeof councilId === 'string' && councilId.trim() ? councilId.trim() : null;
     const response = await fetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
-      headers: {
+      headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify(validCouncilId ? { council_id: validCouncilId } : {}),
     });
     if (!response.ok) {
@@ -140,6 +140,7 @@ export const api = {
   async activateCouncil(councilId) {
     const response = await fetch(`${API_BASE}/api/councils/${encodeURIComponent(councilId)}/activate`, {
       method: 'POST',
+      headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
       throw new Error('Failed to activate council');
@@ -153,9 +154,9 @@ export const api = {
   async createCouncil(councilData) {
     const response = await fetch(`${API_BASE}/api/councils`, {
       method: 'POST',
-      headers: {
+      headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify(councilData),
     });
     if (!response.ok) {
@@ -171,9 +172,9 @@ export const api = {
   async updateCouncil(councilId, updates) {
     const response = await fetch(`${API_BASE}/api/councils/${encodeURIComponent(councilId)}`, {
       method: 'PUT',
-      headers: {
+      headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify(updates),
     });
     if (!response.ok) {
@@ -189,6 +190,7 @@ export const api = {
   async deleteCouncil(councilId) {
     const response = await fetch(`${API_BASE}/api/councils/${encodeURIComponent(councilId)}`, {
       method: 'DELETE',
+      headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
       const err = await response.json().catch(() => ({ detail: 'Failed to delete council' }));
@@ -203,9 +205,9 @@ export const api = {
   async updateConversationCouncil(conversationId, councilId) {
     const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/council`, {
       method: 'PUT',
-      headers: {
+      headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({ council_id: councilId }),
     });
     if (!response.ok) {
@@ -236,6 +238,7 @@ export const api = {
       `${API_BASE}/api/conversations/${conversationId}`,
       {
         method: 'DELETE',
+        headers: this.getAuthHeaders(),
       }
     );
     if (!response.ok) {
@@ -254,9 +257,9 @@ export const api = {
       `${API_BASE}/api/conversations/${conversationId}/tags`,
       {
         method: 'PUT',
-        headers: {
+        headers: this.getAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify({ tags }),
       }
     );
@@ -298,9 +301,9 @@ export const api = {
   async updateConfig(councilModels, chairmanModel) {
     const response = await fetch(`${API_BASE}/api/config`, {
       method: 'PUT',
-      headers: {
+      headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({
         council_models: councilModels,
         chairman_model: chairmanModel,
@@ -320,6 +323,7 @@ export const api = {
   async resetConfig() {
     const response = await fetch(`${API_BASE}/api/config/reset`, {
       method: 'POST',
+      headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
       throw new Error('Failed to reset config');
@@ -402,9 +406,9 @@ export const api = {
       `${API_BASE}/api/conversations/${conversationId}/message`,
       {
         method: 'POST',
-        headers: {
+        headers: this.getAuthHeaders({
           'Content-Type': 'application/json',
-        },
+        }),
         body: JSON.stringify(body),
       }
     );
@@ -885,6 +889,7 @@ export const api = {
   async abortDeliberation(conversationId) {
     const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/abort`, {
       method: 'POST',
+      headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
       throw new Error('Failed to abort deliberation');
@@ -899,6 +904,97 @@ export const api = {
     const response = await fetch(`${API_BASE}/api/conversations/active`);
     if (!response.ok) {
       throw new Error('Failed to fetch active deliberations');
+    }
+    return response.json();
+  },
+
+  /**
+   * List all registered custom LLM providers.
+   */
+  async getProviders() {
+    const response = await fetch(`${API_BASE}/api/providers`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch custom providers');
+    }
+    return response.json();
+  },
+
+  /**
+   * Create or update a custom LLM provider.
+   * @param {Object} providerData
+   */
+  async saveProvider(providerData) {
+    const response = await fetch(`${API_BASE}/api/providers`, {
+      method: 'POST',
+      headers: this.getAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify(providerData),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to save provider' }));
+      throw new Error(err.detail || 'Failed to save provider');
+    }
+    return response.json();
+  },
+
+  /**
+   * Delete a custom LLM provider by ID.
+   * @param {string} providerId
+   */
+  async deleteProvider(providerId) {
+    const response = await fetch(`${API_BASE}/api/providers/${encodeURIComponent(providerId)}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete provider');
+    }
+    return response.json();
+  },
+
+  /**
+   * Test connectivity to an OpenAI-compatible endpoint.
+   * @param {Object} data { base_url, model_id, api_key }
+   */
+  async testProvider(data) {
+    const response = await fetch(`${API_BASE}/api/providers/test`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Connection test failed' }));
+      throw new Error(err.error || 'Connection test failed');
+    }
+    return response.json();
+  },
+
+  /**
+   * Ping a single provider by ID (system or custom) to check live connectivity.
+   * @param {string} providerId
+   */
+  async pingProvider(providerId) {
+    const response = await fetch(`${API_BASE}/api/providers/ping/${encodeURIComponent(providerId)}`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to ping provider ${providerId}`);
+    }
+    return response.json();
+  },
+
+  /**
+   * Ping all system and custom providers concurrently.
+   */
+  async pingAllProviders() {
+    const response = await fetch(`${API_BASE}/api/providers/ping-all`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to ping providers');
     }
     return response.json();
   },

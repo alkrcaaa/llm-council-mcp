@@ -217,6 +217,24 @@ class AvailableModelsResponse(BaseModel):
     models: List[str]
 
 
+class ProviderRequest(BaseModel):
+    """Request to create or update a custom LLM provider."""
+    id: Optional[str] = None
+    name: str
+    provider_type: str = "local"  # "local" or "remote"
+    base_url: str
+    model_id: str
+    api_key: Optional[str] = ""
+    default_skill: Optional[str] = None
+
+
+class TestProviderRequest(BaseModel):
+    """Request to test connectivity to an OpenAI-compatible endpoint."""
+    base_url: str
+    model_id: str
+    api_key: Optional[str] = ""
+
+
 class ConversationMetadata(BaseModel):
     """Conversation metadata for list view."""
     id: str
@@ -488,8 +506,72 @@ async def reset_config():
 
 @app.get("/api/config/models", response_model=AvailableModelsResponse)
 async def get_available_models():
-    """Get list of suggested models for the dropdown."""
-    return {"models": config_api.AVAILABLE_MODELS}
+    """Get list of suggested models for the dropdown including custom providers."""
+    return {"models": config_api.get_all_available_models()}
+
+
+@app.get("/api/providers")
+async def get_providers():
+    """Get list of registered providers (both system from .env and custom from UI)."""
+    from backend import providers
+    system = providers.get_system_providers()
+    custom = providers.load_providers()
+    return {
+        "system_providers": system,
+        "custom_providers": custom,
+        "providers": system + custom,
+    }
+
+
+@app.post("/api/providers/ping-all")
+async def ping_all_providers_endpoint():
+    """Ping all system and custom providers concurrently."""
+    from backend import providers
+    results = await providers.ping_all_providers()
+    return {"status": "ok", "results": results}
+
+
+@app.post("/api/providers/ping/{provider_id:path}")
+async def ping_single_provider_endpoint(provider_id: str):
+    """Ping a single provider by ID (either system or custom)."""
+    from backend import providers
+    result = await providers.ping_provider(provider_id)
+    return result
+
+
+@app.post("/api/providers", dependencies=[Depends(require_auth)])
+async def create_or_update_provider(request: ProviderRequest):
+    """Register or update a custom OpenAI-compatible provider."""
+    from backend import providers
+    try:
+        saved = providers.add_or_update_provider(request.dict())
+        return {"status": "ok", "provider": saved}
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/providers/{provider_id:path}", dependencies=[Depends(require_auth)])
+async def delete_provider(provider_id: str):
+    """Delete a custom provider."""
+    from backend import providers
+    success = providers.delete_provider(provider_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    return {"status": "ok", "message": f"Provider '{provider_id}' deleted"}
+
+
+@app.post("/api/providers/test")
+async def test_provider(request: TestProviderRequest):
+    """Test connectivity to an OpenAI-compatible endpoint."""
+    from backend import providers
+    result = await providers.test_provider_connection(
+        base_url=request.base_url,
+        model_id=request.model_id,
+        api_key=request.api_key,
+    )
+    return result
 
 
 @app.get("/api/skills")

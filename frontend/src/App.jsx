@@ -6,7 +6,6 @@ import PerformanceDashboard from './components/PerformanceDashboard';
 import ProcessMonitor from './components/ProcessMonitor';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import LoginModal from './components/LoginModal';
-import SkillViewerModal from './components/SkillViewerModal';
 import SettingsModal from './components/SettingsModal';
 import { api } from './api';
 import './App.css';
@@ -29,8 +28,8 @@ function App() {
   const [allTags, setAllTags] = useState([]);
   const [selectedTag, setSelectedTag] = useState(null);
   const [showConfigPanel, setShowConfigPanel] = useState(false);
+  const [configPanelTab, setConfigPanelTab] = useState('seats');
   const [showDashboard, setShowDashboard] = useState(false);
-  const [showSkillModal, setShowSkillModal] = useState(false);
   const [selectedSkillIdForModal, setSelectedSkillIdForModal] = useState(null);
   const [conversationToDelete, setConversationToDelete] = useState(null);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
@@ -339,6 +338,10 @@ function App() {
       localStorage.setItem('currentConversationId', newConv.id);
     } catch (error) {
       console.error('Failed to create conversation:', error);
+      if (error.message?.includes('Authentication') || error.message?.includes('401')) {
+        api.clearToken();
+        setCurrentUser(null);
+      }
     }
   };
 
@@ -1743,7 +1746,11 @@ function App() {
               onClick={() => setShowSettings(true)}
               title="Open Deliberation & System Settings"
             >
-              ⚙️ Settings
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: '6px', verticalAlign: 'middle'}}>
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              <span>Settings</span>
               {systemPrompt && <span className="settings-active-indicator" title="System prompt active">●</span>}
               {useCot && <span className="settings-cot-indicator" title="Chain-of-Thought mode active">CoT</span>}
               {useMultiChairman && <span className="settings-multi-indicator" title="Multi-Chairman mode active">MC</span>}
@@ -1850,10 +1857,10 @@ function App() {
                     onChange={(e) => setSelectedWorkspace(e.target.value)}
                     title="Target local workspace project to evaluate against (auto-detected if blank)"
                   >
-                    <option value="">📁 Auto Workspace</option>
+                    <option value="">Auto Workspace</option>
                     {workspaces.map((ws) => (
                       <option key={ws.name} value={ws.name}>
-                        📁 {ws.name}
+                        {ws.name}
                       </option>
                     ))}
                   </select>
@@ -1887,8 +1894,11 @@ function App() {
               </button>
               <button
                 className={`config-models-btn ${showConfigPanel ? 'active' : ''}`}
-                onClick={() => setShowConfigPanel(true)}
-                title="Configure Council Roster & Chairman"
+                onClick={() => {
+                  setConfigPanelTab('seats');
+                  setShowConfigPanel(true);
+                }}
+                title="Configure Council Roster, Custom Providers & Skills"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="3"></circle>
@@ -1897,18 +1907,14 @@ function App() {
                 <span>Configure Models</span>
               </button>
 
-              <button
-                className={`skills-library-btn ${showSkillModal ? 'active' : ''}`}
-                onClick={() => setShowSkillModal(true)}
-                title="Inspect Domain Skills, Persona Checklists & Guidelines"
-              >
-                <span>📚 Skills</span>
-              </button>
-
               {currentUser && (
                 <div className="auth-user-badge">
                   <span className="auth-username" title={`Signed in as ${currentUser}`}>
-                    👤 {currentUser}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: '6px', verticalAlign: 'middle'}}>
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    {currentUser}
                   </span>
                   <button
                     type="button"
@@ -1937,23 +1943,20 @@ function App() {
           onTagsChange={handleTagsChange}
           onInspectSkill={(skillId) => {
             setSelectedSkillIdForModal(skillId);
-            setShowSkillModal(true);
+            setConfigPanelTab('skills');
+            setShowConfigPanel(true);
           }}
         />
       </div>
 
-      {/* Model Configuration Panel */}
+      {/* Model Studio, Custom Providers & Skills Hub */}
       {showConfigPanel && (
-        <>
-          <div
-            className="config-overlay"
-            onClick={() => setShowConfigPanel(false)}
-          />
-          <ConfigPanel
-            onClose={() => setShowConfigPanel(false)}
-            onCouncilsUpdated={loadCouncils}
-          />
-        </>
+        <ConfigPanel
+          onClose={() => setShowConfigPanel(false)}
+          onCouncilsUpdated={loadCouncils}
+          initialTab={configPanelTab}
+          initialSkillId={selectedSkillIdForModal}
+        />
       )}
 
       {/* Performance Dashboard */}
@@ -1983,19 +1986,7 @@ function App() {
         verbosity={processVerbosity}
         onVerbosityChange={handleVerbosityChange}
         isOpen={showProcessMonitor}
-        onToggle={() => setShowProcessMonitor(!showProcessMonitor)}
       />
-
-      {/* Domain Skills & Persona Inspector Modal */}
-      {showSkillModal && (
-        <SkillViewerModal
-          initialSkillId={selectedSkillIdForModal}
-          onClose={() => {
-            setShowSkillModal(false);
-            setSelectedSkillIdForModal(null);
-          }}
-        />
-      )}
 
       {/* Deliberation Settings Modal */}
       <SettingsModal

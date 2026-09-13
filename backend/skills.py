@@ -10,12 +10,14 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
 # Path where skills are mounted inside container or local host
-SKILLS_DIR = os.getenv("SKILLS_DIR", "/app/skills")
-if not os.path.exists(SKILLS_DIR):
-    # Fallback to host location if running outside container
-    fallback = os.path.expanduser("~/.gemini/config/skills")
-    if os.path.exists(fallback):
-        SKILLS_DIR = fallback
+if os.path.exists("/app/skills"):
+    SKILLS_DIR = "/app/skills"
+else:
+    SKILLS_DIR = os.getenv("SKILLS_DIR", os.path.expanduser("~/.gemini/config/skills"))
+    if not os.path.exists(SKILLS_DIR):
+        fallback = os.path.expanduser("~/.gemini/config/skills")
+        if os.path.exists(fallback):
+            SKILLS_DIR = fallback
 
 # Curated metadata & display titles for core dev-agent-kit skills
 SKILL_METADATA: Dict[str, Dict[str, str]] = {
@@ -229,7 +231,9 @@ def get_skill_details(skill_id: str) -> Optional[Dict[str, Any]]:
             "badge": badge,
             "description": meta.get("description", ""),
             "guidelines": guidelines,
+            "checklist": guidelines,
             "content": content,
+            "markdown": body,
         }
     except Exception:
         return None

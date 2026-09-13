@@ -8,16 +8,18 @@ council deliberations.
 import os
 import re
 import asyncio
-from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 import httpx
 
 # Workspace root path (inside container or host fallback)
-WORKSPACE_ROOT = os.getenv("WORKSPACE_DIR", "/app/workspace")
-if not os.path.exists(WORKSPACE_ROOT):
-    fallback = os.path.expanduser("~/workspace")
-    if os.path.exists(fallback):
-        WORKSPACE_ROOT = fallback
+if os.path.exists("/app/workspace"):
+    WORKSPACE_ROOT = "/app/workspace"
+else:
+    WORKSPACE_ROOT = os.getenv("WORKSPACE_DIR", os.path.expanduser("~/workspace"))
+    if not os.path.exists(WORKSPACE_ROOT):
+        fallback = os.path.expanduser("~/workspace")
+        if os.path.exists(fallback):
+            WORKSPACE_ROOT = fallback
 
 
 def discover_workspaces() -> List[Dict[str, Any]]:
@@ -138,13 +140,13 @@ def get_workspace_dossier(project_name: str, max_chars: int = 3500) -> Optional[
     if os.path.isfile(claude_md):
         try:
             with open(claude_md, "r", encoding="utf-8", errors="ignore") as f:
-                doc_content = f"--- [From CLAUDE.md] ---\n" + f.read()[:max_chars]
+                doc_content = "--- [From CLAUDE.md] ---\n" + f.read()[:max_chars]
         except Exception:
             pass
     elif os.path.isfile(readme_md):
         try:
             with open(readme_md, "r", encoding="utf-8", errors="ignore") as f:
-                doc_content = f"--- [From README.md] ---\n" + f.read()[:max_chars]
+                doc_content = "--- [From README.md] ---\n" + f.read()[:max_chars]
         except Exception:
             pass
 
