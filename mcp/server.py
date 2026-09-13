@@ -19,6 +19,11 @@ RECURSION_ENV_KEY = "LLM_COUNCIL_INVOCATION"
 def _get_mcp_auth_headers() -> Dict[str, str]:
     """Generate authenticated bearer token for local agent MCP calls."""
     try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(current_dir)
+        for p in (parent_dir, current_dir):
+            if p not in sys.path:
+                sys.path.insert(0, p)
         from backend.auth import create_token
         return {"Authorization": f"Bearer {create_token('mcp-agent')}"}
     except Exception:
