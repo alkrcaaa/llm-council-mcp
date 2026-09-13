@@ -39,6 +39,13 @@ function formatModelDisplay(model, skillsList = []) {
   );
 }
 
+const getLatencyClass = (latencyMs) => {
+  if (latencyMs == null) return '';
+  if (latencyMs < 100) return 'status-latency-fast';
+  if (latencyMs <= 350) return 'status-latency-medium';
+  return 'status-latency-slow';
+};
+
 /**
  * ConfigPanel - Comprehensive Model Studio, Custom Providers Hub & Skills Library
  */
@@ -961,6 +968,7 @@ export default function ConfigPanel({
                           <input
                             id="provider-key"
                             type="password"
+                            autoComplete="new-password"
                             placeholder="sk-... or leave empty for Ollama"
                             value={providerApiKey}
                             onChange={(e) => setProviderApiKey(e.target.value)}
@@ -1063,7 +1071,7 @@ export default function ConfigPanel({
                                   <span className="status-badge status-checking">CHECKING...</span>
                                 ) : status ? (
                                   status.online ? (
-                                    <span className="status-badge status-online" title={status.message || 'Endpoint reachable'}>
+                                    <span className={`status-badge status-online ${getLatencyClass(status.latency_ms)}`} title={status.message || 'Endpoint reachable'}>
                                       ● ONLINE {status.latency_ms ? `(${status.latency_ms}ms)` : ''}
                                     </span>
                                   ) : (
@@ -1167,7 +1175,7 @@ export default function ConfigPanel({
                                     <span className="status-badge status-checking">CHECKING...</span>
                                   ) : status ? (
                                     status.online ? (
-                                      <span className="status-badge status-online" title={status.message || 'Endpoint reachable'}>
+                                      <span className={`status-badge status-online ${getLatencyClass(status.latency_ms)}`} title={status.message || 'Endpoint reachable'}>
                                         ● ONLINE {status.latency_ms ? `(${status.latency_ms}ms)` : ''}
                                       </span>
                                     ) : (

@@ -34,3 +34,7 @@ SESSION_HANDOFF.md
 
 ##SS
 .ignore/
+
+# Local test/audit artifacts (may contain secrets from live env)
+test-results/
+test-results-v2/

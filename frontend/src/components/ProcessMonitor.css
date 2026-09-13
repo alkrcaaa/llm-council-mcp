@@ -250,6 +250,31 @@
   box-shadow: 0 0 8px var(--accent-brass-glow);
 }
 
+.verbosity-description-box {
+  margin-top: 8px;
+  padding: 6px 9px;
+  background: rgba(229, 169, 60, 0.08);
+  border: 1px solid rgba(229, 169, 60, 0.22);
+  border-radius: 6px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.verbosity-description-box .desc-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.verbosity-description-box .desc-text {
+  flex: 1;
+}
+
+
 /* Event List */
 .event-list {
   flex: 1;

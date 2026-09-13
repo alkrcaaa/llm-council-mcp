@@ -952,6 +952,24 @@
   border: 1px solid rgba(46, 160, 67, 0.4);
 }
 
+.status-online.status-latency-fast {
+  background: rgba(46, 160, 67, 0.18);
+  color: #3fb950;
+  border-color: rgba(46, 160, 67, 0.45);
+}
+
+.status-online.status-latency-medium {
+  background: rgba(210, 153, 34, 0.18);
+  color: #e3b341;
+  border-color: rgba(210, 153, 34, 0.45);
+}
+
+.status-online.status-latency-slow {
+  background: rgba(240, 136, 62, 0.18);
+  color: #f0883e;
+  border-color: rgba(240, 136, 62, 0.45);
+}
+
 .status-offline {
   background: rgba(248, 81, 73, 0.15);
   color: #f85149;

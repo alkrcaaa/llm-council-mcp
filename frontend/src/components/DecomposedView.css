@@ -175,13 +175,20 @@
 }
 
 .toggle-icon {
-  font-size: 12px;
+  display: inline-block;
+  font-size: 11px;
   color: #0e7490;
-  transition: transform 0.2s;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center center;
 }
 
 .toggle-icon.expanded {
-  transform: rotate(180deg);
+  transform: rotate(0deg);
+}
+
+.toggle-icon.collapsed,
+.toggle-icon:not(.expanded) {
+  transform: rotate(-90deg);
 }
 
 .section-content {

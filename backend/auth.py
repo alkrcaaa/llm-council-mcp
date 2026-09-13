@@ -59,6 +59,52 @@ def create_token(username: str) -> str:
     return f"{encoded_header}.{encoded_payload}.{encoded_sig}"
 
 
+AUTH_CONFIG_FILE = os.getenv("AUTH_CONFIG_FILE", os.path.join(os.getenv("DATA_DIR", "data"), "auth_config.json"))
+
+
+def _load_auth_config() -> Optional[Dict[str, Any]]:
+    """Load persistent credentials config if present."""
+    if os.path.exists(AUTH_CONFIG_FILE):
+        try:
+            with open(AUTH_CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+    return None
+
+
+def _save_auth_config(data: Dict[str, Any]) -> bool:
+    """Save persistent credentials config atomically."""
+    try:
+        os.makedirs(os.path.dirname(AUTH_CONFIG_FILE), exist_ok=True)
+        temp_file = f"{AUTH_CONFIG_FILE}.tmp.{os.getpid()}"
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        os.replace(temp_file, AUTH_CONFIG_FILE)
+        return True
+    except Exception:
+        return False
+
+
+def hash_password(password: str, salt: Optional[bytes] = None) -> tuple[str, str]:
+    """Derive PBKDF2-HMAC-SHA256 key with 100k iterations."""
+    if salt is None:
+        salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100000)
+    return base64.b64encode(dk).decode("utf-8"), base64.b64encode(salt).decode("utf-8")
+
+
+def verify_password_hash(password: str, stored_hash: str, stored_salt: str) -> bool:
+    """Verify password against stored PBKDF2 hash using constant-time comparison."""
+    try:
+        salt = base64.b64decode(stored_salt.encode("utf-8"))
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100000)
+        calc_hash = base64.b64encode(dk).decode("utf-8")
+        return hmac.compare_digest(calc_hash, stored_hash)
+    except Exception:
+        return False
+
+
 def verify_token(token: str) -> Optional[Dict[str, Any]]:
     """Verify token signature and expiry with constant-time compare. Fail-closed on error."""
     if not token or not isinstance(token, str) or "." not in token:
@@ -92,9 +138,40 @@ def verify_credentials(username: str, password: str) -> bool:
     """Verify username and password with constant-time comparison against configured credentials."""
     if not username or not password:
         return False
+        
+    cfg = _load_auth_config()
+    if cfg and "password_hash" in cfg and "salt" in cfg:
+        stored_user = cfg.get("username", ADMIN_USERNAME)
+        user_ok = hmac.compare_digest(username.strip().encode("utf-8"), stored_user.encode("utf-8"))
+        pass_ok = verify_password_hash(password, cfg["password_hash"], cfg["salt"])
+        return user_ok and pass_ok
+
     user_ok = hmac.compare_digest(username.strip().encode("utf-8"), ADMIN_USERNAME.encode("utf-8"))
     pass_ok = hmac.compare_digest(password.encode("utf-8"), ADMIN_PASSWORD.encode("utf-8"))
     return user_ok and pass_ok
+
+
+def change_password(username: str, old_password: str, new_password: str) -> bool:
+    """Change user password after verifying existing credentials."""
+    if not verify_credentials(username, old_password):
+        return False
+    if len(new_password) < 6:
+        raise ValueError("Password must be at least 6 characters long")
+    p_hash, salt = hash_password(new_password)
+    return _save_auth_config({
+        "username": username.strip(),
+        "password_hash": p_hash,
+        "salt": salt,
+        "updated_at": int(time.time()),
+    })
+
+
+def is_default_password() -> bool:
+    """Check if the system is currently using uncustomized default password."""
+    cfg = _load_auth_config()
+    if cfg:
+        return False
+    return ADMIN_PASSWORD == "admin"
 
 
 def is_auth_required() -> bool:
@@ -110,4 +187,5 @@ def check_auth_header(authorization: Optional[str]) -> bool:
         return False
     token = authorization[7:].strip()
     return verify_token(token) is not None
+
 

@@ -117,6 +117,16 @@ export default function DebateView({
           <div
             className="round-header"
             onClick={() => toggleRound(1)}
+            role="button"
+            tabIndex={0}
+            aria-expanded={Boolean(expandedRounds[1])}
+            aria-controls="round-1-content"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleRound(1);
+              }
+            }}
           >
             <div className="round-info">
               <span className="round-number">Round 1</span>
@@ -128,7 +138,7 @@ export default function DebateView({
                 <span className="round-status complete">{positions.length} positions</span>
               )}
             </div>
-            <span className={`toggle-icon ${expandedRounds[1] ? 'expanded' : ''}`}>
+            <span className={`toggle-icon ${expandedRounds[1] ? 'expanded' : 'collapsed'}`}>
               &#9660;
             </span>
           </div>
@@ -166,6 +176,16 @@ export default function DebateView({
           <div
             className="round-header"
             onClick={() => toggleRound(2)}
+            role="button"
+            tabIndex={0}
+            aria-expanded={Boolean(expandedRounds[2])}
+            aria-controls="round-2-content"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleRound(2);
+              }
+            }}
           >
             <div className="round-info">
               <span className="round-number">Round 2</span>
@@ -177,7 +197,7 @@ export default function DebateView({
                 <span className="round-status complete">{critiques.length} critiques</span>
               )}
             </div>
-            <span className={`toggle-icon ${expandedRounds[2] ? 'expanded' : ''}`}>
+            <span className={`toggle-icon ${expandedRounds[2] ? 'expanded' : 'collapsed'}`}>
               &#9660;
             </span>
           </div>
@@ -223,6 +243,16 @@ export default function DebateView({
           <div
             className="round-header"
             onClick={() => toggleRound(3)}
+            role="button"
+            tabIndex={0}
+            aria-expanded={Boolean(expandedRounds[3])}
+            aria-controls="round-3-content"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleRound(3);
+              }
+            }}
           >
             <div className="round-info">
               <span className="round-number">Round 3</span>
@@ -234,7 +264,7 @@ export default function DebateView({
                 <span className="round-status complete">{rebuttals.length} rebuttals</span>
               )}
             </div>
-            <span className={`toggle-icon ${expandedRounds[3] ? 'expanded' : ''}`}>
+            <span className={`toggle-icon ${expandedRounds[3] ? 'expanded' : 'collapsed'}`}>
               &#9660;
             </span>
           </div>
@@ -273,6 +303,16 @@ export default function DebateView({
           <div
             className="round-header judgment-header"
             onClick={() => toggleRound('judgment')}
+            role="button"
+            tabIndex={0}
+            aria-expanded={Boolean(expandedRounds.judgment)}
+            aria-controls="judgment-content"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleRound('judgment');
+              }
+            }}
           >
             <div className="round-info">
               <span className="round-number">Final</span>
@@ -284,7 +324,7 @@ export default function DebateView({
                 <span className="round-status complete">Complete</span>
               )}
             </div>
-            <span className={`toggle-icon ${expandedRounds.judgment ? 'expanded' : ''}`}>
+            <span className={`toggle-icon ${expandedRounds.judgment ? 'expanded' : 'collapsed'}`}>
               &#9660;
             </span>
           </div>

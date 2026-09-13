@@ -59,13 +59,17 @@ export function exportToADR(conversation) {
  * @returns {Promise<boolean>} True if copy succeeded
  */
 export async function copyADRToClipboard(conversation) {
+  const adr = generateADR(conversation);
   try {
-    const adr = generateADR(conversation);
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(adr);
       return true;
     }
-    // Fallback for older environments
+  } catch (err) {
+    console.warn('navigator.clipboard.writeText failed, using execCommand fallback:', err);
+  }
+  // Fallback for headless browsers, automated test runners, or un-focused contexts
+  try {
     const textarea = document.createElement('textarea');
     textarea.value = adr;
     textarea.style.position = 'fixed';
@@ -75,8 +79,8 @@ export async function copyADRToClipboard(conversation) {
     const success = document.execCommand('copy');
     document.body.removeChild(textarea);
     return success;
-  } catch (err) {
-    console.error('Failed to copy ADR to clipboard:', err);
+  } catch (fallbackErr) {
+    console.error('Failed to copy ADR to clipboard:', fallbackErr);
     return false;
   }
 }

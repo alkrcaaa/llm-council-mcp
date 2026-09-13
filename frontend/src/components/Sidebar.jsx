@@ -101,9 +101,10 @@ export default function Sidebar({
                 conv.id === currentConversationId ? 'active' : ''
               }`}
               onClick={() => onSelectConversation(conv.id)}
+              title={conv.title || 'New Conversation'}
             >
               <div className="conversation-item-top">
-                <div className="conversation-title">
+                <div className="conversation-title" title={conv.title || 'New Conversation'}>
                   {conv.title || 'New Conversation'}
                 </div>
                 {onDeleteConversation && (

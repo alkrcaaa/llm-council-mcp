@@ -69,6 +69,40 @@ export const api = {
   },
 
   /**
+   * Get server authentication status and default password state.
+   */
+  async getAuthStatus() {
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/status`);
+      if (!response.ok) return { auth_enabled: true, is_default_password: false };
+      return await response.json();
+    } catch {
+      return { auth_enabled: true, is_default_password: false };
+    }
+  },
+
+  /**
+   * Change admin password.
+   */
+  async changePassword(oldPassword, newPassword) {
+    const response = await fetch(`${API_BASE}/api/auth/change-password`, {
+      method: 'POST',
+      headers: this.getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Şifre güncellenemedi' }));
+      throw new Error(err.detail || 'Şifre güncellenemedi');
+    }
+    const data = await response.json();
+    if (data.token) {
+      this.setToken(data.token);
+    }
+    return data;
+  },
+
+
+  /**
    * Logout user.
    */
   logout() {

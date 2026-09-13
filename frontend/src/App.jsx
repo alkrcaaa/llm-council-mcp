@@ -7,6 +7,7 @@ import ProcessMonitor from './components/ProcessMonitor';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import LoginModal from './components/LoginModal';
 import SettingsModal from './components/SettingsModal';
+import AccountModal from './components/AccountModal';
 import { api } from './api';
 import './App.css';
 
@@ -33,6 +34,8 @@ function App() {
   const [selectedSkillIdForModal, setSelectedSkillIdForModal] = useState(null);
   const [conversationToDelete, setConversationToDelete] = useState(null);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
+
 
   // Process Monitor state
   const [showProcessMonitor, setShowProcessMonitor] = useState(false);
@@ -124,10 +127,23 @@ function App() {
     loadWorkspaces();
   }, []);
 
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showCouncilDropdown) setShowCouncilDropdown(false);
+        if (showDashboard) setShowDashboard(false);
+        if (conversationToDelete && !isDeletingConversation) setConversationToDelete(null);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [showCouncilDropdown, showDashboard, conversationToDelete, isDeletingConversation]);
+
   const loadWorkspaces = async () => {
     try {
       const res = await api.getWorkspaces();
       setWorkspaces(res.workspaces || []);
+
     } catch (e) {
       console.warn('Failed to load workspaces:', e);
     }
@@ -325,6 +341,7 @@ function App() {
       setConversations((prev) => [
         {
           id: newConv.id,
+          title: newConv.title || 'New Conversation',
           created_at: newConv.created_at,
           tags: [],
           council_id: newConv.council_id,
@@ -347,12 +364,21 @@ function App() {
 
   const handleDeleteConversation = (conv, e) => {
     if (e) e.stopPropagation();
+    let target = conv;
     if (typeof conv === 'string') {
-      const found = conversations.find((c) => c.id === conv) || { id: conv };
-      setConversationToDelete(found);
-    } else {
-      setConversationToDelete(conv);
+      target = conversations.find((c) => c.id === conv) || { id: conv };
     }
+    if (currentConversation && currentConversation.id === target?.id) {
+      target = {
+        ...target,
+        title: currentConversation.title || target?.title || 'New Conversation',
+        message_count: currentConversation.messages?.length ?? target?.message_count ?? 0,
+      };
+    }
+    if (!target.title) {
+      target = { ...target, title: 'New Conversation' };
+    }
+    setConversationToDelete(target);
   };
 
   const handleConfirmDeleteConversation = async () => {
@@ -1706,6 +1732,8 @@ function App() {
         selectedWorkspace || null,
         useResearch
       );
+      // Refresh conversations list so title and message count are updated in sidebar and delete dialogs
+      loadConversations(selectedTag);
     } catch (error) {
       console.error('Failed to send message:', error);
       if (activeStreamRef.current) {
@@ -1870,14 +1898,14 @@ function App() {
               <button
                 className={`process-monitor-btn ${showProcessMonitor ? 'panel-open' : ''} ${processVerbosity > 0 ? 'active' : ''}`}
                 onClick={() => setShowProcessMonitor(!showProcessMonitor)}
-                title="Toggle Process Telemetry Panel"
+                title="Canlı Süreç Telemetrisi (Modellerin anlık düşünme ve aşama akış paneli)"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
                 </svg>
-                <span>Process</span>
+                <span>Telemetry</span>
                 {processVerbosity > 0 && (
-                  <span className="btn-badge">v{processVerbosity}</span>
+                  <span className="btn-badge">L{processVerbosity}</span>
                 )}
               </button>
               <button
@@ -1909,13 +1937,19 @@ function App() {
 
               {currentUser && (
                 <div className="auth-user-badge">
-                  <span className="auth-username" title={`Signed in as ${currentUser}`}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: '6px', verticalAlign: 'middle'}}>
+                  <button
+                    type="button"
+                    className="auth-username-btn"
+                    onClick={() => setShowAccountModal(true)}
+                    title={`Hesap ve Şifre Yönetimi (${currentUser})`}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: '4px', verticalAlign: 'middle'}}>
                       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                       <circle cx="12" cy="7" r="4"></circle>
                     </svg>
-                    {currentUser}
-                  </span>
+                    <span>{currentUser}</span>
+                    <span className="auth-btn-pill">Şifre Değiştir</span>
+                  </button>
                   <button
                     type="button"
                     className="auth-logout-btn"
@@ -1929,6 +1963,7 @@ function App() {
                   </button>
                 </div>
               )}
+
             </div>
           </div>
         </div>
@@ -1986,7 +2021,16 @@ function App() {
         verbosity={processVerbosity}
         onVerbosityChange={handleVerbosityChange}
         isOpen={showProcessMonitor}
+        onToggle={() => setShowProcessMonitor(!showProcessMonitor)}
       />
+
+      {/* Account / Password Modal */}
+      <AccountModal
+        isOpen={showAccountModal}
+        onClose={() => setShowAccountModal(false)}
+        currentUser={currentUser || 'admin'}
+      />
+
 
       {/* Deliberation Settings Modal */}
       <SettingsModal

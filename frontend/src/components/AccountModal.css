@@ -1,0 +1,201 @@
+.account-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background-color: rgba(1, 4, 9, 0.75);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.account-modal-card {
+  width: 100%;
+  max-width: 460px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(1, 4, 9, 0.7), 0 0 0 1px rgba(240, 246, 252, 0.05);
+  padding: 1.75rem 2rem;
+  color: #c9d1d9;
+  animation: scaleIn 0.15s ease-out;
+}
+
+.account-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #21262d;
+}
+
+.account-modal-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.account-icon {
+  font-size: 1.8rem;
+}
+
+.account-modal-header h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #f0f6fc;
+  margin: 0 0 0.2rem 0;
+}
+
+.account-subtitle {
+  font-size: 0.82rem;
+  color: #8b949e;
+  margin: 0;
+}
+
+.account-subtitle strong {
+  color: #58a6ff;
+}
+
+.account-close-btn {
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.account-close-btn:hover {
+  background: #21262d;
+  color: #f0f6fc;
+}
+
+.account-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  margin-bottom: 1.25rem;
+  line-height: 1.4;
+}
+
+.account-alert-error {
+  background: rgba(248, 81, 73, 0.12);
+  border: 1px solid rgba(248, 81, 73, 0.35);
+  color: #ff7b72;
+}
+
+.account-alert-success {
+  background: rgba(46, 160, 67, 0.15);
+  border: 1px solid rgba(46, 160, 67, 0.4);
+  color: #3fb950;
+}
+
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.account-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.account-form-group label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #8b949e;
+}
+
+.account-form-group input {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 0.65rem 0.85rem;
+  color: #f0f6fc;
+  font-size: 0.9rem;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.account-form-group input:focus {
+  outline: none;
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2);
+}
+
+.account-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.account-btn-cancel {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 0.6rem 1.1rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.account-btn-cancel:hover:not(:disabled) {
+  background: #30363d;
+  color: #f0f6fc;
+}
+
+.account-btn-submit {
+  background: #238636;
+  border: 1px solid rgba(240, 246, 252, 0.1);
+  color: #ffffff;
+  padding: 0.6rem 1.25rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.account-btn-submit:hover:not(:disabled) {
+  background: #2ea043;
+}
+
+.account-btn-submit:disabled,
+.account-btn-cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.account-modal-footer {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #21262d;
+  text-align: center;
+}
+
+.footer-hint {
+  font-size: 0.75rem;
+  color: #8b949e;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}

@@ -66,13 +66,11 @@ export default function DeleteConfirmModal({
           <div className="delete-target-preview">
             <span className="delete-target-glyph">◈</span>
             <span className="delete-target-title">
-              {conversation.title || 'Untitled Conversation'}
+              {conversation.title || 'New Conversation'}
             </span>
-            {conversation.message_count !== undefined && (
-              <span className="delete-target-meta">
-                {conversation.message_count} {conversation.message_count === 1 ? 'message' : 'messages'}
-              </span>
-            )}
+            <span className="delete-target-meta">
+              {(conversation.message_count ?? conversation.messages?.length ?? 0)} {(conversation.message_count ?? conversation.messages?.length ?? 0) === 1 ? 'message' : 'messages'}
+            </span>
           </div>
         </div>
 

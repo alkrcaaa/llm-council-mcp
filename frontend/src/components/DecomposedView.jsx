@@ -126,12 +126,21 @@ export default function DecomposedView({
           <div
             className="section-header"
             onClick={() => toggleSection('subQuestions')}
+            role="button"
+            tabIndex={0}
+            aria-expanded={Boolean(expandedSections.subQuestions)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleSection('subQuestions');
+              }
+            }}
           >
             <div className="section-info">
               <span className="section-number">1</span>
               <span className="section-name">Sub-Questions ({subQuestions.length})</span>
             </div>
-            <span className={`toggle-icon ${expandedSections.subQuestions ? 'expanded' : ''}`}>
+            <span className={`toggle-icon ${expandedSections.subQuestions ? 'expanded' : 'collapsed'}`}>
               &#9660;
             </span>
           </div>
@@ -171,12 +180,21 @@ export default function DecomposedView({
           <div
             className="section-header"
             onClick={() => toggleSection('subAnswers')}
+            role="button"
+            tabIndex={0}
+            aria-expanded={Boolean(expandedSections.subAnswers)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleSection('subAnswers');
+              }
+            }}
           >
             <div className="section-info">
               <span className="section-number">2</span>
               <span className="section-name">Sub-Answers ({subResults.length})</span>
             </div>
-            <span className={`toggle-icon ${expandedSections.subAnswers ? 'expanded' : ''}`}>
+            <span className={`toggle-icon ${expandedSections.subAnswers ? 'expanded' : 'collapsed'}`}>
               &#9660;
             </span>
           </div>
@@ -213,6 +231,15 @@ export default function DecomposedView({
           <div
             className="section-header merge-header"
             onClick={() => toggleSection('merge')}
+            role="button"
+            tabIndex={0}
+            aria-expanded={Boolean(expandedSections.merge)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleSection('merge');
+              }
+            }}
           >
             <div className="section-info">
               <span className="section-number merge">&#8721;</span>
@@ -223,7 +250,7 @@ export default function DecomposedView({
                 by {getModelShortName(chairmanModel)}
               </span>
             )}
-            <span className={`toggle-icon ${expandedSections.merge ? 'expanded' : ''}`}>
+            <span className={`toggle-icon ${expandedSections.merge ? 'expanded' : 'collapsed'}`}>
               &#9660;
             </span>
           </div>

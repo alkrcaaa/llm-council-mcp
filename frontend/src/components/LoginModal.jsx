@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './LoginModal.css';
 
 export default function LoginModal({ onLoginSuccess }) {
@@ -6,6 +6,13 @@ export default function LoginModal({ onLoginSuccess }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [authStatus, setAuthStatus] = useState(null);
+
+  useEffect(() => {
+    import('../api').then(({ api }) => {
+      api.getAuthStatus().then(setAuthStatus).catch(() => {});
+    });
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -77,10 +84,15 @@ export default function LoginModal({ onLoginSuccess }) {
           </button>
 
           <div className="login-footer-tip">
-            <span>Default credentials: <code>admin</code> / <code>admin</code></span>
+            {authStatus?.is_default_password ? (
+              <span>Default credentials: <code>admin</code> / <code>admin</code></span>
+            ) : (
+              <span>Sistem yöneticisinin belirlediği kimlik bilgileriyle giriş yapın.</span>
+            )}
           </div>
         </form>
       </div>
     </div>
   );
 }
+

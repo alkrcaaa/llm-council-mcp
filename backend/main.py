@@ -207,6 +207,13 @@ class LoginResponse(BaseModel):
     username: str
 
 
+class ChangePasswordRequest(BaseModel):
+    """Request to update user password."""
+    old_password: str
+    new_password: str
+
+
+
 class UpdateConfigRequest(BaseModel):
     """Request to update model configuration."""
     council_models: List[str]
@@ -295,6 +302,38 @@ async def verify_auth(authorization: Optional[str] = Header(None)):
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     return {"valid": True, "username": payload.get("sub", "admin")}
+
+
+@app.get("/api/auth/status")
+async def auth_status():
+    """Return auth status and whether default credentials are in effect."""
+    return {
+        "auth_enabled": auth.is_auth_required(),
+        "is_default_password": auth.is_default_password(),
+        "admin_username": auth.ADMIN_USERNAME,
+    }
+
+
+@app.post("/api/auth/change-password", dependencies=[Depends(require_auth)])
+async def change_password(
+    request: ChangePasswordRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """Change admin password securely."""
+    token = authorization[7:].strip() if authorization and authorization.startswith("Bearer ") else ""
+    payload = auth.verify_token(token)
+    username = payload.get("sub", auth.ADMIN_USERNAME) if payload else auth.ADMIN_USERNAME
+
+    try:
+        success = auth.change_password(username, request.old_password, request.new_password)
+        if not success:
+            raise HTTPException(status_code=400, detail="Mevcut şifre hatalı")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    new_token = auth.create_token(username)
+    return {"status": "ok", "message": "Şifre başarıyla güncellendi", "token": new_token}
+
 
 
 

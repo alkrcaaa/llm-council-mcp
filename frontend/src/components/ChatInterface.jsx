@@ -26,8 +26,39 @@ export default function ChatInterface({
   const [copiedADR, setCopiedADR] = useState(false);
   const [expandedResearch, setExpandedResearch] = useState({});
   const messagesEndRef = useRef(null);
+  const tagEditorRef = useRef(null);
+  const tagButtonRef = useRef(null);
 
   const activeDeliberating = Boolean(isLoading || isDeliberating || conversation?.status === 'deliberating');
+
+  // Close Tag Editor on click outside or Escape key
+  useEffect(() => {
+    if (!showTagEditor) return;
+
+    const handleClickOutside = (e) => {
+      if (
+        tagEditorRef.current &&
+        !tagEditorRef.current.contains(e.target) &&
+        tagButtonRef.current &&
+        !tagButtonRef.current.contains(e.target)
+      ) {
+        setShowTagEditor(false);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowTagEditor(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showTagEditor]);
 
   const handleCopyADR = async () => {
     if (!conversation) return;
@@ -125,9 +156,11 @@ export default function ChatInterface({
           </div>
           <div className="chat-header-actions">
             <button
+              ref={tagButtonRef}
               className={`action-btn ${showTagEditor ? 'active' : ''}`}
               onClick={() => setShowTagEditor(!showTagEditor)}
               title="Edit tags"
+              aria-expanded={showTagEditor}
             >
               Tags
             </button>
@@ -136,7 +169,7 @@ export default function ChatInterface({
               onClick={handleCopyADR}
               title="Copy decision as Architecture Decision Record (ADR) to clipboard"
             >
-              {copiedADR ? 'ADR Copied' : 'Copy ADR'}
+              {copiedADR ? '✓ Copied!' : 'Copy ADR'}
             </button>
             <button
               className="action-btn"
@@ -165,10 +198,11 @@ export default function ChatInterface({
 
       {/* Tag Editor */}
       {hasMessages && showTagEditor && (
-        <div className="tag-editor-container">
+        <div ref={tagEditorRef} className="tag-editor-container">
           <TagEditor
             tags={conversation.tags || []}
             onTagsChange={onTagsChange}
+            onClose={() => setShowTagEditor(false)}
           />
         </div>
       )}
@@ -208,7 +242,16 @@ export default function ChatInterface({
                 </div>
               </div>
             )}
+            {((activeCouncil?.council_models?.length ? activeCouncil.council_models : conversation?.council_models) || []).some(m => m.startsWith('local/')) && (
+              <div className="local-models-guidance-tip">
+                <span className="tip-icon">💡</span>
+                <span>
+                  Bu konsey <strong>yerel model</strong> içerir. Eğer yerel shims veya vLLM kapalıysa, üst menüdeki <strong>Council</strong> seçiciden doğrudan <strong>Cloud Deliberation</strong> konseyini seçerek sıfır kurulumla ücretsiz bulut modelleriyle müzakere başlatabilirsiniz.
+                </span>
+              </div>
+            )}
           </div>
+
         ) : (
           conversation.messages.map((msg, index) => (
             <div key={index} className="message-group">

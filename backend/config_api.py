@@ -15,63 +15,64 @@ CONFIG_FILE = "data/council_config.json"
 # Default configuration (used when no config file exists)
 DEFAULT_CONFIG = {
     "council_models": [
-        "openai/gpt-5.1",
-        "google/gemini-3-pro-preview",
-        "anthropic/claude-sonnet-4.5",
-        "x-ai/grok-4",
+        "openai/gpt-4o",
+        "anthropic/claude-3-5-sonnet",
+        "deepseek/deepseek-chat",
+        "google/gemini-2.0-flash-001",
         "local/qwen3.6-27b",
     ],
-    "chairman_model": "google/gemini-3-pro-preview",
+    "chairman_model": "anthropic/claude-3-5-sonnet",
     "multi_chairman_models": [
-        "google/gemini-2.5-flash",
-        "anthropic/claude-sonnet-4.5",
-        "openai/gpt-4.1",
+        "google/gemini-2.0-flash-001",
+        "anthropic/claude-3-5-sonnet",
+        "openai/gpt-4o",
     ],
     # Model pools for dynamic routing (optimized for each question type)
     "routing_pools": {
         "coding": [
-            "anthropic/claude-sonnet-4.5",
-            "openai/gpt-5.1",
+            "anthropic/claude-3-5-sonnet",
+            "openai/gpt-4o",
             "deepseek/deepseek-chat",
-            "openai/gpt-4.1",
+            "openai/gpt-4o-mini",
         ],
         "creative": [
-            "anthropic/claude-sonnet-4.5",
-            "google/gemini-3-pro-preview",
-            "openai/gpt-5.1",
-            "x-ai/grok-4",
+            "anthropic/claude-3-5-sonnet",
+            "google/gemini-2.0-flash-001",
+            "openai/gpt-4o",
+            "x-ai/grok-2-1212",
         ],
         "factual": [
-            "google/gemini-3-pro-preview",
-            "openai/gpt-5.1",
-            "anthropic/claude-sonnet-4.5",
-            "openai/gpt-4.1",
+            "google/gemini-2.0-flash-001",
+            "openai/gpt-4o",
+            "anthropic/claude-3-5-sonnet",
+            "openai/gpt-4o-mini",
         ],
         "analysis": [
-            "openai/gpt-5.1",
-            "anthropic/claude-sonnet-4.5",
-            "openai/o3",
-            "google/gemini-3-pro-preview",
+            "openai/gpt-4o",
+            "anthropic/claude-3-5-sonnet",
+            "deepseek/deepseek-r1",
+            "google/gemini-2.0-flash-001",
         ],
     },
     # Tier-based escalation configuration
     "tier1_models": [
-        "google/gemini-2.5-flash",
-        "openai/gpt-4.1-mini",
-        "anthropic/claude-haiku-3.5",
+        "google/gemini-2.0-flash-001",
+        "openai/gpt-4o-mini",
+        "anthropic/claude-3-5-haiku",
         "deepseek/deepseek-chat",
     ],
     "tier2_models": [
-        "anthropic/claude-sonnet-4.5",
-        "openai/gpt-5.1",
-        "google/gemini-3-pro-preview",
-        "openai/o3",
+        "anthropic/claude-3-5-sonnet",
+        "openai/gpt-4o",
+        "deepseek/deepseek-r1",
+        "google/gemini-2.0-flash-001",
     ],
     # Escalation thresholds
     "escalation_confidence_threshold": 6.0,
     "escalation_min_confidence_threshold": 4,
     "escalation_agreement_threshold": 0.5,
 }
+
 
 # Minimum number of council models required
 MIN_COUNCIL_MODELS = 2
@@ -311,20 +312,19 @@ AVAILABLE_MODELS = [
     "local/antigravity",
     "local/claude-code",
     # Frontier models (OpenRouter)
-    "openai/gpt-5.1",
-    "anthropic/claude-sonnet-4.5",
-    "google/gemini-3-pro-preview",
+    "openai/gpt-4o",
+    "openai/gpt-4o-mini",
+    "anthropic/claude-3-5-sonnet",
+    "anthropic/claude-3-5-haiku",
+    "deepseek/deepseek-chat",
     "deepseek/deepseek-r1",
-    "x-ai/grok-4",
-    "meta-llama/llama-4-maverick",
-    "openai/o3",
-    "openai/o4-mini",
-    "anthropic/claude-opus-4.5",
-    "anthropic/claude-haiku-3.5",
-    "google/gemini-2.5-flash",
-    "google/gemini-2.5-pro",
-    "mistralai/mistral-large",
+    "google/gemini-2.0-flash-001",
+    "google/gemini-2.0-pro-exp-02-05",
+    "meta-llama/llama-3.3-70b-instruct",
+    "x-ai/grok-2-1212",
+    "mistralai/mistral-large-2411",
 ]
+
 
 
 def get_all_available_models() -> List[str]:

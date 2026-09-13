@@ -139,8 +139,10 @@
 
 .settings-tab-btn.active {
   color: #58a6ff;
-  border-bottom-color: #58a6ff;
-  background: rgba(88, 166, 255, 0.04);
+  font-weight: 700;
+  border-bottom: 3px solid #58a6ff;
+  background: rgba(88, 166, 255, 0.08);
+  box-shadow: inset 0 -2px 8px rgba(88, 166, 255, 0.15);
 }
 
 .tab-active-dot {

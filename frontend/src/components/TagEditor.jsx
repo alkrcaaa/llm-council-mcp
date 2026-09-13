@@ -12,7 +12,7 @@ const SUGGESTED_TAGS = [
   'learning',
 ];
 
-export default function TagEditor({ tags, onTagsChange }) {
+export default function TagEditor({ tags, onTagsChange, onClose }) {
   const [inputValue, setInputValue] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -33,6 +33,8 @@ export default function TagEditor({ tags, onTagsChange }) {
     if (e.key === 'Enter' && inputValue.trim()) {
       e.preventDefault();
       addTag(inputValue);
+    } else if (e.key === 'Escape') {
+      onClose?.();
     }
   };
 
