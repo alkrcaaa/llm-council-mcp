@@ -242,6 +242,16 @@ export default function ChatInterface({
                 </div>
               </div>
             )}
+            {(activeCouncil?.chairman_model || conversation?.chairman_model) && (
+              <div className="empty-council-roster empty-council-chairman">
+                <span className="empty-roster-label">CHAIRMAN</span>
+                <div className="empty-roster-list">
+                  <span className="empty-roster-seat chairman-seat">
+                    <span className="empty-seat-model">{activeCouncil?.chairman_model || conversation?.chairman_model}</span>
+                  </span>
+                </div>
+              </div>
+            )}
             {((activeCouncil?.council_models?.length ? activeCouncil.council_models : conversation?.council_models) || []).some(m => m.startsWith('local/')) && (
               <div className="local-models-guidance-tip">
                 <span className="tip-icon">💡</span>

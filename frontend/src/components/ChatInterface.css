@@ -257,6 +257,16 @@
   color: var(--text-primary);
 }
 
+.empty-council-chairman {
+  margin-top: 2px;
+}
+
+.empty-roster-seat.chairman-seat {
+  background: rgba(229, 169, 60, 0.1);
+  border-color: var(--border-active);
+  color: var(--accent-brass);
+}
+
 .empty-seat-skill {
   color: #58a6ff;
   font-weight: 600;
