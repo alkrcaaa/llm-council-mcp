@@ -25,11 +25,17 @@ function App() {
   const [systemPrompt, setSystemPrompt] = useState(
     () => localStorage.getItem('systemPrompt') || ''
   );
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(
+    () => sessionStorage.getItem('showSettings') === 'true'
+  );
   const [allTags, setAllTags] = useState([]);
   const [selectedTag, setSelectedTag] = useState(null);
-  const [showConfigPanel, setShowConfigPanel] = useState(false);
-  const [configPanelTab, setConfigPanelTab] = useState('seats');
+  const [showConfigPanel, setShowConfigPanel] = useState(
+    () => sessionStorage.getItem('showConfigPanel') === 'true'
+  );
+  const [configPanelTab, setConfigPanelTab] = useState(
+    () => sessionStorage.getItem('configPanelTab') || 'seats'
+  );
   const [showDashboard, setShowDashboard] = useState(false);
   const [selectedSkillIdForModal, setSelectedSkillIdForModal] = useState(null);
   const [conversationToDelete, setConversationToDelete] = useState(null);
@@ -126,6 +132,21 @@ function App() {
     loadCouncils();
     loadWorkspaces();
   }, []);
+
+  // Persist modal open/tab state for this tab session so a page refresh (F5)
+  // while inside Configure Models or Settings doesn't drop the user back to
+  // the empty landing state.
+  useEffect(() => {
+    sessionStorage.setItem('showConfigPanel', showConfigPanel.toString());
+  }, [showConfigPanel]);
+
+  useEffect(() => {
+    sessionStorage.setItem('showSettings', showSettings.toString());
+  }, [showSettings]);
+
+  useEffect(() => {
+    sessionStorage.setItem('configPanelTab', configPanelTab);
+  }, [configPanelTab]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
