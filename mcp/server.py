@@ -49,7 +49,7 @@ def format_adr_payload(stage3_data: Dict[str, Any], metadata: Dict[str, Any]) ->
         )
 
     # 1. Clean lines and extract title/verdict
-    raw_lines = [l.strip() for l in response_text.splitlines() if l.strip()]
+    raw_lines = [ln.strip() for ln in response_text.splitlines() if ln.strip()]
     verdict = raw_lines[0].lstrip("#").replace("Council Verdict:", "").replace("Verdict:", "").strip()[:120]
 
     # 2. Extract confidence & model rankings
@@ -62,8 +62,8 @@ def format_adr_payload(stage3_data: Dict[str, Any], metadata: Dict[str, Any]) ->
 
     # 3. Section based extraction for recommendation and dissenting risk
     sections = re.split(r"\n(?=#{1,4}\s|\*\*[^*]+\*\*)", response_text)
-    sec0_lines = [l.strip() for l in sections[0].splitlines() if l.strip()]
-    intro_summary = " ".join([l for l in sec0_lines[1:] if not l.startswith("#")]) if len(sec0_lines) > 1 else ""
+    sec0_lines = [ln.strip() for ln in sections[0].splitlines() if ln.strip()]
+    intro_summary = " ".join([ln for ln in sec0_lines[1:] if not ln.startswith("#")]) if len(sec0_lines) > 1 else ""
 
     rec_candidates = []
     risk_candidates = []
@@ -211,7 +211,7 @@ async def ask_council(
 
     os.environ[RECURSION_ENV_KEY] = "1"
     try:
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        async with httpx.AsyncClient(timeout=420.0) as client:
             # Create a dedicated conversation for this deliberation
             conv_resp = await client.post(
                 f"{COUNCIL_API_BASE}/api/conversations",
@@ -274,7 +274,7 @@ async def ask_council(
 
     except httpx.TimeoutException:
         return (
-            "## Verdict: Council Deliberation Timed Out (>300s)\n"
+            "## Verdict: Council Deliberation Timed Out (>420s)\n"
             "**Confidence:** Aborted\n"
             "**Recommendation:** Models took too long to reach consensus; fall back to local direct analysis.\n"
             "**Dissenting risk:** Latency ceiling exceeded."
