@@ -501,6 +501,7 @@ export const api = {
   async clearAnalytics() {
     const response = await fetch(`${API_BASE}/api/analytics`, {
       method: 'DELETE',
+      headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
       throw new Error('Failed to clear analytics');
@@ -561,6 +562,7 @@ export const api = {
   async classifyQuestion(query) {
     const response = await fetch(`${API_BASE}/api/routing/classify?query=${encodeURIComponent(query)}`, {
       method: 'POST',
+      headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
       throw new Error('Failed to classify question');
@@ -722,6 +724,7 @@ export const api = {
   async clearCache() {
     const response = await fetch(`${API_BASE}/api/cache`, {
       method: 'DELETE',
+      headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
       throw new Error('Failed to clear cache');
@@ -736,6 +739,7 @@ export const api = {
   async clearCacheStats() {
     const response = await fetch(`${API_BASE}/api/cache/stats`, {
       method: 'DELETE',
+      headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
       throw new Error('Failed to clear cache stats');
@@ -751,6 +755,7 @@ export const api = {
   async deleteCacheEntry(cacheId) {
     const response = await fetch(`${API_BASE}/api/cache/entries/${encodeURIComponent(cacheId)}`, {
       method: 'DELETE',
+      headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
       throw new Error('Failed to delete cache entry');
@@ -770,7 +775,7 @@ export const api = {
     if (systemPrompt) {
       url += `&system_prompt=${encodeURIComponent(systemPrompt)}`;
     }
-    const response = await fetch(url, { method: 'POST' });
+    const response = await fetch(url, { method: 'POST', headers: this.getAuthHeaders() });
     if (!response.ok) {
       throw new Error('Failed to search cache');
     }
@@ -854,14 +859,15 @@ export const api = {
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(body),
       }
     );
 
     if (!response.ok) {
+      if (response.status === 401) {
+        this.clearToken();
+      }
       throw new Error('Failed to send message');
     }
 
@@ -898,9 +904,7 @@ export const api = {
   async scoutCandidates(query, maxCandidates = 6, options = {}) {
     const response = await fetch(`${API_BASE}/api/research/scout`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: this.getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         query,
         max_candidates: maxCandidates,
@@ -994,9 +998,7 @@ export const api = {
   async testProvider(data) {
     const response = await fetch(`${API_BASE}/api/providers/test`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: this.getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
     });
     if (!response.ok) {
@@ -1013,6 +1015,7 @@ export const api = {
   async pingProvider(providerId) {
     const response = await fetch(`${API_BASE}/api/providers/ping/${encodeURIComponent(providerId)}`, {
       method: 'POST',
+      headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
       throw new Error(`Failed to ping provider ${providerId}`);
@@ -1026,6 +1029,7 @@ export const api = {
   async pingAllProviders() {
     const response = await fetch(`${API_BASE}/api/providers/ping-all`, {
       method: 'POST',
+      headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
       throw new Error('Failed to ping providers');
