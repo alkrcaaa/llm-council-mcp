@@ -21,6 +21,7 @@ function App() {
   const setCurrentConversation = _setCurrentConversation;
   const [loadingConversationId, setLoadingConversationId] = useState(null);
   const activeStreamRef = useRef({});
+  const skipNextLoadRef = useRef(null);
   const isLoading = !!loadingConversationId;
   const [systemPrompt, setSystemPrompt] = useState(
     () => localStorage.getItem('systemPrompt') || ''
@@ -229,9 +230,18 @@ function App() {
 
   // Load conversation details when selected
   useEffect(() => {
-    if (currentConversationId) {
-      loadConversation(currentConversationId);
+    if (!currentConversationId) return;
+    // handleNewConversation already has the freshly-created conversation
+    // object and sets it directly; refetching it here raced against the
+    // SSE stream that starts right after (landing-composer flow sends the
+    // first message immediately) — the GET could resolve with an empty
+    // messages: [] and stomp the in-progress assistant placeholder,
+    // crashing the next stage event's mutation on messages[length-1].
+    if (skipNextLoadRef.current === currentConversationId) {
+      skipNextLoadRef.current = null;
+      return;
     }
+    loadConversation(currentConversationId);
   }, [currentConversationId]);
 
   // Check auth session on startup
@@ -371,6 +381,7 @@ function App() {
         },
         ...prev,
       ]);
+      skipNextLoadRef.current = newConv.id;
       setCurrentConversationId(newConv.id);
       setCurrentConversation(newConv);
       localStorage.setItem('currentConversationId', newConv.id);
