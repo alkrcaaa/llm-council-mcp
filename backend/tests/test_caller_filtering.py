@@ -34,6 +34,86 @@ def test_get_caller_model_id_antigravity():
         assert get_caller_model_id() == "local/antigravity"
 
 
+def test_get_caller_model_id_real_claude_code_env():
+    # What Claude Code actually exports to MCP children (captured from /proc/<pid>/environ);
+    # neither CLAUDE_CODE nor CLAUDE_PROJECT_DIR is present, and argv[0] is the server path.
+    env = {"AI_AGENT": "claude-code_2-1-270_agent", "CLAUDECODE": "1", "CLAUDE_CODE_ENTRYPOINT": "cli"}
+    with patch.dict(os.environ, env, clear=True):
+        with patch("sys.argv", ["/opt/llm-council-mcp/mcp/server.py"]):
+            assert get_caller_model_id() == "local/claude-code"
+
+
+def test_get_caller_model_id_ai_agent_beats_leaked_parent_vars():
+    # agy started from a Claude Code shell inherits CLAUDECODE but sets its own AI_AGENT.
+    env = {"AI_AGENT": "antigravity", "CLAUDECODE": "1"}
+    with patch.dict(os.environ, env, clear=True):
+        with patch("sys.argv", ["mcp-server"]):
+            assert get_caller_model_id() == "local/antigravity"
+
+
+@pytest.mark.asyncio
+async def test_ask_council_does_not_set_recursion_guard_in_caller_process():
+    # Setting the guard in the long-lived MCP process blocked concurrent calls as "recursive".
+    from unittest.mock import AsyncMock, MagicMock
+    seen = []
+
+    async def fake_post(*args, **kwargs):
+        seen.append(os.environ.get(_mcp_server.RECURSION_ENV_KEY))
+        resp = MagicMock()
+        resp.status_code = 503
+        resp.text = "down"
+        return resp
+
+    with patch.dict(os.environ, {"AI_AGENT": "claude-code_x_agent"}, clear=True):
+        with patch("httpx.AsyncClient.post", new=AsyncMock(side_effect=fake_post)):
+            await _mcp_server.ask_council(question="q", type1_rationale="irreversible schema migration")
+    assert seen == [None]
+
+
+@pytest.mark.asyncio
+async def test_ask_council_blocked_inside_council_seat():
+    with patch.dict(os.environ, {_mcp_server.RECURSION_ENV_KEY: "1"}, clear=True):
+        verdict = await _mcp_server.ask_council(question="q", type1_rationale="irreversible schema migration")
+    assert "Recursive Council Call Blocked" in verdict
+
+
+def test_pick_chairman_never_a_panelist():
+    board = councils.get_council_by_id("cognitive-strategy")
+    for caller in ("local/claude-code", "local/antigravity", None):
+        panel = filter_panelists_for_caller(board["council_models"], caller)
+        chairman = _mcp_server.pick_chairman(board["chairman_model"], panel, caller)
+        assert chairman not in {m.split("@")[0] for m in panel}, (caller, chairman)
+    # Claude calling cognitive-strategy used to get Antigravity, its red-team panelist, as chair.
+    panel = filter_panelists_for_caller(board["council_models"], "local/claude-code")
+    assert _mcp_server.pick_chairman("local/claude-code", panel, "local/claude-code") == "local/claude-code"
+    panel = filter_panelists_for_caller(board["council_models"], "local/antigravity")
+    assert _mcp_server.pick_chairman("local/claude-code", panel, "local/antigravity") == "local/claude-code"
+
+
+def test_pick_chairman_prefers_peer_over_caller_when_free():
+    panel = ["local/qwen3.6-27b@first-principles", "poolside/laguna-s-2.1:free@static-analysis"]
+    assert _mcp_server.pick_chairman("local/claude-code", panel, "local/claude-code") == "local/antigravity"
+
+
+def test_cognitive_strategy_keeps_an_adversary_for_every_caller():
+    board = councils.get_council_by_id("cognitive-strategy")
+    for caller in ("local/claude-code", "local/antigravity"):
+        panel = filter_panelists_for_caller(board["council_models"], caller)
+        assert any(m.endswith("@red-team-reasoning") for m in panel), caller
+        assert len(panel) >= 3
+
+
+def test_jwt_secret_loaded_from_repo_env_file(tmp_path):
+    (tmp_path / ".env").write_text("OTHER=x\nJWT_SECRET='from-file'\n")
+    with patch.dict(os.environ, {}, clear=True):
+        _mcp_server._load_jwt_secret_from_env_file(str(tmp_path))
+        assert os.environ["JWT_SECRET"] == "from-file"
+        assert "OTHER" not in os.environ
+    with patch.dict(os.environ, {"JWT_SECRET": "explicit"}, clear=True):
+        _mcp_server._load_jwt_secret_from_env_file(str(tmp_path))
+        assert os.environ["JWT_SECRET"] == "explicit"
+
+
 def test_get_caller_model_id_none():
     with patch.dict(os.environ, {}, clear=True):
         with patch("sys.argv", ["mcp-server"]):

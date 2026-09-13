@@ -16,6 +16,25 @@ COUNCIL_API_BASE = os.getenv("COUNCIL_API_BASE", "http://localhost:8001")
 RECURSION_ENV_KEY = "LLM_COUNCIL_INVOCATION"
 
 
+def _load_jwt_secret_from_env_file(repo_root: str) -> None:
+    """Share the backend's JWT_SECRET without a second copy in the host MCP config.
+
+    docker-compose feeds <repo>/.env to the backend; read the same file here.
+    backend.auth reads JWT_SECRET at import time, so this must run before that import.
+    """
+    if os.environ.get("JWT_SECRET"):
+        return
+    try:
+        with open(os.path.join(repo_root, ".env")) as f:
+            for line in f:
+                key, sep, value = line.strip().partition("=")
+                if sep and key.strip() == "JWT_SECRET":
+                    os.environ["JWT_SECRET"] = value.strip().strip("'\"")
+                    return
+    except OSError:
+        pass
+
+
 def _get_mcp_auth_headers() -> Dict[str, str]:
     """Generate authenticated bearer token for local agent MCP calls."""
     try:
@@ -24,6 +43,7 @@ def _get_mcp_auth_headers() -> Dict[str, str]:
         for p in (parent_dir, current_dir):
             if p not in sys.path:
                 sys.path.insert(0, p)
+        _load_jwt_secret_from_env_file(parent_dir)
         from backend.auth import create_token
         return {"Authorization": f"Bearer {create_token('mcp-agent')}"}
     except Exception:
@@ -142,15 +162,27 @@ def get_caller_model_id() -> Optional[str]:
         'local/antigravity' if invoked by Antigravity,
         None if unrecognized or generic caller.
     """
-    if os.getenv("CLAUDE_PROJECT_DIR") or os.getenv("CLAUDE_CODE") or "claude" in sys.argv[0].lower():
+    # AI_AGENT is set by the immediate host (Claude Code: "claude-code_<ver>_agent"),
+    # so it wins over host-specific vars a parent host may have leaked into the env.
+    ai_agent = os.getenv("AI_AGENT", "").lower()
+    if ai_agent.startswith("claude-code"):
         return "local/claude-code"
+    if ai_agent.startswith("antigravity"):
+        return "local/antigravity"
     if (
         os.getenv("ANTIGRAVITY_AGENT")
-        or os.getenv("AI_AGENT") == "antigravity"
         or os.getenv("ANTIGRAVITY_CONVERSATION_ID")
         or "antigravity" in sys.argv[0].lower()
     ):
         return "local/antigravity"
+    if (
+        os.getenv("CLAUDECODE")
+        or os.getenv("CLAUDE_CODE_ENTRYPOINT")
+        or os.getenv("CLAUDE_PROJECT_DIR")
+        or os.getenv("CLAUDE_CODE")
+        or "claude" in sys.argv[0].lower()
+    ):
+        return "local/claude-code"
     return None
 
 
@@ -171,6 +203,28 @@ def filter_panelists_for_caller(
     ]
 
 
+LOCAL_PEERS = ("local/claude-code", "local/antigravity")
+
+
+def pick_chairman(
+    board_chairman: Optional[str],
+    panel: List[str],
+    caller_model_id: Optional[str]
+) -> str:
+    """Choose a chairman that never also sits on the panel.
+
+    A panelist chairing would synthesize over its own Stage 1 answer. The caller's model
+    is only avoided when possible: a shim chairman is a fresh stateless CLI process that
+    never saw the caller's transcript, so it carries no bias from the caller's session.
+    """
+    panel_bases = {m.split("@")[0] for m in panel}
+    candidates = [c for c in (board_chairman, *LOCAL_PEERS) if c and c not in panel_bases]
+    for cand in candidates:
+        if cand != caller_model_id:
+            return cand
+    return candidates[0] if candidates else (board_chairman or LOCAL_PEERS[0])
+
+
 @mcp.tool()
 async def ask_council(
     question: str,
@@ -186,7 +240,7 @@ async def ask_council(
     Args:
         question: The architectural dilemma, library choice, or proposal to evaluate.
         type1_rationale: Explicit justification of why this decision is Type-1 (irreversible or high rollback cost). Required by council gating rules.
-        council_id: One of 'cognitive-strategy', 'code-craft', 'deep-tech', 'sec-ops', 'frontend-craft'.
+        council_id: Board id, e.g. 'cognitive-strategy' (default), 'code-craft', 'deep-tech', 'sec-ops', 'frontend-craft', 'tech-scout', 'cloud-deliberation'. Call list_councils for the live list.
         target_workspace: Optional project folder name (e.g. 'dev-agent-kit') for context extraction.
 
     Returns:
@@ -201,7 +255,9 @@ async def ask_council(
             "**Dissenting risk:** Routine decision offloading prevented."
         )
 
-    # 1. Recursion Guard: Prevent infinite loops if invoked inside a council seat
+    # 1. Recursion Guard: council shims export this into the seat CLI's env, which
+    # passes it on to any MCP server that CLI spawns. Only read it here — setting it
+    # in this long-lived process would block every concurrent ask_council call.
     if os.environ.get(RECURSION_ENV_KEY):
         return (
             "## Verdict: Recursive Council Call Blocked\n"
@@ -210,11 +266,9 @@ async def ask_council(
             "**Dissenting risk:** Infinite deadlock prevention."
         )
 
-    # 2. Identify caller and assign opposing peer as chairman
+    # 2. Identify caller; its own seat is stripped from the panel below
     caller_model_id = get_caller_model_id()
-    chairman_override = "local/antigravity" if caller_model_id == "local/claude-code" else "local/claude-code"
 
-    os.environ[RECURSION_ENV_KEY] = "1"
     try:
         async with httpx.AsyncClient(timeout=420.0) as client:
             # Create a dedicated conversation for this deliberation
@@ -223,6 +277,13 @@ async def ask_council(
                 json={"council_id": council_id},
                 headers=_get_mcp_auth_headers(),
             )
+            if conv_resp.status_code == 401:
+                return (
+                    "## Verdict: Council Auth Rejected\n"
+                    "**Confidence:** Error (401)\n"
+                    "**Recommendation:** Backend is up but rejected the MCP token — JWT_SECRET in this MCP server's env must match the backend's. Fall back to direct reasoning.\n"
+                    "**Dissenting risk:** Auth misconfiguration, not a backend outage."
+                )
             if conv_resp.status_code != 200:
                 return (
                     f"## Verdict: Failed to Initialize Council Session\n"
@@ -246,11 +307,15 @@ async def ask_council(
                     "**Dissenting risk:** Degenerate single-model deliberation prevented."
                 )
 
+            chairman_model = pick_chairman(
+                conv_data.get("chairman_model"), filtered_council_models, caller_model_id
+            )
+
             # Send deliberation request (synchronous 3-stage process with early consensus enabled)
             msg_payload = {
                 "content": f"{question}\n\nType-1 Context: {type1_rationale.strip()}",
                 "council_id": council_id,
-                "chairman_model": chairman_override,
+                "chairman_model": chairman_model,
                 "target_workspace": target_workspace,
                 "use_early_consensus": True,
             }
@@ -291,8 +356,6 @@ async def ask_council(
             f"**Recommendation:** Fall back to solo reasoning.\n"
             f"**Dissenting risk:** {str(e)[:150]}"
         )
-    finally:
-        os.environ.pop(RECURSION_ENV_KEY, None)
 
 
 @mcp.tool()
@@ -308,17 +371,10 @@ async def list_councils() -> str:
                 for c in councils:
                     lines.append(f"- **{c.get('id')}** ({c.get('icon', '')} {c.get('name')}): {c.get('description')}")
                 return "\n".join(lines)
-    except Exception:
-        pass
-    return (
-        "Available Councils:\n"
-        "- cognitive-strategy: High-stakes architectural & strategic decisions\n"
-        "- code-craft: Deep refactoring & surgical simplicity\n"
-        "- deep-tech: Technology, protocol & library evaluation\n"
-        "- sec-ops: Production security & SRE resilience\n"
-        "- frontend-craft: Design systems & UI flows\n"
-        "- tech-scout: Automated technology scouting, candidate evaluation & telemetry"
-    )
+            return f"Council backend error ({resp.status_code}) at {COUNCIL_API_BASE}/api/councils — board list unavailable."
+    except Exception as e:
+        return f"Council backend unreachable at {COUNCIL_API_BASE} ({type(e).__name__}) — board list unavailable; ask_council will fail too."
+
 
 
 @mcp.tool()

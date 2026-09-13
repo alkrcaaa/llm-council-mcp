@@ -18,12 +18,17 @@ BUILTIN_COUNCILS: List[Dict[str, Any]] = [
         "id": "cognitive-strategy",
         "name": "Cognitive Strategy Board",
         "icon": "🧠",
-        "description": "High-stakes architectural & strategic decisions: Antigravity Red Team, Qwen First Principles, Inkling Deep Research, Nemotron Ultra Simplicity + Claude Referee.",
+        "description": "High-stakes architectural & strategic decisions: Antigravity Red Team, Inkling Red Team, Qwen First Principles, Nemotron Ultra Deep Research + Claude Referee.",
+        # Two red-team seats from different families: the MCP strips the calling agent's
+        # own seat, so with a single local red team an Antigravity caller got no adversary.
+        # Simplicity is covered by first-principles (step 4 enforces karpathy-guidelines);
+        # karpathy-guidelines itself is code-diff discipline, off-domain for strategy.
+        # Deep research sits on the largest model: without tools it reasons from recall.
         "council_models": [
             "local/antigravity@red-team-reasoning",
+            "thinkingmachines/inkling:free@red-team-reasoning",
             "local/qwen3.6-27b@first-principles",
-            "thinkingmachines/inkling:free@deep-research",
-            "nvidia/nemotron-3-ultra-550b-a55b:free@karpathy-guidelines",
+            "nvidia/nemotron-3-ultra-550b-a55b:free@deep-research",
         ],
         "chairman_model": "local/claude-code",
         "is_builtin": True,
