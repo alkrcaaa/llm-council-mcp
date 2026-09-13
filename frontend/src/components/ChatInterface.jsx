@@ -736,16 +736,6 @@ export default function ChatInterface({
                 </span>
               </div>
             </div>
-            {onAbortDeliberation && (
-              <button
-                type="button"
-                className="deliberation-abort-btn"
-                onClick={() => onAbortDeliberation(conversation.id)}
-                title="Stop the running deliberation"
-              >
-                <span>Stop</span>
-              </button>
-            )}
           </div>
         )}
 

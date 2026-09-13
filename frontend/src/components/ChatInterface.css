@@ -519,21 +519,23 @@
 
 .input-inner {
   position: relative;
+  display: flex;
   flex: 1;
   min-width: 0;
 }
 
 .input-inner .message-input {
+  display: block;
   width: 100%;
   padding-right: 46px;
 }
 
 .input-icon-btn {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
-  width: 30px;
-  height: 30px;
+  right: 10px;
+  bottom: 10px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   border: none;
   display: flex;
@@ -562,12 +564,10 @@
 .input-icon-btn.stop {
   background: #ef4444;
   color: #ffffff;
-  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.15);
 }
 
 .input-icon-btn.stop:hover {
   background: #dc2626;
-  box-shadow: 0 0 0 5px rgba(239, 68, 68, 0.22);
 }
 
 .input-icon-btn.stop:active,
@@ -716,36 +716,6 @@
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 10.5px;
-}
-
-.deliberation-abort-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  background: rgba(239, 68, 68, 0.15);
-  color: #fca5a5;
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.18s ease;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.deliberation-abort-btn:hover {
-  background: #dc2626;
-  border-color: #ef4444;
-  color: #ffffff;
-  box-shadow: 0 2px 12px rgba(239, 68, 68, 0.4);
-  transform: translateY(-1px);
-}
-
-.deliberation-abort-btn:active {
-  transform: translateY(0);
 }
 
 /* ==========================================================================
