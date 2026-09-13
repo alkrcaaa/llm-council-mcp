@@ -1,0 +1,126 @@
+.live-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.feed-row {
+  display: flex;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  transition: background 0.1s ease;
+}
+
+.feed-row:hover {
+  background: var(--bg-surface-hover);
+}
+
+.feed-row.pinned {
+  margin-top: 8px;
+  background: var(--accent-subtle);
+  border: 1px solid var(--border-active);
+  padding: 12px 14px;
+}
+
+.feed-avatar {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--avatar-color) 18%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--avatar-color) 45%, transparent);
+  color: var(--avatar-color);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.feed-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.feed-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.feed-username {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.feed-role-tag {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+}
+
+.feed-role-tag.evaluating {
+  color: var(--status-model);
+  border-color: color-mix(in srgb, var(--status-model) 40%, transparent);
+}
+
+.feed-role-tag.chairman {
+  color: var(--accent-primary);
+  border-color: var(--border-active);
+  background: var(--accent-subtle);
+}
+
+.feed-streaming-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  box-shadow: 0 0 6px var(--accent-glow);
+  animation: feed-pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes feed-pulse {
+  0%, 100% { transform: scale(0.85); opacity: 0.6; }
+  50% { transform: scale(1.25); opacity: 1; }
+}
+
+.feed-content {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 0;
+}
+
+.feed-content p:first-child {
+  margin-top: 0;
+}
+
+.feed-content p:last-child {
+  margin-bottom: 0;
+}
+
+.feed-mention {
+  display: inline;
+  color: var(--mention-color);
+  background: color-mix(in srgb, var(--mention-color) 16%, transparent);
+  border-radius: 3px;
+  padding: 0 3px;
+  font-weight: 600;
+  cursor: default;
+}
+
+.feed-row.pinned .feed-content {
+  color: var(--text-primary);
+}

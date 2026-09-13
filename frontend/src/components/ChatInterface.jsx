@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
+import LiveFeed from './LiveFeed';
 import DebateView from './DebateView';
 import TagEditor from './TagEditor';
 import CostDisplay from './CostDisplay';
@@ -25,11 +26,22 @@ export default function ChatInterface({
   const [elapsedSeconds, setElapsedSeconds] = useState('0.0');
   const [copiedADR, setCopiedADR] = useState(false);
   const [expandedResearch, setExpandedResearch] = useState({});
+  const [feedView, setFeedView] = useState(
+    () => localStorage.getItem('feedView') !== 'false'
+  );
   const messagesEndRef = useRef(null);
   const tagEditorRef = useRef(null);
   const tagButtonRef = useRef(null);
 
   const activeDeliberating = Boolean(isLoading || isDeliberating || conversation?.status === 'deliberating');
+
+  const toggleFeedView = () => {
+    setFeedView((prev) => {
+      const next = !prev;
+      localStorage.setItem('feedView', next.toString());
+      return next;
+    });
+  };
 
   // Close Tag Editor on click outside or Escape key
   useEffect(() => {
@@ -469,36 +481,15 @@ export default function ChatInterface({
                           <span>Running Stage 1: Collecting individual responses...</span>
                         </div>
                       )}
-                      {(msg.stage1 || msg.stage1Streaming) && (
-                        <Stage1
-                          responses={msg.stage1 || []}
-                          aggregateConfidence={msg.metadata?.aggregate_confidence}
-                          streamingResponses={msg.stage1Streaming}
-                          streamingReasoning={msg.stage1ReasoningStreaming}
-                          isStreaming={msg.loading?.stage1}
-                          routingInfo={msg.routingInfo}
-                          escalationInfo={msg.escalationInfo}
-                        />
-                      )}
-
-                      {/* Stage 2 */}
+                      {/* Stage 2 loading (feed view merges 1/2/3 into one log, but loading banners stay) */}
                       {msg.loading?.stage2 && (
                         <div className="stage-loading">
                           <div className="spinner"></div>
                           <span>Running Stage 2: Peer rankings...</span>
                         </div>
                       )}
-                      {msg.stage2 && (
-                        <Stage2
-                          rankings={msg.stage2}
-                          labelToModel={msg.metadata?.label_to_model}
-                          aggregateRankings={msg.metadata?.aggregate_rankings}
-                          useWeightedConsensus={msg.metadata?.use_weighted_consensus}
-                          weightsInfo={msg.metadata?.weights_info}
-                        />
-                      )}
 
-                      {/* Stage 3 */}
+                      {/* Stage 3 loading */}
                       {msg.loading?.stage3 && !msg.stage3Streaming && !msg.multiSyntheses?.length && !msg.isConsensus && !msg.isRefining && (
                         <div className="stage-loading">
                           <div className="spinner"></div>
@@ -511,40 +502,77 @@ export default function ChatInterface({
                           <span>Starting iterative refinement...</span>
                         </div>
                       )}
-                      {(msg.stage3 || msg.stage3Streaming || msg.multiSyntheses?.length > 0 || msg.isConsensus || msg.isRefining || msg.refinementIterations?.length > 0 || msg.isDecomposing || msg.decompositionComplete || msg.subQuestions?.length > 0) && (
-                        <Stage3
-                          finalResponse={msg.stage3}
-                          streamingResponse={msg.stage3Streaming}
-                          streamingModel={msg.stage3StreamingModel}
-                          isStreaming={msg.loading?.stage3 && !msg.useMultiChairman}
-                          useMultiChairman={msg.useMultiChairman}
-                          multiSyntheses={msg.multiSyntheses}
-                          selectionStreaming={msg.selectionStreaming}
-                          isSelecting={msg.isSelecting}
-                          isConsensus={msg.isConsensus}
-                          consensusInfo={msg.consensusInfo}
-                          useRefinement={msg.useRefinement}
-                          refinementIterations={msg.refinementIterations}
-                          isRefining={msg.isRefining}
-                          currentRefinementIteration={msg.currentRefinementIteration}
-                          refinementCritiques={msg.refinementCritiques}
-                          refinementStreaming={msg.refinementStreaming}
-                          refinementMaxIterations={msg.refinementMaxIterations}
-                          refinementConverged={msg.refinementConverged}
-                          useDecomposition={msg.useDecomposition}
-                          subQuestions={msg.subQuestions}
-                          subResults={msg.subResults}
-                          isDecomposing={msg.isDecomposing}
-                          currentSubQuestion={msg.currentSubQuestion}
-                          totalSubQuestions={msg.totalSubQuestions}
-                          mergeStreaming={msg.mergeStreaming}
-                          isMerging={msg.isMerging}
-                          decompositionFinalResponse={msg.decompositionFinalResponse}
-                          chairmanModel={msg.chairmanModel}
-                          complexityInfo={msg.complexityInfo}
-                          decompositionSkipped={msg.decompositionSkipped}
-                          decompositionComplete={msg.decompositionComplete}
+
+                      {feedView && !(msg.useMultiChairman || msg.multiSyntheses?.length > 0 || msg.isConsensus ||
+                        msg.useRefinement || msg.refinementIterations?.length > 0 || msg.useAdversary || msg.adversaryCritique ||
+                        msg.useDecomposition || msg.isDecomposing || msg.decompositionComplete || msg.subQuestions?.length > 0) ? (
+                        <LiveFeed
+                          stage1={msg.stage1}
+                          streamingResponses={msg.stage1Streaming}
+                          stage2={msg.stage2}
+                          labelToModel={msg.metadata?.label_to_model}
+                          stage3={msg.stage3}
+                          stage3StreamingResponse={msg.stage3Streaming}
+                          stage3StreamingModel={msg.stage3StreamingModel}
                         />
+                      ) : (
+                        <>
+                          {(msg.stage1 || msg.stage1Streaming) && (
+                            <Stage1
+                              responses={msg.stage1 || []}
+                              aggregateConfidence={msg.metadata?.aggregate_confidence}
+                              streamingResponses={msg.stage1Streaming}
+                              streamingReasoning={msg.stage1ReasoningStreaming}
+                              isStreaming={msg.loading?.stage1}
+                              routingInfo={msg.routingInfo}
+                              escalationInfo={msg.escalationInfo}
+                            />
+                          )}
+                          {msg.stage2 && (
+                            <Stage2
+                              rankings={msg.stage2}
+                              labelToModel={msg.metadata?.label_to_model}
+                              aggregateRankings={msg.metadata?.aggregate_rankings}
+                              useWeightedConsensus={msg.metadata?.use_weighted_consensus}
+                              weightsInfo={msg.metadata?.weights_info}
+                            />
+                          )}
+                          {(msg.stage3 || msg.stage3Streaming || msg.multiSyntheses?.length > 0 || msg.isConsensus || msg.isRefining || msg.refinementIterations?.length > 0 || msg.isDecomposing || msg.decompositionComplete || msg.subQuestions?.length > 0) && (
+                            <Stage3
+                              finalResponse={msg.stage3}
+                              streamingResponse={msg.stage3Streaming}
+                              streamingModel={msg.stage3StreamingModel}
+                              isStreaming={msg.loading?.stage3 && !msg.useMultiChairman}
+                              useMultiChairman={msg.useMultiChairman}
+                              multiSyntheses={msg.multiSyntheses}
+                              selectionStreaming={msg.selectionStreaming}
+                              isSelecting={msg.isSelecting}
+                              isConsensus={msg.isConsensus}
+                              consensusInfo={msg.consensusInfo}
+                              useRefinement={msg.useRefinement}
+                              refinementIterations={msg.refinementIterations}
+                              isRefining={msg.isRefining}
+                              currentRefinementIteration={msg.currentRefinementIteration}
+                              refinementCritiques={msg.refinementCritiques}
+                              refinementStreaming={msg.refinementStreaming}
+                              refinementMaxIterations={msg.refinementMaxIterations}
+                              refinementConverged={msg.refinementConverged}
+                              useDecomposition={msg.useDecomposition}
+                              subQuestions={msg.subQuestions}
+                              subResults={msg.subResults}
+                              isDecomposing={msg.isDecomposing}
+                              currentSubQuestion={msg.currentSubQuestion}
+                              totalSubQuestions={msg.totalSubQuestions}
+                              mergeStreaming={msg.mergeStreaming}
+                              isMerging={msg.isMerging}
+                              decompositionFinalResponse={msg.decompositionFinalResponse}
+                              chairmanModel={msg.chairmanModel}
+                              complexityInfo={msg.complexityInfo}
+                              decompositionSkipped={msg.decompositionSkipped}
+                              decompositionComplete={msg.decompositionComplete}
+                            />
+                          )}
+                        </>
                       )}
                     </>
                   )}
