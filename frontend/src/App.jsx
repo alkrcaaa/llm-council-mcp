@@ -1786,34 +1786,20 @@ function App() {
         selectedTag={selectedTag}
         onTagFilterChange={handleTagFilterChange}
         activeCouncil={activeCouncil}
+        currentUser={currentUser}
+        advancedSettingsActive={!!(systemPrompt || useCot || useMultiChairman || useWeightedConsensus || useEarlyConsensus || useDynamicRouting || useEscalation || useRefinement || useAdversary || useDebate || useDecomposition || useCache || useResearch)}
+        onOpenDashboard={() => setShowDashboard(true)}
+        onOpenTelemetry={() => setShowProcessMonitor((v) => !v)}
+        telemetryActive={showProcessMonitor || processVerbosity > 0}
+        telemetryLevel={processVerbosity}
+        onOpenSettings={() => setShowSettings(true)}
+        onOpenConfigPanel={() => { setConfigPanelTab('seats'); setShowConfigPanel(true); }}
+        onOpenAccount={() => setShowAccountModal(true)}
+        onLogout={() => { api.logout(); setCurrentUser(null); }}
       />
       <div className="main-content">
         <div className="settings-bar">
           <div className="settings-bar-row">
-            <button
-              className={`settings-toggle ${showSettings ? 'active' : ''}`}
-              onClick={() => setShowSettings(true)}
-              title="Open Deliberation & System Settings"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: '6px', verticalAlign: 'middle'}}>
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-              </svg>
-              <span>Settings</span>
-              {systemPrompt && <span className="settings-active-indicator" title="System prompt active">●</span>}
-              {useCot && <span className="settings-cot-indicator" title="Chain-of-Thought mode active">CoT</span>}
-              {useMultiChairman && <span className="settings-multi-indicator" title="Multi-Chairman mode active">MC</span>}
-              {useWeightedConsensus && <span className="settings-weighted-indicator" title="Weighted Consensus mode active">WC</span>}
-              {useEarlyConsensus && <span className="settings-early-consensus-indicator" title="Early Consensus Exit mode active">EC</span>}
-              {useDynamicRouting && <span className="settings-routing-indicator" title="Dynamic Model Routing active">DR</span>}
-              {useEscalation && <span className="settings-escalation-indicator" title="Confidence-Gated Escalation active">CG</span>}
-              {useRefinement && <span className="settings-refinement-indicator" title="Iterative Refinement active">IR</span>}
-              {useAdversary && <span className="settings-adversary-indicator" title="Adversarial Validation active">AV</span>}
-              {useDebate && <span className="settings-debate-indicator" title="Debate Mode active">DB</span>}
-              {useDecomposition && <span className="settings-decomposition-indicator" title="Sub-Question Decomposition active">DQ</span>}
-              {useCache && <span className="settings-cache-indicator" title="Semantic Response Caching active">CA</span>}
-              {useResearch && <span className="settings-research-indicator" title="Autonomous Tech Scouting active">TS</span>}
-            </button>
             <div className="settings-bar-controls">
               {/* Council Selector Pill & Dropdown */}
               <div className="council-selector-pill-wrap">
@@ -1913,75 +1899,6 @@ function App() {
                       </option>
                     ))}
                   </select>
-                </div>
-              )}
-
-              <button
-                className={`process-monitor-btn ${showProcessMonitor ? 'panel-open' : ''} ${processVerbosity > 0 ? 'active' : ''}`}
-                onClick={() => setShowProcessMonitor(!showProcessMonitor)}
-                title="Canlı Süreç Telemetrisi (Modellerin anlık düşünme ve aşama akış paneli)"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                </svg>
-                <span>Telemetry</span>
-                {processVerbosity > 0 && (
-                  <span className="btn-badge">L{processVerbosity}</span>
-                )}
-              </button>
-              <button
-                className={`dashboard-btn ${showDashboard ? 'active' : ''}`}
-                onClick={() => setShowDashboard(true)}
-                title="Open Performance Analytics Dashboard"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="20" x2="18" y2="10"></line>
-                  <line x1="12" y1="20" x2="12" y2="4"></line>
-                  <line x1="6" y1="20" x2="6" y2="14"></line>
-                </svg>
-                <span>Dashboard</span>
-              </button>
-              <button
-                className={`config-models-btn ${showConfigPanel ? 'active' : ''}`}
-                onClick={() => {
-                  setConfigPanelTab('seats');
-                  setShowConfigPanel(true);
-                }}
-                title="Configure Council Roster, Custom Providers & Skills"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3"></circle>
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                </svg>
-                <span>Configure Models</span>
-              </button>
-
-              {currentUser && (
-                <div className="auth-user-badge">
-                  <button
-                    type="button"
-                    className="auth-username-btn"
-                    onClick={() => setShowAccountModal(true)}
-                    title={`Hesap ve Şifre Yönetimi (${currentUser})`}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{marginRight: '4px', verticalAlign: 'middle'}}>
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                      <circle cx="12" cy="7" r="4"></circle>
-                    </svg>
-                    <span>{currentUser}</span>
-                    <span className="auth-btn-pill">Şifre Değiştir</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="auth-logout-btn"
-                    onClick={() => {
-                      api.logout();
-                      setCurrentUser(null);
-                    }}
-                    title="Sign out from Council"
-                  >
-                    Logout
-                  </button>
                 </div>
               )}
 
