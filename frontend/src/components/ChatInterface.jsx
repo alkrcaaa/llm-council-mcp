@@ -7,6 +7,7 @@ import LiveFeed from './LiveFeed';
 import DebateView from './DebateView';
 import TagEditor from './TagEditor';
 import CostDisplay from './CostDisplay';
+import { shortModelName, linkifyUserMentions, mentionMarkdownComponents } from './mentionUtils.jsx';
 import { exportToMarkdown, exportToJSON, exportToADR, copyADRToClipboard } from '../utils/export';
 import './ChatInterface.css';
 
@@ -29,9 +30,11 @@ export default function ChatInterface({
   const [feedView, setFeedView] = useState(
     () => localStorage.getItem('feedView') !== 'false'
   );
+  const [mentionQuery, setMentionQuery] = useState(null);
   const messagesEndRef = useRef(null);
   const tagEditorRef = useRef(null);
   const tagButtonRef = useRef(null);
+  const messageInputRef = useRef(null);
 
   const activeDeliberating = Boolean(isLoading || isDeliberating || conversation?.status === 'deliberating');
 
@@ -41,6 +44,36 @@ export default function ChatInterface({
       localStorage.setItem('feedView', next.toString());
       return next;
     });
+  };
+
+  // @mention autocomplete: seats of the council this conversation will use
+  const mentionSeats = (activeCouncil?.council_models?.length ? activeCouncil.council_models : conversation?.council_models) || [];
+  const mentionMatches = mentionQuery == null
+    ? []
+    : mentionSeats.filter((m) => shortModelName(m).toLowerCase().startsWith(mentionQuery.toLowerCase())).slice(0, 6);
+
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setInput(val);
+    const cursorPos = e.target.selectionStart;
+    const uptoCursor = val.slice(0, cursorPos);
+    const match = uptoCursor.match(/(?:^|\s)@(\w*)$/);
+    setMentionQuery(match ? match[1] : null);
+  };
+
+  const insertMention = (model) => {
+    const el = messageInputRef.current;
+    if (!el) return;
+    const cursorPos = el.selectionStart;
+    const uptoCursor = input.slice(0, cursorPos);
+    const match = uptoCursor.match(/(?:^|\s)@(\w*)$/);
+    if (!match) return;
+    const startIdx = cursorPos - match[0].length + (match[0].startsWith(' ') ? 1 : 0);
+    const name = shortModelName(model);
+    const newVal = `${input.slice(0, startIdx)}@${name} ${input.slice(cursorPos)}`;
+    setInput(newVal);
+    setMentionQuery(null);
+    requestAnimationFrame(() => el.focus());
   };
 
   // Close Tag Editor on click outside or Escape key
@@ -114,6 +147,18 @@ export default function ChatInterface({
   };
 
   const handleKeyDown = (e) => {
+    if (mentionQuery != null && mentionMatches.length > 0) {
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertMention(mentionMatches[0]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMentionQuery(null);
+        return;
+      }
+    }
     // Submit on Enter (without Shift)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -282,7 +327,12 @@ export default function ChatInterface({
                   <div className="message-label">You</div>
                   <div className="message-content">
                     <div className="markdown-content">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      <ReactMarkdown components={mentionMarkdownComponents}>
+                        {linkifyUserMentions(
+                          msg.content,
+                          (activeCouncil?.council_models?.length ? activeCouncil.council_models : conversation?.council_models) || []
+                        )}
+                      </ReactMarkdown>
                     </div>
                   </div>
                 </div>
@@ -690,15 +740,30 @@ export default function ChatInterface({
         activeDeliberating ||
         conversation.status === 'aborted') && (
         <form className="input-form" onSubmit={handleSubmit}>
+          {mentionQuery != null && mentionMatches.length > 0 && (
+            <div className="mention-autocomplete">
+              {mentionMatches.map((model) => (
+                <button
+                  key={model}
+                  type="button"
+                  className="mention-autocomplete-item"
+                  onClick={() => insertMention(model)}
+                >
+                  @{shortModelName(model)}
+                </button>
+              ))}
+            </div>
+          )}
           <textarea
+            ref={messageInputRef}
             className="message-input"
             placeholder={
               activeDeliberating
                 ? 'Council deliberation in progress... (Click Stop to cancel)'
-                : 'Ask your question... (Shift+Enter for new line, Enter to send)'
+                : 'Ask your question... (@ to mention a panelist, Shift+Enter for new line, Enter to send)'
             }
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             disabled={activeDeliberating}
             rows={3}
