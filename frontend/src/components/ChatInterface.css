@@ -667,9 +667,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 12px 0;
+  margin: 12px auto;
   padding: 10px 14px;
-  max-width: 85%;
+  max-width: 816px; /* 85% of .message-group's 960px cap, matches the user bubble's width */
+  width: 85%;
   background: var(--accent-subtle);
   border: 1px solid var(--border-active);
   border-radius: var(--radius-md);
