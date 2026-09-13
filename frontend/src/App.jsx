@@ -571,15 +571,26 @@ function App() {
     const setCurrentConversation = (updater) => {
       let updatedAssistantMsg = null;
       _setCurrentConversation((prev) => {
-        const next = typeof updater === 'function' ? updater(prev) : updater;
+        // Check the guard BEFORE running the updater: several updaters below
+        // mutate messages[messages.length - 1] directly (not a pure spread),
+        // so calling one against an unrelated/mismatched `prev` — not just
+        // discarding its result — can throw (e.g. an empty conversation's
+        // messages[-1] is undefined) and crash the whole render tree.
+        if (!prev || prev.id !== targetConversationId) {
+          return prev;
+        }
+        let next;
+        try {
+          next = typeof updater === 'function' ? updater(prev) : updater;
+        } catch (err) {
+          console.error('Dropped a malformed stream update instead of crashing:', err);
+          return prev;
+        }
         if (next && next.messages && next.messages.length > 0) {
           const last = next.messages[next.messages.length - 1];
           if (last && last.role === 'assistant') {
             updatedAssistantMsg = last;
           }
-        }
-        if (!prev || prev.id !== targetConversationId) {
-          return prev;
         }
         return next;
       });
