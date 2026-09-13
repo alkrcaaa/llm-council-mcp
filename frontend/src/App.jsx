@@ -352,7 +352,7 @@ function App() {
     return () => clearInterval(pollInterval);
   }, [loadingConversationId, currentConversation?.status, currentConversationId, conversations, selectedTag]);
 
-  const handleNewConversation = async (councilId = null) => {
+  const handleNewConversation = async (councilId = null, initialMessage = null) => {
     setShowSettings(false);
     try {
       const targetCouncilId = (typeof councilId === 'string' && councilId.trim()) ? councilId.trim() : activeCouncil?.id;
@@ -374,6 +374,11 @@ function App() {
       setCurrentConversationId(newConv.id);
       setCurrentConversation(newConv);
       localStorage.setItem('currentConversationId', newConv.id);
+      if (initialMessage && initialMessage.trim()) {
+        // Pass the id explicitly: currentConversationId in this closure is
+        // still the pre-update value until the next render.
+        handleSendMessage(initialMessage, false, newConv.id);
+      }
     } catch (error) {
       console.error('Failed to create conversation:', error);
       if (error.message?.includes('Authentication') || error.message?.includes('401')) {
@@ -541,9 +546,9 @@ function App() {
     localStorage.setItem('useResearch', value.toString());
   };
 
-  const handleSendMessage = async (content, isRetry = false) => {
-    if (!currentConversationId) return;
-    const targetConversationId = currentConversationId;
+  const handleSendMessage = async (content, isRetry = false, overrideId = null) => {
+    const targetConversationId = overrideId || currentConversationId;
+    if (!targetConversationId) return;
 
     setLoadingConversationId(targetConversationId);
 
@@ -670,7 +675,7 @@ function App() {
 
       // Send message with streaming
       await api.sendMessageStream(
-        currentConversationId,
+        targetConversationId,
         content,
         (eventType, event) => {
         switch (eventType) {
@@ -1908,6 +1913,7 @@ function App() {
         <ChatInterface
           conversation={currentConversation}
           activeCouncil={activeCouncil}
+          currentUser={currentUser}
           onSendMessage={handleSendMessage}
           onNewConversation={handleNewConversation}
           isLoading={loadingConversationId === currentConversationId}

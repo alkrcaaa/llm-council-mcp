@@ -14,6 +14,7 @@ import './ChatInterface.css';
 export default function ChatInterface({
   conversation,
   activeCouncil,
+  currentUser,
   onSendMessage,
   onNewConversation,
   isLoading,
@@ -23,6 +24,7 @@ export default function ChatInterface({
   onInspectSkill,
 }) {
   const [input, setInput] = useState('');
+  const [landingInput, setLandingInput] = useState('');
   const [showTagEditor, setShowTagEditor] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState('0.0');
   const [copiedADR, setCopiedADR] = useState(false);
@@ -183,24 +185,54 @@ export default function ChatInterface({
     }
   };
 
+  const handleLandingSubmit = (e) => {
+    e.preventDefault();
+    if (!landingInput.trim() || !onNewConversation) return;
+    onNewConversation(null, landingInput);
+    setLandingInput('');
+  };
+
+  const handleLandingKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleLandingSubmit(e);
+    }
+  };
+
   if (!conversation) {
+    const displayName = currentUser ? currentUser.charAt(0).toUpperCase() + currentUser.slice(1) : '';
     return (
       <div className="chat-interface">
-        <div className="empty-state">
-          <div className="empty-council-badge">
-            <span className="empty-council-name">{activeCouncil?.name || 'LLM Council'}</span>
-          </div>
-          <h2>Welcome to LLM Council</h2>
-          <p>Create a new conversation to start deliberating with the council</p>
-          {onNewConversation && (
-            <button
-              type="button"
-              className="new-conversation-hero-btn"
-              onClick={() => onNewConversation()}
-            >
-              + New Conversation
+        <div className="landing-state">
+          <div className="landing-glow" />
+          <h1 className="landing-greeting">
+            {displayName ? `Merhaba ${displayName}, aklınızda ne var?` : 'Aklınızda ne var?'}
+          </h1>
+          <form className="landing-composer" onSubmit={handleLandingSubmit}>
+            <button type="button" className="landing-composer-council" title={`Active council: ${activeCouncil?.name || 'Default'}`}>
+              {activeCouncil?.name || 'LLM Council'}
             </button>
-          )}
+            <input
+              type="text"
+              className="landing-composer-input"
+              placeholder="Council'e sorun..."
+              value={landingInput}
+              onChange={(e) => setLandingInput(e.target.value)}
+              onKeyDown={handleLandingKeyDown}
+              autoFocus
+            />
+            <button
+              type="submit"
+              className="landing-composer-send"
+              disabled={!landingInput.trim()}
+              title="Start deliberation"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5"></line>
+                <polyline points="6 11 12 5 18 11"></polyline>
+              </svg>
+            </button>
+          </form>
         </div>
       </div>
     );
