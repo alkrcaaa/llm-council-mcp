@@ -310,12 +310,13 @@
 }
 
 .conversation-item {
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
+  padding: 6px 9px;
+  margin-bottom: 1px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   background: transparent;
   border: 1px solid transparent;
-  border-left: 3px solid transparent;
+  border-left: 2px solid transparent;
   transition: all 0.15s ease;
 }
 
