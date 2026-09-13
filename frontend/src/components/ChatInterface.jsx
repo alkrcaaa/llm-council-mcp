@@ -32,6 +32,8 @@ export default function ChatInterface({
   );
   const [mentionQuery, setMentionQuery] = useState(null);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const prevMessageCountRef = useRef(0);
   const tagEditorRef = useRef(null);
   const tagButtonRef = useRef(null);
   const messageInputRef = useRef(null);
@@ -134,8 +136,23 @@ export default function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const isNearBottom = () => {
+    const el = messagesContainerRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+  };
+
+  // Auto-scroll only when a new message is appended (e.g. the user just sent
+  // one) or the viewport was already near the bottom — otherwise streaming
+  // token updates keep re-triggering this on every render and yank the user
+  // back down while they're scrolled up reading earlier messages.
   useEffect(() => {
-    scrollToBottom();
+    const count = conversation?.messages?.length || 0;
+    const isNewMessage = count > prevMessageCountRef.current;
+    prevMessageCountRef.current = count;
+    if (isNewMessage || isNearBottom()) {
+      scrollToBottom();
+    }
   }, [conversation]);
 
   const handleSubmit = (e) => {
@@ -264,7 +281,7 @@ export default function ChatInterface({
         </div>
       )}
 
-      <div className="messages-container">
+      <div className="messages-container" ref={messagesContainerRef}>
         {conversation.messages.length === 0 ? (
           <div className="empty-state">
             <div className="empty-council-badge">
