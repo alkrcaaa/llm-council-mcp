@@ -771,38 +771,46 @@ export default function ChatInterface({
               ))}
             </div>
           )}
-          <textarea
-            ref={messageInputRef}
-            className="message-input"
-            placeholder={
-              activeDeliberating
-                ? 'Council deliberation in progress... (Click Stop to cancel)'
-                : 'Ask your question... (@ to mention a panelist, Shift+Enter for new line, Enter to send)'
-            }
-            value={input}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            disabled={activeDeliberating}
-            rows={3}
-          />
-          {activeDeliberating ? (
-            <button
-              type="button"
-              className="abort-button"
-              onClick={() => onAbortDeliberation && onAbortDeliberation(conversation.id)}
-              title="Stop deliberation"
-            >
-              <span>Stop</span>
-            </button>
-          ) : (
-            <button
-              type="submit"
-              className="send-button"
-              disabled={!input.trim() || activeDeliberating}
-            >
-              Send
-            </button>
-          )}
+          <div className="input-inner">
+            <textarea
+              ref={messageInputRef}
+              className="message-input"
+              placeholder={
+                activeDeliberating
+                  ? 'Council deliberation in progress...'
+                  : 'Ask your question... (@ to mention a panelist, Shift+Enter for new line, Enter to send)'
+              }
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              disabled={activeDeliberating}
+              rows={3}
+            />
+            {activeDeliberating ? (
+              <button
+                type="button"
+                className="input-icon-btn stop"
+                onClick={() => onAbortDeliberation && onAbortDeliberation(conversation.id)}
+                title="Stop deliberation"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="5" y="5" width="14" height="14" rx="2" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="input-icon-btn send"
+                disabled={!input.trim()}
+                title="Send"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="19" x2="12" y2="5"></line>
+                  <polyline points="6 11 12 5 18 11"></polyline>
+                </svg>
+              </button>
+            )}
+          </div>
         </form>
       )}
     </div>

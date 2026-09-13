@@ -517,69 +517,62 @@
   background: var(--bg-surface-elevated);
 }
 
-.send-button {
-  padding: 11px 22px;
-  background: #238636;
-  border: 1px solid rgba(240, 246, 252, 0.15);
-  border-radius: var(--radius-md);
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: var(--font-body);
-  letter-spacing: -0.01em;
+.input-inner {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.input-inner .message-input {
+  width: 100%;
+  padding-right: 46px;
+}
+
+.input-icon-btn {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   transition: all 0.15s ease;
-  white-space: nowrap;
-  align-self: flex-end;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-.send-button:hover:not(:disabled) {
-  background: #2ea043;
-  border-color: rgba(240, 246, 252, 0.25);
-  box-shadow: 0 0 14px rgba(46, 160, 67, 0.35);
+.input-icon-btn.send {
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+}
+
+.input-icon-btn.send:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
   transform: translateY(-1px);
 }
 
-.send-button:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
+.input-icon-btn.send:disabled {
   background: var(--bg-surface-elevated);
-  border-color: var(--border-subtle);
-  transform: none;
-  box-shadow: none;
+  color: var(--text-muted);
+  cursor: not-allowed;
 }
 
-.abort-button {
-  padding: 12px 20px;
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  border-radius: var(--radius-md);
-  color: #fca5a5;
-  font-size: 13px;
-  font-weight: 700;
-  font-family: var(--font-display);
-  letter-spacing: 0.03em;
-  cursor: pointer;
-  transition: all 0.18s ease;
-  white-space: nowrap;
-  align-self: flex-end;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
-}
-
-.abort-button:hover {
-  background: #dc2626;
-  border-color: #ef4444;
+.input-icon-btn.stop {
+  background: #ef4444;
   color: #ffffff;
-  box-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
-  transform: translateY(-1px);
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.15);
 }
 
-.abort-button:active {
-  transform: translateY(0);
+.input-icon-btn.stop:hover {
+  background: #dc2626;
+  box-shadow: 0 0 0 5px rgba(239, 68, 68, 0.22);
+}
+
+.input-icon-btn.stop:active,
+.input-icon-btn.send:active:not(:disabled) {
+  transform: translateY(0) scale(0.94);
 }
 
 /* ==========================================================================
