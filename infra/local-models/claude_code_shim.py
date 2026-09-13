@@ -20,12 +20,17 @@ Run:
 Optional env vars:
     CLAUDE_SHIM_PORT     - port to listen on (default 8600)
     CLAUDE_SHIM_MODEL    - --model alias/name to pass to `claude` (default: unset, uses the CLI's own default)
-    CLAUDE_SHIM_SECRET   - if set, requests must send "Authorization: Bearer <secret>"
-                           (unset = open to anyone who can reach the port; fine on a
-                           trusted LAN, but note every accepted request spends real
-                           Claude API credit on your account)
+    CLAUDE_SHIM_SECRET - required: requests must send "Authorization: Bearer <secret>".
+                       The shim refuses to start without it (or with the placeholder
+                       "not-needed"), because every accepted request runs the CLI on
+                       your account.
+    CLAUDE_SHIM_HOST   - address to bind (default 0.0.0.0). Prefer the docker bridge
+                       gateway (e.g. 172.17.0.1) so the backend container reaches it
+                       via host.docker.internal while the LAN does not.
+    CLAUDE_SHIM_ALLOW_NO_AUTH=1 - opt out of the secret requirement (trusted, isolated hosts only)
 """
 
+import hmac
 import json
 import os
 import subprocess
@@ -36,6 +41,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = int(os.getenv("CLAUDE_SHIM_PORT", "8600"))
 MODEL_ALIAS = os.getenv("CLAUDE_SHIM_MODEL")
 SHARED_SECRET = os.getenv("CLAUDE_SHIM_SECRET")
+HOST = os.getenv("CLAUDE_SHIM_HOST", "0.0.0.0")
+ALLOW_NO_AUTH = os.getenv("CLAUDE_SHIM_ALLOW_NO_AUTH") == "1"
+PLACEHOLDER_SECRETS = {"", "not-needed"}
 CLAUDE_TIMEOUT_S = 180
 
 
@@ -55,13 +63,15 @@ def messages_to_prompt(messages):
 
 
 def run_claude(prompt):
-    cmd = ["claude", "-p", "--restricted", "--strict-mcp-config", "--mcp-config", "{}", "--output-format", "json"]
+    cmd = ["claude", "-p", "--restricted", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--output-format", "json"]
     if MODEL_ALIAS:
         cmd += ["--model", MODEL_ALIAS]
     cmd.append(prompt)
 
     result = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=CLAUDE_TIMEOUT_S
+        cmd, capture_output=True, text=True, timeout=CLAUDE_TIMEOUT_S,
+        # A seat must never re-enter the council: the MCP server reads this guard.
+        env={**os.environ, "LLM_COUNCIL_INVOCATION": "1"},
     )
     if result.returncode != 0:
         raise RuntimeError(f"claude exited {result.returncode}: {result.stderr[:2000]}")
@@ -89,9 +99,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b'{"error":"unauthorized"}')
 
     def _check_auth(self):
-        if not SHARED_SECRET:
+        if ALLOW_NO_AUTH and not SHARED_SECRET:
             return True
-        return self.headers.get("Authorization") == f"Bearer {SHARED_SECRET}"
+        supplied = self.headers.get("Authorization", "")
+        return hmac.compare_digest(supplied.encode(), f"Bearer {SHARED_SECRET}".encode())
 
     def do_POST(self):
         if self.path.rstrip("/") != "/v1/chat/completions":
@@ -170,9 +181,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"[claude-shim] listening on 0.0.0.0:{PORT} -> claude -p --restricted")
-    if not SHARED_SECRET:
-        print("[claude-shim] WARNING: no CLAUDE_SHIM_SECRET set - anyone who can reach "
-              "this port can spend your Claude API credit. Fine on a trusted LAN only.")
+    if (SHARED_SECRET or "") in PLACEHOLDER_SECRETS and not ALLOW_NO_AUTH:
+        raise SystemExit(
+            "[claude-shim] refusing to start: set CLAUDE_SHIM_SECRET to a random value "
+            "(or CLAUDE_SHIM_ALLOW_NO_AUTH=1 on an isolated host)"
+        )
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    print(f"[claude-shim] listening on {HOST}:{PORT} -> claude -p --restricted")
     server.serve_forever()

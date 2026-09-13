@@ -20,12 +20,17 @@ Run:
 Optional env vars:
     ANTIGRAVITY_SHIM_PORT   - port to listen on (default 8601)
     ANTIGRAVITY_SHIM_MODEL  - --model to pass to `agy` (default: unset, uses the CLI's own default)
-    ANTIGRAVITY_SHIM_SECRET - if set, requests must send "Authorization: Bearer <secret>"
-                              (unset = open to anyone who can reach the port; fine on a
-                              trusted LAN, but note every accepted request spends real
-                              API credit on your account)
+    ANTIGRAVITY_SHIM_SECRET - required: requests must send "Authorization: Bearer <secret>".
+                       The shim refuses to start without it (or with the placeholder
+                       "not-needed"), because every accepted request runs the CLI on
+                       your account.
+    ANTIGRAVITY_SHIM_HOST   - address to bind (default 0.0.0.0). Prefer the docker bridge
+                       gateway (e.g. 172.17.0.1) so the backend container reaches it
+                       via host.docker.internal while the LAN does not.
+    ANTIGRAVITY_SHIM_ALLOW_NO_AUTH=1 - opt out of the secret requirement (trusted, isolated hosts only)
 """
 
+import hmac
 import json
 import os
 import subprocess
@@ -36,6 +41,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = int(os.getenv("ANTIGRAVITY_SHIM_PORT", "8601"))
 MODEL = os.getenv("ANTIGRAVITY_SHIM_MODEL")
 SHARED_SECRET = os.getenv("ANTIGRAVITY_SHIM_SECRET")
+HOST = os.getenv("ANTIGRAVITY_SHIM_HOST", "0.0.0.0")
+ALLOW_NO_AUTH = os.getenv("ANTIGRAVITY_SHIM_ALLOW_NO_AUTH") == "1"
+PLACEHOLDER_SECRETS = {"", "not-needed"}
 AGY_TIMEOUT_S = 180
 
 
@@ -63,7 +71,9 @@ def run_agy(prompt):
     cmd.append(f"--print={prompt}")
 
     result = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=AGY_TIMEOUT_S
+        cmd, capture_output=True, text=True, timeout=AGY_TIMEOUT_S,
+        # A seat must never re-enter the council: the MCP server reads this guard.
+        env={**os.environ, "LLM_COUNCIL_INVOCATION": "1"},
     )
     if result.returncode != 0:
         raise RuntimeError(f"agy exited {result.returncode}: {result.stderr[:2000]}")
@@ -91,9 +101,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b'{"error":"unauthorized"}')
 
     def _check_auth(self):
-        if not SHARED_SECRET:
+        if ALLOW_NO_AUTH and not SHARED_SECRET:
             return True
-        return self.headers.get("Authorization") == f"Bearer {SHARED_SECRET}"
+        supplied = self.headers.get("Authorization", "")
+        return hmac.compare_digest(supplied.encode(), f"Bearer {SHARED_SECRET}".encode())
 
     def do_POST(self):
         if self.path.rstrip("/") != "/v1/chat/completions":
@@ -171,9 +182,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"[antigravity-shim] listening on 0.0.0.0:{PORT} -> agy --sandbox --print")
-    if not SHARED_SECRET:
-        print("[antigravity-shim] WARNING: no ANTIGRAVITY_SHIM_SECRET set - anyone who can reach "
-              "this port can spend your API credit. Fine on a trusted LAN only.")
+    if (SHARED_SECRET or "") in PLACEHOLDER_SECRETS and not ALLOW_NO_AUTH:
+        raise SystemExit(
+            "[antigravity-shim] refusing to start: set ANTIGRAVITY_SHIM_SECRET to a random value "
+            "(or ANTIGRAVITY_SHIM_ALLOW_NO_AUTH=1 on an isolated host)"
+        )
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    print(f"[antigravity-shim] listening on {HOST}:{PORT} -> agy --sandbox --print")
     server.serve_forever()

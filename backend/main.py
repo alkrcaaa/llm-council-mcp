@@ -62,6 +62,13 @@ app.add_middleware(
 
 
 @app.on_event("startup")
+async def require_jwt_secret_when_auth_enabled():
+    """Refuse to start with auth on but no signing key, instead of failing per request."""
+    if auth.is_auth_required() and not auth.JWT_SECRET:
+        raise RuntimeError("AUTH_ENABLED is true but JWT_SECRET is not set (see .env.example)")
+
+
+@app.on_event("startup")
 async def sync_active_council_on_startup():
     """Ensure global configuration mirrors the active council profile on startup."""
     try:

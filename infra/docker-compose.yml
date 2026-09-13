@@ -1,3 +1,7 @@
+# Explicit project name: the directory name "infra" is shared with unrelated stacks,
+# and `docker compose down --remove-orphans` treats their containers as orphans.
+name: llm-council
+
 services:
   backend:
     container_name: council-backend
@@ -6,11 +10,12 @@ services:
       context: ..
       dockerfile: infra/backend.Dockerfile
     ports:
-      - "8001:8001"
+      # Loopback only: the API runs local CLI agents via the shims and spends API credit.
+      - "127.0.0.1:8001:8001"
     environment:
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
-      CLAUDE_SHIM_SECRET: "${CLAUDE_SHIM_SECRET:-}"
-      ANTIGRAVITY_SHIM_SECRET: "${ANTIGRAVITY_SHIM_SECRET:-}"
+      # CLAUDE_SHIM_SECRET / ANTIGRAVITY_SHIM_SECRET come only from env_file (../.env),
+      # the same file the host shims read, so there is one copy of each secret.
       QWEN_BASE_URL: "${QWEN_BASE_URL:-http://host.docker.internal:8002/v1}"
       QWEN_MODEL_ID: "${QWEN_MODEL_ID:-/models/qwen3.6-27b}"
       QWEN_API_KEY: "${QWEN_API_KEY:-not-needed}"
@@ -42,7 +47,7 @@ services:
       context: ..
       dockerfile: infra/frontend.Dockerfile
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     volumes:
       - ../frontend/src:/app/src
       - ../frontend/index.html:/app/index.html
@@ -52,3 +57,5 @@ services:
 
 volumes:
   council-data:
+    # Pinned to the name created under the old "infra" project so history survives.
+    name: infra_council-data

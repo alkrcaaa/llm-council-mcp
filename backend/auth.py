@@ -17,8 +17,16 @@ from typing import Optional, Dict, Any
 
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
-JWT_SECRET = os.getenv("JWT_SECRET", "council-secret-key-change-in-production-2026")
+# No committed fallback: a published default key lets anyone forge tokens.
+JWT_SECRET = os.getenv("JWT_SECRET", "")
 TOKEN_TTL_SECONDS = int(os.getenv("TOKEN_TTL_SECONDS", str(7 * 24 * 3600)))  # 7 days
+
+
+def _signing_key() -> bytes:
+    """Return the HMAC key, failing loudly when it is not configured."""
+    if not JWT_SECRET:
+        raise RuntimeError("JWT_SECRET is not set; refusing to sign or verify tokens")
+    return JWT_SECRET.encode("utf-8")
 
 
 def _b64encode(data: bytes) -> str:
@@ -45,7 +53,7 @@ def create_token(username: str) -> str:
     encoded_payload = _b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     
     signing_input = f"{encoded_header}.{encoded_payload}".encode("utf-8")
-    signature = hmac.new(JWT_SECRET.encode("utf-8"), signing_input, hashlib.sha256).digest()
+    signature = hmac.new(_signing_key(), signing_input, hashlib.sha256).digest()
     encoded_sig = _b64encode(signature)
     
     return f"{encoded_header}.{encoded_payload}.{encoded_sig}"
@@ -63,7 +71,7 @@ def verify_token(token: str) -> Optional[Dict[str, Any]]:
     encoded_header, encoded_payload, encoded_sig = parts
     try:
         signing_input = f"{encoded_header}.{encoded_payload}".encode("utf-8")
-        expected_sig = hmac.new(JWT_SECRET.encode("utf-8"), signing_input, hashlib.sha256).digest()
+        expected_sig = hmac.new(_signing_key(), signing_input, hashlib.sha256).digest()
         actual_sig = _b64decode(encoded_sig)
         
         # Constant-time comparison prevents timing attacks
