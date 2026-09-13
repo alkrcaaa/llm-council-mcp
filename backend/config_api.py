@@ -302,35 +302,27 @@ def reset_to_defaults() -> Dict[str, Any]:
 
 # List of popular models for the frontend dropdown suggestions
 AVAILABLE_MODELS = [
-    # OpenAI
+    # Free OpenRouter models ($0 per token)
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "thinkingmachines/inkling:free",
+    "poolside/laguna-s-2.1:free",
+    # Local / self-hosted
+    "local/qwen3.6-27b",
+    "local/antigravity",
+    "local/claude-code",
+    # Frontier models (OpenRouter)
     "openai/gpt-5.1",
-    "openai/gpt-4.1",
-    "openai/gpt-4.1-mini",
-    "openai/gpt-4.1-nano",
+    "anthropic/claude-sonnet-4.5",
+    "google/gemini-3-pro-preview",
+    "deepseek/deepseek-r1",
+    "x-ai/grok-4",
+    "meta-llama/llama-4-maverick",
     "openai/o3",
     "openai/o4-mini",
-    # Anthropic
-    "anthropic/claude-sonnet-4.5",
     "anthropic/claude-opus-4.5",
     "anthropic/claude-haiku-3.5",
-    # Google
-    "google/gemini-3-pro-preview",
     "google/gemini-2.5-flash",
     "google/gemini-2.5-pro",
-    # xAI
-    "x-ai/grok-4",
-    "x-ai/grok-3",
-    # Meta
-    "meta-llama/llama-4-maverick",
-    "meta-llama/llama-4-scout",
-    # DeepSeek
-    "deepseek/deepseek-r1",
-    "deepseek/deepseek-chat",
-    # Mistral
     "mistralai/mistral-large",
-    "mistralai/mistral-medium",
-    # Local / self-hosted (routed outside OpenRouter, see backend/config.py LOCAL_MODELS)
-    "local/qwen3.6-27b",
-    "local/claude-code",  # costs real API credit per call - not in the default council, add manually
-    "local/antigravity",  # costs real API credit per call - not in the default council, add manually
 ]
+

@@ -5,14 +5,18 @@ import ConfigPanel from './components/ConfigPanel';
 import PerformanceDashboard from './components/PerformanceDashboard';
 import ProcessMonitor from './components/ProcessMonitor';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
+import LoginModal from './components/LoginModal';
+import SkillViewerModal from './components/SkillViewerModal';
+import SettingsModal from './components/SettingsModal';
 import { api } from './api';
 import './App.css';
 
 function App() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [conversations, setConversations] = useState([]);
-  const [currentConversationId, setCurrentConversationId] = useState(
-    () => localStorage.getItem('currentConversationId') || null
-  );
+  // Do not force-open the last conversation on fresh load unless user clicks it
+  const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, _setCurrentConversation] = useState(null);
   const setCurrentConversation = _setCurrentConversation;
   const [loadingConversationId, setLoadingConversationId] = useState(null);
@@ -26,6 +30,8 @@ function App() {
   const [selectedTag, setSelectedTag] = useState(null);
   const [showConfigPanel, setShowConfigPanel] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [showSkillModal, setShowSkillModal] = useState(false);
+  const [selectedSkillIdForModal, setSelectedSkillIdForModal] = useState(null);
   const [conversationToDelete, setConversationToDelete] = useState(null);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
 
@@ -192,19 +198,31 @@ function App() {
     }
   }, [currentConversationId]);
 
+  // Check auth session on startup
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await api.verifyAuth();
+        if (res && res.valid) {
+          setCurrentUser(res.username || 'admin');
+        } else {
+          setCurrentUser(null);
+        }
+      } catch {
+        setCurrentUser(null);
+      } finally {
+        setIsAuthChecking(false);
+      }
+    };
+    checkAuth();
+  }, []);
+
   const loadConversations = async (tag = null) => {
     try {
       const convs = await api.listConversations(tag);
       setConversations(convs);
-      const savedId = localStorage.getItem('currentConversationId');
-      if (savedId && convs.some((c) => c.id === savedId)) {
-        if (!currentConversationId) {
-          setCurrentConversationId(savedId);
-        }
-      } else if (!savedId && convs.length > 0 && !currentConversationId) {
-        setCurrentConversationId(convs[0].id);
-        localStorage.setItem('currentConversationId', convs[0].id);
-      }
+      // Clean landing: Do not auto-select the last conversation on fresh page visit.
+      // The user chooses from the sidebar or starts a new deliberation cleanly.
     } catch (error) {
       console.error('Failed to load conversations:', error);
     }
@@ -299,6 +317,7 @@ function App() {
   }, [loadingConversationId, currentConversation?.status, currentConversationId, conversations, selectedTag]);
 
   const handleNewConversation = async (councilId = null) => {
+    setShowSettings(false);
     try {
       const targetCouncilId = (typeof councilId === 'string' && councilId.trim()) ? councilId.trim() : activeCouncil?.id;
       const newConv = await api.createConversation(targetCouncilId);
@@ -383,6 +402,7 @@ function App() {
   };
 
   const handleSelectConversation = (id) => {
+    setShowSettings(false);
     setCurrentConversationId(id);
     if (id) {
       localStorage.setItem('currentConversationId', id);
@@ -1697,6 +1717,10 @@ function App() {
     }
   };
 
+  if (!currentUser && !isAuthChecking) {
+    return <LoginModal onLoginSuccess={(username) => setCurrentUser(username)} />;
+  }
+
   return (
     <div className="app">
       <Sidebar
@@ -1715,10 +1739,11 @@ function App() {
         <div className="settings-bar">
           <div className="settings-bar-row">
             <button
-              className="settings-toggle"
-              onClick={() => setShowSettings(!showSettings)}
+              className={`settings-toggle ${showSettings ? 'active' : ''}`}
+              onClick={() => setShowSettings(true)}
+              title="Open Deliberation & System Settings"
             >
-              {showSettings ? '▼ Hide Settings' : '▶ Settings'}
+              ⚙️ Settings
               {systemPrompt && <span className="settings-active-indicator" title="System prompt active">●</span>}
               {useCot && <span className="settings-cot-indicator" title="Chain-of-Thought mode active">CoT</span>}
               {useMultiChairman && <span className="settings-multi-indicator" title="Multi-Chairman mode active">MC</span>}
@@ -1731,6 +1756,7 @@ function App() {
               {useDebate && <span className="settings-debate-indicator" title="Debate Mode active">DB</span>}
               {useDecomposition && <span className="settings-decomposition-indicator" title="Sub-Question Decomposition active">DQ</span>}
               {useCache && <span className="settings-cache-indicator" title="Semantic Response Caching active">CA</span>}
+              {useResearch && <span className="settings-research-indicator" title="Autonomous Tech Scouting active">TS</span>}
             </button>
             <div className="settings-bar-controls">
               {/* Council Selector Pill & Dropdown */}
@@ -1870,261 +1896,35 @@ function App() {
                 </svg>
                 <span>Configure Models</span>
               </button>
+
+              <button
+                className={`skills-library-btn ${showSkillModal ? 'active' : ''}`}
+                onClick={() => setShowSkillModal(true)}
+                title="Inspect Domain Skills, Persona Checklists & Guidelines"
+              >
+                <span>📚 Skills</span>
+              </button>
+
+              {currentUser && (
+                <div className="auth-user-badge">
+                  <span className="auth-username" title={`Signed in as ${currentUser}`}>
+                    👤 {currentUser}
+                  </span>
+                  <button
+                    type="button"
+                    className="auth-logout-btn"
+                    onClick={() => {
+                      api.logout();
+                      setCurrentUser(null);
+                    }}
+                    title="Sign out from Council"
+                  >
+                    Logout
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-          {showSettings && (
-            <div className="settings-panel">
-              <div className="settings-section">
-                <label htmlFor="system-prompt">System Prompt</label>
-                <textarea
-                  id="system-prompt"
-                  value={systemPrompt}
-                  onChange={(e) => handleSystemPromptChange(e.target.value)}
-                  placeholder="Enter a system prompt to customize model behavior (e.g., 'You are a helpful coding assistant. Always provide code examples.')..."
-                  rows={3}
-                />
-                {systemPrompt && (
-                  <button
-                    className="clear-prompt-btn"
-                    onClick={() => handleSystemPromptChange('')}
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-
-              <div className="settings-section cot-section">
-                <label className="cot-toggle-wrapper">
-                  <input
-                    type="checkbox"
-                    checked={useCot}
-                    onChange={(e) => handleCotChange(e.target.checked)}
-                  />
-                  <span className="cot-toggle-slider" />
-                  <span className="cot-toggle-label">
-                    <span className="cot-toggle-title">Chain-of-Thought Mode</span>
-                    <span className="cot-toggle-description">
-                      Request structured reasoning (Thinking → Analysis → Conclusion)
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              <div className="settings-section multi-chairman-section">
-                <label className="multi-chairman-toggle-wrapper">
-                  <input
-                    type="checkbox"
-                    checked={useMultiChairman}
-                    onChange={(e) => handleMultiChairmanChange(e.target.checked)}
-                  />
-                  <span className="multi-chairman-toggle-slider" />
-                  <span className="multi-chairman-toggle-label">
-                    <span className="multi-chairman-toggle-title">Multi-Chairman Mode</span>
-                    <span className="multi-chairman-toggle-description">
-                      Ensemble synthesis from multiple chairmen, with supreme chairman selection
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              <div className="settings-section weighted-consensus-section">
-                <label className="weighted-consensus-toggle-wrapper">
-                  <input
-                    type="checkbox"
-                    checked={useWeightedConsensus}
-                    onChange={(e) => handleWeightedConsensusChange(e.target.checked)}
-                  />
-                  <span className="weighted-consensus-toggle-slider" />
-                  <span className="weighted-consensus-toggle-label">
-                    <span className="weighted-consensus-toggle-title">Weighted Consensus</span>
-                    <span className="weighted-consensus-toggle-description">
-                      Weight model votes by historical performance (better models count more)
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              <div className="settings-section early-consensus-section">
-                <label className="early-consensus-toggle-wrapper">
-                  <input
-                    type="checkbox"
-                    checked={useEarlyConsensus}
-                    onChange={(e) => handleEarlyConsensusChange(e.target.checked)}
-                  />
-                  <span className="early-consensus-toggle-slider" />
-                  <span className="early-consensus-toggle-label">
-                    <span className="early-consensus-toggle-title">Early Consensus Exit</span>
-                    <span className="early-consensus-toggle-description">
-                      Skip Stage 3 synthesis when all models strongly agree (saves time and cost)
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              <div className="settings-section dynamic-routing-section">
-                <label className="dynamic-routing-toggle-wrapper">
-                  <input
-                    type="checkbox"
-                    checked={useDynamicRouting}
-                    onChange={(e) => handleDynamicRoutingChange(e.target.checked)}
-                  />
-                  <span className="dynamic-routing-toggle-slider" />
-                  <span className="dynamic-routing-toggle-label">
-                    <span className="dynamic-routing-toggle-title">Dynamic Model Routing</span>
-                    <span className="dynamic-routing-toggle-description">
-                      Classify questions and route to specialized model pools (coding, creative, factual, analysis)
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              <div className="settings-section escalation-section">
-                <label className="escalation-toggle-wrapper">
-                  <input
-                    type="checkbox"
-                    checked={useEscalation}
-                    onChange={(e) => handleEscalationChange(e.target.checked)}
-                  />
-                  <span className="escalation-toggle-slider" />
-                  <span className="escalation-toggle-label">
-                    <span className="escalation-toggle-title">Confidence-Gated Escalation</span>
-                    <span className="escalation-toggle-description">
-                      Start with cost-effective models, escalate to premium models if confidence is low
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              <div className="settings-section refinement-section">
-                <label className="refinement-toggle-wrapper">
-                  <input
-                    type="checkbox"
-                    checked={useRefinement}
-                    onChange={(e) => handleRefinementChange(e.target.checked)}
-                  />
-                  <span className="refinement-toggle-slider" />
-                  <span className="refinement-toggle-label">
-                    <span className="refinement-toggle-title">Iterative Refinement</span>
-                    <span className="refinement-toggle-description">
-                      Council critiques and chairman revises until quality converges
-                    </span>
-                  </span>
-                </label>
-                {useRefinement && (
-                  <div className="refinement-options">
-                    <label className="refinement-iterations-label">
-                      Max iterations:
-                      <select
-                        value={refinementMaxIterations}
-                        onChange={(e) => handleRefinementMaxIterationsChange(parseInt(e.target.value, 10))}
-                      >
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                      </select>
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              <div className="settings-section adversary-section">
-                <label className="adversary-toggle-wrapper">
-                  <input
-                    type="checkbox"
-                    checked={useAdversary}
-                    onChange={(e) => handleAdversaryChange(e.target.checked)}
-                  />
-                  <span className="adversary-toggle-slider" />
-                  <span className="adversary-toggle-label">
-                    <span className="adversary-toggle-title">Adversarial Validation</span>
-                    <span className="adversary-toggle-description">
-                      Devil's advocate review to find flaws, with revision if issues found
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              <div className="settings-section debate-section">
-                <label className="debate-toggle-wrapper">
-                  <input
-                    type="checkbox"
-                    checked={useDebate}
-                    onChange={(e) => handleDebateChange(e.target.checked)}
-                  />
-                  <span className="debate-toggle-slider" />
-                  <span className="debate-toggle-label">
-                    <span className="debate-toggle-title">Debate Mode</span>
-                    <span className="debate-toggle-description">
-                      Multi-round structured debate: Position → Critique → Rebuttal → Judgment
-                    </span>
-                  </span>
-                </label>
-                {useDebate && (
-                  <label className="rebuttal-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={includeRebuttal}
-                      onChange={(e) => handleIncludeRebuttalChange(e.target.checked)}
-                    />
-                    <span>Include Round 3 (Rebuttals)</span>
-                  </label>
-                )}
-              </div>
-
-              <div className="settings-section decomposition-section">
-                <label className="decomposition-toggle-wrapper">
-                  <input
-                    type="checkbox"
-                    checked={useDecomposition}
-                    onChange={(e) => handleDecompositionChange(e.target.checked)}
-                  />
-                  <span className="decomposition-toggle-slider" />
-                  <span className="decomposition-toggle-label">
-                    <span className="decomposition-toggle-title">Sub-Question Decomposition</span>
-                    <span className="decomposition-toggle-description">
-                      Break complex questions into sub-questions, answer each, then merge (map-reduce)
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              <div className="settings-section cache-section">
-                <label className="cache-toggle-wrapper">
-                  <input
-                    type="checkbox"
-                    checked={useCache}
-                    onChange={(e) => handleCacheChange(e.target.checked)}
-                  />
-                  <span className="cache-toggle-slider" />
-                  <span className="cache-toggle-label">
-                    <span className="cache-toggle-title">Semantic Response Caching</span>
-                    <span className="cache-toggle-description">
-                      Cache responses and return similar past answers (saves time and cost)
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              <div className="settings-section research-section">
-                <label className="research-toggle-wrapper">
-                  <input
-                    type="checkbox"
-                    checked={useResearch}
-                    onChange={(e) => handleResearchChange(e.target.checked)}
-                  />
-                  <span className="research-toggle-slider" />
-                  <span className="research-toggle-label">
-                    <span className="research-toggle-title">Autonomous Tech Scouting & Search</span>
-                    <span className="research-toggle-description">
-                      Scout GitHub, open packages, and installed skills to ground deliberations in concrete candidates
-                    </span>
-                  </span>
-                </label>
-              </div>
-            </div>
-          )}
         </div>
         <ChatInterface
           conversation={currentConversation}
@@ -2135,6 +1935,10 @@ function App() {
           isDeliberating={loadingConversationId === currentConversationId || currentConversation?.status === 'deliberating'}
           onAbortDeliberation={handleAbortDeliberation}
           onTagsChange={handleTagsChange}
+          onInspectSkill={(skillId) => {
+            setSelectedSkillIdForModal(skillId);
+            setShowSkillModal(true);
+          }}
         />
       </div>
 
@@ -2180,6 +1984,53 @@ function App() {
         onVerbosityChange={handleVerbosityChange}
         isOpen={showProcessMonitor}
         onToggle={() => setShowProcessMonitor(!showProcessMonitor)}
+      />
+
+      {/* Domain Skills & Persona Inspector Modal */}
+      {showSkillModal && (
+        <SkillViewerModal
+          initialSkillId={selectedSkillIdForModal}
+          onClose={() => {
+            setShowSkillModal(false);
+            setSelectedSkillIdForModal(null);
+          }}
+        />
+      )}
+
+      {/* Deliberation Settings Modal */}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        systemPrompt={systemPrompt}
+        onSystemPromptChange={handleSystemPromptChange}
+        useCot={useCot}
+        onCotChange={handleCotChange}
+        useMultiChairman={useMultiChairman}
+        onMultiChairmanChange={handleMultiChairmanChange}
+        useWeightedConsensus={useWeightedConsensus}
+        onWeightedConsensusChange={handleWeightedConsensusChange}
+        useEarlyConsensus={useEarlyConsensus}
+        onEarlyConsensusChange={handleEarlyConsensusChange}
+        useDynamicRouting={useDynamicRouting}
+        onDynamicRoutingChange={handleDynamicRoutingChange}
+        useEscalation={useEscalation}
+        onEscalationChange={handleEscalationChange}
+        useRefinement={useRefinement}
+        onRefinementChange={handleRefinementChange}
+        refinementMaxIterations={refinementMaxIterations}
+        onRefinementMaxIterationsChange={handleRefinementMaxIterationsChange}
+        useAdversary={useAdversary}
+        onAdversaryChange={handleAdversaryChange}
+        useDebate={useDebate}
+        onDebateChange={handleDebateChange}
+        includeRebuttal={includeRebuttal}
+        onIncludeRebuttalChange={handleIncludeRebuttalChange}
+        useDecomposition={useDecomposition}
+        onDecompositionChange={handleDecompositionChange}
+        useCache={useCache}
+        onCacheChange={handleCacheChange}
+        useResearch={useResearch}
+        onResearchChange={handleResearchChange}
       />
     </div>
   );

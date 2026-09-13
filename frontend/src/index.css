@@ -1,49 +1,56 @@
 :root {
-  /* Fonts */
-  --font-display: 'Syne', -apple-system, sans-serif;
-  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  /* Fonts: Clean system developer typography */
+  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
 
-  /* Palette: The Deliberation Chamber (Obsidian & Brass) */
-  --bg-canvas: #090b0e;
-  --bg-surface: #11141a;
-  --bg-surface-elevated: #161b23;
-  --bg-surface-hover: #1c222d;
-  --bg-surface-active: #232a36;
+  /* Palette: Modern Obsidian & Electric Azure (matches LoginModal) */
+  --bg-canvas: #010409;
+  --bg-surface: #0d1117;
+  --bg-surface-elevated: #161b22;
+  --bg-surface-hover: #1f242c;
+  --bg-surface-active: #262c36;
   
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-medium: rgba(255, 255, 255, 0.15);
-  --border-strong: rgba(255, 255, 255, 0.24);
-  --border-active: rgba(229, 169, 60, 0.45);
+  --border-subtle: #21262d;
+  --border-medium: #30363d;
+  --border-strong: #484f58;
+  --border-active: rgba(88, 166, 255, 0.45);
 
-  --text-primary: #f0f2f5;
-  --text-secondary: #9aa2ac;
-  --text-muted: #5e6672;
-  --text-inverse: #090b0e;
+  --text-primary: #f0f6fc;
+  --text-secondary: #c9d1d9;
+  --text-muted: #8b949e;
+  --text-inverse: #010409;
 
-  /* Dominant Accent: Verdict Brass / Gold */
-  --accent-brass: #e5a93c;
-  --accent-brass-hover: #f3be5d;
-  --accent-brass-subtle: rgba(229, 169, 60, 0.12);
-  --accent-brass-glow: rgba(229, 169, 60, 0.2);
+  /* Primary Accent: Electric Azure (replaces old muddy brass) */
+  --accent-primary: #58a6ff;
+  --accent-primary-hover: #79c0ff;
+  --accent-subtle: rgba(56, 139, 253, 0.15);
+  --accent-glow: rgba(56, 139, 253, 0.25);
+
+  /* Legacy alias mapped to electric azure for consistent styling */
+  --accent-brass: #58a6ff;
+  --accent-brass-hover: #79c0ff;
+  --accent-brass-subtle: rgba(56, 139, 253, 0.15);
+  --accent-brass-glow: rgba(56, 139, 253, 0.25);
 
   /* Semantic Accents */
-  --status-consensus: #10b981;
-  --status-consensus-subtle: rgba(16, 185, 129, 0.12);
-  --status-divergence: #f59e0b;
-  --status-divergence-subtle: rgba(245, 158, 11, 0.12);
-  --status-critical: #ef4444;
-  --status-critical-subtle: rgba(239, 68, 68, 0.14);
-  --status-model: #6366f1;
-  --status-model-subtle: rgba(99, 102, 241, 0.12);
+  --status-consensus: #238636;
+  --status-consensus-hover: #2ea043;
+  --status-consensus-subtle: rgba(46, 160, 67, 0.15);
+  --status-divergence: #d29922;
+  --status-divergence-subtle: rgba(210, 153, 34, 0.15);
+  --status-critical: #f85149;
+  --status-critical-subtle: rgba(248, 81, 73, 0.15);
+  --status-model: #bc8cff;
+  --status-model-subtle: rgba(188, 140, 255, 0.15);
 
-  /* Radius & Shadows */
+  /* Radius & Shadows matching LoginModal card */
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 8px;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.7);
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(1, 4, 9, 0.5);
+  --shadow-md: 0 4px 12px rgba(1, 4, 9, 0.6);
+  --shadow-lg: 0 16px 32px rgba(1, 4, 9, 0.7);
 
   font-family: var(--font-body);
   line-height: 1.5;

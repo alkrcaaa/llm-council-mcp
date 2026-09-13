@@ -38,24 +38,24 @@
 
 .new-conversation-btn {
   width: 100%;
-  padding: 10px 14px;
-  background: var(--accent-brass);
-  border: 1px solid var(--accent-brass);
+  padding: 9px 14px;
+  background: #238636;
+  border: 1px solid rgba(240, 246, 252, 0.1);
   border-radius: var(--radius-md);
-  color: var(--text-inverse);
+  color: #ffffff;
   cursor: pointer;
   font-size: 13px;
-  font-family: var(--font-display);
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-family: var(--font-body);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   transition: all 0.15s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .new-conversation-btn:hover {
-  background: var(--accent-brass-hover);
-  border-color: var(--accent-brass-hover);
-  box-shadow: 0 0 16px var(--accent-brass-glow);
+  background: #2ea043;
+  border-color: rgba(240, 246, 252, 0.2);
+  box-shadow: 0 0 12px rgba(46, 160, 67, 0.35);
   transform: translateY(-1px);
 }
 

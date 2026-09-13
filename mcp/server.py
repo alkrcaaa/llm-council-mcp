@@ -15,6 +15,16 @@ import httpx
 COUNCIL_API_BASE = os.getenv("COUNCIL_API_BASE", "http://localhost:8001")
 RECURSION_ENV_KEY = "LLM_COUNCIL_INVOCATION"
 
+
+def _get_mcp_auth_headers() -> Dict[str, str]:
+    """Generate authenticated bearer token for local agent MCP calls."""
+    try:
+        from backend.auth import create_token
+        return {"Authorization": f"Bearer {create_token('mcp-agent')}"}
+    except Exception:
+        return {}
+
+
 try:
     from mcp.server.fastmcp import FastMCP
     mcp = FastMCP("llm-council")
@@ -205,7 +215,8 @@ async def ask_council(
             # Create a dedicated conversation for this deliberation
             conv_resp = await client.post(
                 f"{COUNCIL_API_BASE}/api/conversations",
-                json={"council_id": council_id}
+                json={"council_id": council_id},
+                headers=_get_mcp_auth_headers(),
             )
             if conv_resp.status_code != 200:
                 return (
@@ -243,7 +254,8 @@ async def ask_council(
 
             msg_resp = await client.post(
                 f"{COUNCIL_API_BASE}/api/conversations/{conv_id}/message",
-                json=msg_payload
+                json=msg_payload,
+                headers=_get_mcp_auth_headers(),
             )
 
             if msg_resp.status_code != 200:

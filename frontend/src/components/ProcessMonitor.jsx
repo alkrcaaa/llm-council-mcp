@@ -102,7 +102,10 @@ export default function ProcessMonitor({
         <div className="header-title">
           <div className="title-with-pill">
             <span className="pulse-indicator"></span>
-            <h3>Process Monitor</h3>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '13px' }}>Live Process Telemetry</h3>
+              <span style={{ fontSize: '10px', color: '#8b949e' }}>Real-time council execution stream</span>
+            </div>
           </div>
           <button
             className="close-btn"
@@ -117,7 +120,7 @@ export default function ProcessMonitor({
         </div>
         <div className="verbosity-control">
           <div className="verbosity-header">
-            <label>Verbosity Level</label>
+            <label>Log Detail Level</label>
             <span className="verbosity-label">{verbosityLabels[verbosity]}</span>
           </div>
           <div className="verbosity-slider">
@@ -153,14 +156,14 @@ export default function ProcessMonitor({
         {verbosity === 0 ? (
           <div className="no-events-message">
             <span className="no-events-icon">◎</span>
-            <p>Monitoring Paused</p>
-            <p className="hint">Increase verbosity slider above to capture live council telemetry.</p>
+            <p>Telemetry Paused (Silent Mode)</p>
+            <p className="hint">Move the slider above (1-3) to inspect live queries, model responses, and scoring events as they happen.</p>
           </div>
         ) : events.length === 0 ? (
           <div className="no-events-message">
             <span className="no-events-icon">◈</span>
-            <p>Awaiting Chamber Stream</p>
-            <p className="hint">Submit a query to inspect live peer examination and synthesis events.</p>
+            <p>Ready & Listening</p>
+            <p className="hint">Ask a question to see real-time parallel model generation and referee synthesis events here.</p>
           </div>
         ) : (
           events.map((event, index) => (

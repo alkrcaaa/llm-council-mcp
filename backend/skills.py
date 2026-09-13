@@ -202,6 +202,40 @@ def get_skill_instructions(skill_id: str) -> Optional[str]:
         return None
 
 
+def get_skill_details(skill_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve full skill documentation, metadata, and guidelines."""
+    if not skill_id:
+        return None
+
+    skill_file = os.path.join(SKILLS_DIR, skill_id, "SKILL.md")
+    if not os.path.isfile(skill_file):
+        return None
+
+    try:
+        with open(skill_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        meta, body = parse_frontmatter(content)
+        guidelines = extract_gate_or_summary(body)
+        
+        curated = SKILL_METADATA.get(skill_id, {})
+        title = curated.get("title", skill_id.replace("-", " ").title())
+        category = curated.get("category", "General")
+        badge = curated.get("badge", "SKILL")
+
+        return {
+            "id": skill_id,
+            "title": title,
+            "category": category,
+            "badge": badge,
+            "description": meta.get("description", ""),
+            "guidelines": guidelines,
+            "content": content,
+        }
+    except Exception:
+        return None
+
+
+
 def parse_model_identifier(identifier: str) -> Tuple[str, Optional[str]]:
     """Parse 'model@skill' syntax into (base_model, skill_id).
     

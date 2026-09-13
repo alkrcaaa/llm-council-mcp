@@ -827,3 +827,68 @@
   background: var(--bg-surface);
   color: var(--text-primary);
 }
+
+.auth-user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--bg-surface-elevated, #161b22);
+  border: 1px solid var(--border-subtle, #30363d);
+  border-radius: var(--radius-md, 6px);
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+}
+
+.auth-username {
+  color: var(--text-primary, #f0f6fc);
+  font-weight: 500;
+}
+
+.auth-logout-btn {
+  background: transparent;
+  border: 1px solid rgba(248, 81, 73, 0.4);
+  color: #ff7b72;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease-out;
+}
+
+.auth-logout-btn:hover {
+  background: rgba(248, 81, 73, 0.15);
+  border-color: #ff7b72;
+  color: #ffa198;
+}
+
+.skills-library-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  background: var(--bg-surface-elevated, #161b22);
+  border: 1px solid var(--border-subtle, #30363d);
+  border-radius: var(--radius-md, 6px);
+  color: var(--text-secondary, #c9d1d9);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease-out;
+}
+
+.skills-library-btn:hover {
+  background: var(--bg-surface-hover, #1f242c);
+  border-color: rgba(88, 166, 255, 0.4);
+  color: #58a6ff;
+}
+
+.skills-library-btn.active {
+  background: rgba(88, 166, 255, 0.15);
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+

@@ -1,6 +1,6 @@
 """FastAPI backend for LLM Council."""
 
-from fastapi import FastAPI, HTTPException, Query, Body
+from fastapi import FastAPI, HTTPException, Query, Body, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ import json
 import asyncio
 import time
 
+from . import auth
 from . import storage
 from . import config_api
 from . import councils
@@ -58,6 +59,33 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def sync_active_council_on_startup():
+    """Ensure global configuration mirrors the active council profile on startup."""
+    try:
+        active = councils.get_active_council()
+        if active and active.get("council_models"):
+            config_api.save_config({
+                "council_models": active["council_models"],
+                "chairman_model": active["chairman_model"],
+            })
+            print(f"[Startup] Synchronized active council '{active.get('id')}' ({len(active['council_models'])} models) to global config.")
+    except Exception as e:
+        print(f"[Startup] Warning: could not sync active council to config: {e}")
+
+
+async def require_auth(authorization: Optional[str] = Header(None)):
+    """FastAPI dependency to protect endpoints when AUTH_ENABLED=true."""
+    if not auth.check_auth_header(authorization):
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required. Please sign in via /api/auth/login.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
 
 
 # Active background deliberations registry {conversation_id: asyncio.Task}
@@ -160,6 +188,18 @@ class UpdateTagsRequest(BaseModel):
     tags: List[str]
 
 
+class LoginRequest(BaseModel):
+    """Request to authenticate user."""
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    """Response returned upon successful authentication."""
+    token: str
+    username: str
+
+
 class UpdateConfigRequest(BaseModel):
     """Request to update model configuration."""
     council_models: List[str]
@@ -211,6 +251,28 @@ async def root():
     return {"status": "ok", "service": "LLM Council API"}
 
 
+@app.post("/api/auth/login", response_model=LoginResponse)
+async def login(request: LoginRequest):
+    """Authenticate user with username and password."""
+    if not auth.verify_credentials(request.username, request.password):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    token = auth.create_token(request.username)
+    return {"token": token, "username": request.username}
+
+
+@app.get("/api/auth/verify")
+async def verify_auth(authorization: Optional[str] = Header(None)):
+    """Verify session token validity."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
+    token = authorization[7:].strip()
+    payload = auth.verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return {"valid": True, "username": payload.get("sub", "admin")}
+
+
+
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
 async def list_conversations(tag: Optional[str] = Query(None, description="Filter by tag")):
     """List all conversations (metadata only), optionally filtered by tag."""
@@ -219,7 +281,7 @@ async def list_conversations(tag: Optional[str] = Query(None, description="Filte
     return storage.list_conversations()
 
 
-@app.post("/api/conversations", response_model=Conversation)
+@app.post("/api/conversations", response_model=Conversation, dependencies=[Depends(require_auth)])
 async def create_conversation(request: CreateConversationRequest):
     """Create a new conversation bound to an active or requested council profile."""
     conversation_id = str(uuid.uuid4())
@@ -259,7 +321,7 @@ async def get_conversation(conversation_id: str):
     return conversation
 
 
-@app.delete("/api/conversations/{conversation_id}")
+@app.delete("/api/conversations/{conversation_id}", dependencies=[Depends(require_auth)])
 async def delete_conversation(conversation_id: str):
     """Delete a conversation and its messages."""
     success = storage.delete_conversation(conversation_id)
@@ -268,7 +330,7 @@ async def delete_conversation(conversation_id: str):
     return {"status": "ok", "message": "Conversation deleted"}
 
 
-@app.put("/api/conversations/{conversation_id}/council")
+@app.put("/api/conversations/{conversation_id}/council", dependencies=[Depends(require_auth)])
 async def update_conversation_council(conversation_id: str, council_id: str = Body(..., embed=True)):
     """Switch the council profile for an existing conversation."""
     conversation = storage.get_conversation(conversation_id)
@@ -285,7 +347,7 @@ async def update_conversation_council(conversation_id: str, council_id: str = Bo
     return conversation
 
 
-@app.post("/api/conversations/{conversation_id}/abort")
+@app.post("/api/conversations/{conversation_id}/abort", dependencies=[Depends(require_auth)])
 async def abort_deliberation(conversation_id: str):
     """
     Abort an actively running deliberation for a conversation.
@@ -379,7 +441,7 @@ async def delete_council_profile(council_id: str):
     return {"status": "ok", "deleted_id": council_id}
 
 
-@app.put("/api/conversations/{conversation_id}/tags")
+@app.put("/api/conversations/{conversation_id}/tags", dependencies=[Depends(require_auth)])
 async def update_tags(conversation_id: str, request: UpdateTagsRequest):
     """Update tags for a conversation."""
     conversation = storage.update_conversation_tags(conversation_id, request.tags)
@@ -400,7 +462,7 @@ async def get_config():
     return config_api.load_config()
 
 
-@app.put("/api/config", response_model=ConfigResponse)
+@app.put("/api/config", response_model=ConfigResponse, dependencies=[Depends(require_auth)])
 async def update_config(request: UpdateConfigRequest):
     """
     Update model configuration.
@@ -418,7 +480,7 @@ async def update_config(request: UpdateConfigRequest):
         raise HTTPException(status_code=422, detail=str(e))
 
 
-@app.post("/api/config/reset", response_model=ConfigResponse)
+@app.post("/api/config/reset", response_model=ConfigResponse, dependencies=[Depends(require_auth)])
 async def reset_config():
     """Reset configuration to defaults."""
     return config_api.reset_to_defaults()
@@ -435,6 +497,16 @@ async def get_skills():
     """Get list of available domain skills from dev-agent-kit."""
     from backend.skills import get_available_skills
     return {"skills": get_available_skills()}
+
+
+@app.get("/api/skills/{skill_id}")
+async def get_skill_by_id(skill_id: str):
+    """Get full documentation, metadata, and checklist for a specific skill."""
+    from backend.skills import get_skill_details
+    details = get_skill_details(skill_id)
+    if not details:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return details
 
 
 @app.get("/api/workspaces")
@@ -697,7 +769,7 @@ async def get_decomposition_config():
 # ============================================================================
 
 
-@app.post("/api/conversations/{conversation_id}/message")
+@app.post("/api/conversations/{conversation_id}/message", dependencies=[Depends(require_auth)])
 async def send_message(conversation_id: str, request: SendMessageRequest):
     """
     Send a message and run the 3-stage council process.
@@ -818,7 +890,7 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
             storage.set_conversation_status(conversation_id, "idle")
 
 
-@app.post("/api/conversations/{conversation_id}/message/stream")
+@app.post("/api/conversations/{conversation_id}/message/stream", dependencies=[Depends(require_auth)])
 async def send_message_stream(conversation_id: str, request: SendMessageRequest):
     """
     Send a message and stream the 3-stage council process.

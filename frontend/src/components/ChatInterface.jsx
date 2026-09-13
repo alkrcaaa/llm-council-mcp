@@ -18,6 +18,7 @@ export default function ChatInterface({
   isDeliberating,
   onAbortDeliberation,
   onTagsChange,
+  onInspectSkill,
 }) {
   const [input, setInput] = useState('');
   const [showTagEditor, setShowTagEditor] = useState(false);
@@ -191,7 +192,16 @@ export default function ChatInterface({
                     return (
                       <span key={idx} className="empty-roster-seat">
                         <span className="empty-seat-model">{modelName}</span>
-                        {skillId && <span className="empty-seat-skill">@{skillId}</span>}
+                        {skillId && (
+                          <button
+                            type="button"
+                            className="empty-seat-skill clickable"
+                            onClick={() => onInspectSkill?.(skillId)}
+                            title={`Inspect "${skillId}" guidelines & rules`}
+                          >
+                            📖 @{skillId}
+                          </button>
+                        )}
                       </span>
                     );
                   })}

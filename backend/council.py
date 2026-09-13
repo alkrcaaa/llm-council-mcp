@@ -1124,8 +1124,13 @@ async def generate_conversation_title(user_query: str) -> str:
     if len(words) <= 3 and len(clean_q) <= 30:
         return clean_q.capitalize()
 
-    from .config import OPENROUTER_API_KEY
-    title_model = "google/gemini-2.5-flash" if (OPENROUTER_API_KEY and OPENROUTER_API_KEY.strip()) else get_chairman_model()
+    from .config import OPENROUTER_API_KEY, LOCAL_MODELS
+    if "local/qwen3.6-27b" in LOCAL_MODELS:
+        title_model = "local/qwen3.6-27b"
+    elif OPENROUTER_API_KEY and OPENROUTER_API_KEY.strip():
+        title_model = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    else:
+        title_model = get_chairman_model()
 
     title_prompt = f"""Generate a very short title (3-5 words maximum) that summarizes the following question.
 The title should be concise and descriptive. Do not use quotes or punctuation in the title.

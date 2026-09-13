@@ -75,6 +75,11 @@ MODEL_PRICING: Dict[str, Dict[str, float]] = {
     "local/qwen3.6-27b": {"input": 0.0, "output": 0.0},  # self-hosted GPU, no per-token API cost
     "local/claude-code": {"input": 3.00, "output": 15.00},  # real API cost via claude-code-shim; approximated as Sonnet pricing
     "local/antigravity": {"input": 1.25, "output": 5.00},  # real API cost via antigravity-shim; approximated as Gemini 3 Pro pricing
+
+    # Free OpenRouter models (community-sponsored, $0 per token)
+    "nvidia/nemotron-3-ultra-550b-a55b:free": {"input": 0.0, "output": 0.0},
+    "thinkingmachines/inkling:free": {"input": 0.0, "output": 0.0},
+    "poolside/laguna-s-2.1:free": {"input": 0.0, "output": 0.0},
 }
 
 # Default pricing for unknown models (conservative estimate)

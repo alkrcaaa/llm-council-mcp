@@ -6,7 +6,75 @@
 // viewed from another device on the LAN (e.g. http://192.168.x.x:5173).
 const API_BASE = `http://${window.location.hostname}:8001`;
 
+const TOKEN_KEY = 'council_auth_token';
+
 export const api = {
+  getToken() {
+    return localStorage.getItem(TOKEN_KEY);
+  },
+  setToken(token) {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  },
+  clearToken() {
+    localStorage.removeItem(TOKEN_KEY);
+  },
+  getAuthHeaders(customHeaders = {}) {
+    const token = this.getToken();
+    return {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...customHeaders,
+    };
+  },
+
+  /**
+   * Authenticate user with credentials.
+   */
+  async login(username, password) {
+    const response = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Authentication failed' }));
+      throw new Error(err.detail || 'Authentication failed');
+    }
+    const data = await response.json();
+    this.setToken(data.token);
+    return data;
+  },
+
+  /**
+   * Verify existing session token.
+   */
+  async verifyAuth() {
+    const token = this.getToken();
+    if (!token) return { valid: false };
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/verify`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!response.ok) {
+        this.clearToken();
+        return { valid: false };
+      }
+      return await response.json();
+    } catch {
+      return { valid: false };
+    }
+  },
+
+  /**
+   * Logout user.
+   */
+  logout() {
+    this.clearToken();
+  },
+
   /**
    * List all conversations, optionally filtered by tag.
    * @param {string} tag - Optional tag to filter by
@@ -15,7 +83,9 @@ export const api = {
     const url = tag
       ? `${API_BASE}/api/conversations?tag=${encodeURIComponent(tag)}`
       : `${API_BASE}/api/conversations`;
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: this.getAuthHeaders(),
+    });
     if (!response.ok) {
       throw new Error('Failed to list conversations');
     }
@@ -274,9 +344,26 @@ export const api = {
    * @returns {Promise<{skills: Array<{id: string, title: string, description: string, category: string, badge: string}>}>}
    */
   async getSkills() {
-    const response = await fetch(`${API_BASE}/api/skills`);
+    const response = await fetch(`${API_BASE}/api/skills`, {
+      headers: this.getAuthHeaders(),
+    });
     if (!response.ok) {
       throw new Error('Failed to get skills');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get full documentation and checklist for a specific domain skill.
+   * @param {string} skillId - The ID of the skill (e.g. 'first-principles')
+   * @returns {Promise<{id: string, title: string, category: string, badge: string, description: string, guidelines: string, content: string}>}
+   */
+  async getSkillDetails(skillId) {
+    const response = await fetch(`${API_BASE}/api/skills/${encodeURIComponent(skillId)}`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to get skill details for ${skillId}`);
     }
     return response.json();
   },

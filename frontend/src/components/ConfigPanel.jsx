@@ -79,9 +79,16 @@ export default function ConfigPanel({ onClose, onCouncilsUpdated }) {
   const loadConfig = async () => {
     try {
       setIsLoading(true);
-      const config = await api.getConfig();
-      setCouncilModels(config.council_models);
-      setChairmanModel(config.chairman_model);
+      // Prefer the currently active council profile if available
+      const activeCouncil = await api.getActiveCouncil().catch(() => null);
+      if (activeCouncil && activeCouncil.council_models?.length) {
+        setCouncilModels(activeCouncil.council_models);
+        setChairmanModel(activeCouncil.chairman_model);
+      } else {
+        const config = await api.getConfig();
+        setCouncilModels(config.council_models);
+        setChairmanModel(config.chairman_model);
+      }
       setError(null);
     } catch (err) {
       setError('Failed to load configuration');
@@ -94,12 +101,7 @@ export default function ConfigPanel({ onClose, onCouncilsUpdated }) {
   const loadAvailableModels = async () => {
     try {
       const result = await api.getAvailableModels();
-      // Ensure local models are always offered in suggestions
-      const suggested = [...result.models];
-      if (!suggested.includes('local/qwen3.6-27b')) suggested.unshift('local/qwen3.6-27b');
-      if (!suggested.includes('local/antigravity')) suggested.unshift('local/antigravity');
-      if (!suggested.includes('local/claude-code')) suggested.unshift('local/claude-code');
-      setAvailableModels(suggested);
+      setAvailableModels(result.models || []);
     } catch (err) {
       console.error('Failed to load available models:', err);
     }
@@ -215,6 +217,29 @@ export default function ConfigPanel({ onClose, onCouncilsUpdated }) {
     applyPreset(
       ['local/antigravity', 'local/qwen3.6-27b'],
       'local/antigravity'
+    );
+  };
+
+  const handleCloudFreePreset = () => {
+    applyPreset(
+      [
+        'nvidia/nemotron-3-ultra-550b-a55b:free@red-team-reasoning',
+        'thinkingmachines/inkling:free@first-principles',
+        'poolside/laguna-s-2.1:free@deep-research',
+      ],
+      'nvidia/nemotron-3-ultra-550b-a55b:free'
+    );
+  };
+
+  const handleFrontierPreset = () => {
+    applyPreset(
+      [
+        'local/antigravity@red-team-reasoning',
+        'local/qwen3.6-27b@first-principles',
+        'local/qwen3.6-27b@deep-research',
+        'nvidia/nemotron-3-ultra-550b-a55b:free@karpathy-guidelines',
+      ],
+      'local/claude-code'
     );
   };
 
@@ -464,6 +489,22 @@ export default function ConfigPanel({ onClose, onCouncilsUpdated }) {
             >
               Local Duo
             </button>
+            <button
+              type="button"
+              className="preset-btn"
+              onClick={handleCloudFreePreset}
+              title="100% Free Cloud: Nemotron Ultra + Inkling + Poolside Laguna ($0 API cost)"
+            >
+              ☁️ Cloud Free Trio
+            </button>
+            <button
+              type="button"
+              className="preset-btn"
+              onClick={handleFrontierPreset}
+              title="Frontier 4+1: Antigravity + Qwen + Nemotron Ultra + Claude Chairman"
+            >
+              🧠 Frontier 4+1
+            </button>
           </div>
         </div>
 
@@ -588,17 +629,22 @@ export default function ConfigPanel({ onClose, onCouncilsUpdated }) {
           <div className="suggested-models">
             <span className="suggested-label">Quick add:</span>
             {availableModels
-              .slice(0, 6)
-              .map((model) => (
-                <button
-                  key={model}
-                  type="button"
-                  className="suggested-model-btn"
-                  onClick={() => addModel(model, newModelSkill)}
-                >
-                  + {model.split('/')[1] || model}
-                </button>
-              ))}
+              .slice(0, 10)
+              .map((model) => {
+                const shortName = model.split('/')[1] || model;
+                const isFree = model.endsWith(':free');
+                return (
+                  <button
+                    key={model}
+                    type="button"
+                    className="suggested-model-btn"
+                    onClick={() => addModel(model, newModelSkill)}
+                    title={`Add ${model} to council`}
+                  >
+                    + {shortName.replace(':free', '')} {isFree ? '🆓' : ''}
+                  </button>
+                );
+              })}
           </div>
         )}
       </div>
