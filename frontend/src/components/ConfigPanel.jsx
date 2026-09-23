@@ -1,7 +1,95 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { api } from '../api';
+import { saveAgentProfile, getAgentProfile, fetchAgentProfiles, useAgentProfiles } from '../agentProfiles';
 import './ConfigPanel.css';
+
+const PROVIDER_PRESETS = [
+  {
+    id: 'google',
+    name: 'Google AI Studio (Gemini)',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    type: 'remote',
+    defaultModel: 'gemini-3.6-flash',
+    requiresKey: true,
+    keyHint: 'Google AI Studio API Key (from aistudio.google.com)',
+  },
+  {
+    id: 'groq',
+    name: 'Groq Cloud',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    type: 'remote',
+    defaultModel: 'llama-3.3-70b-versatile',
+    requiresKey: true,
+    keyHint: 'Groq API Key (starts with gsk_...)',
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek Direct',
+    baseUrl: 'https://api.deepseek.com/v1',
+    type: 'remote',
+    defaultModel: 'deepseek-chat',
+    requiresKey: true,
+    keyHint: 'DeepSeek API Key (starts with sk-...)',
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI Direct',
+    baseUrl: 'https://api.openai.com/v1',
+    type: 'remote',
+    defaultModel: 'gpt-4o-mini',
+    requiresKey: true,
+    keyHint: 'OpenAI API Key (starts with sk-...)',
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter Gateway',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    type: 'remote',
+    defaultModel: 'openrouter/auto',
+    requiresKey: true,
+    keyHint: 'OpenRouter API Key (starts with sk-or-...)',
+  },
+  {
+    id: 'ollama',
+    name: 'Ollama (Local Host)',
+    baseUrl: 'http://host.docker.internal:11434/v1',
+    type: 'local',
+    defaultModel: 'llama3.3:latest',
+    requiresKey: false,
+    keyHint: 'Runs on host (port 11434). Registered under local/<model> namespace ($0 cost).',
+  },
+  {
+    id: 'lmstudio',
+    name: 'LM Studio / vLLM (Local Host)',
+    baseUrl: 'http://host.docker.internal:1234/v1',
+    type: 'local',
+    defaultModel: 'default',
+    requiresKey: false,
+    keyHint: 'Leave empty if unauthenticated local server',
+  },
+  {
+    id: 'custom',
+    name: 'Custom OpenAI-Compatible Endpoint',
+    baseUrl: '',
+    type: 'remote',
+    defaultModel: '',
+    requiresKey: false,
+    keyHint: 'Enter custom base URL and API key',
+  },
+];
+
+const COLOR_SWATCHES = [
+  { name: 'Indigo', value: '#6366f1' },
+  { name: 'Purple', value: '#8b5cf6' },
+  { name: 'Sky Blue', value: '#3b82f6' },
+  { name: 'Cyan', value: '#06b6d4' },
+  { name: 'Emerald', value: '#10b981' },
+  { name: 'Amber', value: '#d97706' },
+  { name: 'Orange', value: '#f97316' },
+  { name: 'Rose', value: '#f43f5e' },
+  { name: 'Slate', value: '#64748b' },
+];
 
 function formatModelDisplay(model, skillsList = []) {
   const [baseModel, skillId] = model.split('@');
@@ -74,6 +162,20 @@ export default function ConfigPanel({
   const [showModelDropdown, setShowModelDropdown] = useState(false);
 
   // -------------------------------------------------------------------------
+  // 1b. Chat Roster State (Round Table Group Chat)
+  // -------------------------------------------------------------------------
+  const [savedRosters, setSavedRosters] = useState([]);
+  const [activeRosterId, setActiveRosterId] = useState('');
+  const [rosterModels, setRosterModels] = useState([]);
+  const [chatSystemPrompt, setChatSystemPrompt] = useState('');
+  const [showSaveRosterModal, setShowSaveRosterModal] = useState(false);
+  const [newRosterName, setNewRosterName] = useState('');
+  const [newRosterDesc, setNewRosterDesc] = useState('');
+  const [newRosterModelInput, setNewRosterModelInput] = useState('');
+  const [newRosterModelSkill, setNewRosterModelSkill] = useState('');
+  const [isSavingRoster, setIsSavingRoster] = useState(false);
+
+  // -------------------------------------------------------------------------
   // 2. Custom & System Providers State
   // -------------------------------------------------------------------------
   const [systemProviders, setSystemProviders] = useState([]);
@@ -81,15 +183,22 @@ export default function ConfigPanel({
   const [providerStatuses, setProviderStatuses] = useState({});
   const [isPingingAll, setIsPingingAll] = useState(false);
   const [pingingId, setPingingId] = useState(null);
-  const [providerName, setProviderName] = useState('');
-  const [providerType, setProviderType] = useState('local');
-  const [providerBaseUrl, setProviderBaseUrl] = useState('http://host.docker.internal:11434/v1');
-  const [providerModelId, setProviderModelId] = useState('');
+  const [providerPreset, setProviderPreset] = useState('google');
+  const [showAdvancedUrl, setShowAdvancedUrl] = useState(false);
+  const [providerName, setProviderName] = useState('Google AI Studio');
+  const [providerType, setProviderType] = useState('remote');
+  const [providerBaseUrl, setProviderBaseUrl] = useState('');
+  const [providerModelId, setProviderModelId] = useState('gemini-3.6-flash');
   const [providerApiKey, setProviderApiKey] = useState('');
   const [providerSkill, setProviderSkill] = useState('');
   const [isTestingProvider, setIsTestingProvider] = useState(false);
   const [providerTestResult, setProviderTestResult] = useState(null);
   const [isSavingProvider, setIsSavingProvider] = useState(false);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [fetchedModels, setFetchedModels] = useState([]);
+  const [fetchModelsError, setFetchModelsError] = useState(null);
+  const [savedProviderBanner, setSavedProviderBanner] = useState(null);
+  const [deletingProviderId, setDeletingProviderId] = useState(null);
 
   // -------------------------------------------------------------------------
   // 3. Skills Library State
@@ -98,6 +207,17 @@ export default function ConfigPanel({
   const [skillDetails, setSkillDetails] = useState(null);
   const [isLoadingSkillDetails, setIsLoadingSkillDetails] = useState(false);
   const [skillSearchQuery, setSkillSearchQuery] = useState('');
+
+  // -------------------------------------------------------------------------
+  // 4. Agent Personas & Visual Profiles State
+  // -------------------------------------------------------------------------
+  const agentProfiles = useAgentProfiles();
+  const [selectedProfileModel, setSelectedProfileModel] = useState('local/antigravity');
+  const [profileDisplayName, setProfileDisplayName] = useState('');
+  const [profileColor, setProfileColor] = useState('#6366f1');
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileAvatarFileError, setProfileAvatarFileError] = useState(null);
 
   // -------------------------------------------------------------------------
   // Common UI State
@@ -151,7 +271,9 @@ export default function ConfigPanel({
         loadAvailableModels(),
         loadSkills(),
         loadCouncils(),
+        loadChatRosters(),
         loadProviders(),
+        fetchAgentProfiles(),
       ]);
       setError(null);
     } catch (err) {
@@ -207,6 +329,28 @@ export default function ConfigPanel({
       setActiveCouncilId(res.active_council_id || '');
     } catch (err) {
       console.error('Failed to load councils:', err);
+    }
+  };
+
+  const loadChatRosters = async () => {
+    try {
+      const [rosterRes, settingsRes] = await Promise.all([
+        api.getChatRosters().catch(() => ({})),
+        api.getChatSettings().catch(() => ({})),
+      ]);
+      setSavedRosters(rosterRes.rosters || []);
+      setActiveRosterId(rosterRes.active_roster_id || '');
+      if (settingsRes && settingsRes.models && settingsRes.models.length > 0) {
+        setRosterModels(settingsRes.models);
+      } else {
+        const active = (rosterRes.rosters || []).find((r) => r.id === rosterRes.active_roster_id) || rosterRes.rosters?.[0];
+        if (active) {
+          setRosterModels(active.models || []);
+        }
+      }
+      setChatSystemPrompt(settingsRes?.system_prompt || '');
+    } catch (err) {
+      console.error('Failed to load chat rosters and settings:', err);
     }
   };
 
@@ -316,6 +460,126 @@ export default function ConfigPanel({
       showNotification('Council profile deleted.');
     } catch (err) {
       setError(err.message || 'Failed to delete council');
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // Chat Roster Operations (Round Table)
+  // -------------------------------------------------------------------------
+  const handleLoadRoster = async (roster) => {
+    setActiveRosterId(roster.id);
+    setRosterModels([...(roster.models || [])]);
+    try {
+      await api.activateChatRoster(roster.id);
+      showNotification(`Activated chat team "${roster.name}".`);
+      onCouncilsUpdated?.();
+    } catch (err) {
+      console.error('Failed to activate roster:', err);
+    }
+  };
+
+  const handleRosterModelChange = (index, newBaseModel) => {
+    const updated = [...rosterModels];
+    const [, skillId] = (updated[index] || '').split('@');
+    updated[index] = skillId ? `${newBaseModel}@${skillId}` : newBaseModel;
+    setRosterModels(updated);
+  };
+
+  const handleRosterSkillChange = (index, newSkillId) => {
+    const updated = [...rosterModels];
+    const [baseModel] = (updated[index] || '').split('@');
+    updated[index] = newSkillId ? `${baseModel}@${newSkillId}` : baseModel;
+    setRosterModels(updated);
+  };
+
+  const handleRemoveRosterModel = (index) => {
+    if (rosterModels.length <= 1) {
+      setError('Chat roster requires at least 1 participant.');
+      return;
+    }
+    const updated = rosterModels.filter((_, i) => i !== index);
+    setRosterModels(updated);
+  };
+
+  const handleAddRosterModel = (model, skillId = null) => {
+    const modelWithSkill = skillId ? `${model}@${skillId}` : model;
+    setRosterModels((prev) => [...prev, modelWithSkill]);
+  };
+
+  const handleSaveRosterChanges = async () => {
+    if (rosterModels.length < 1) {
+      setError('At least 1 participant is required.');
+      return;
+    }
+    setIsSavingRoster(true);
+    try {
+      await api.updateChatSettings({
+        models: rosterModels,
+        system_prompt: chatSystemPrompt,
+      });
+      if (activeRosterId) {
+        await api.updateChatRoster(activeRosterId, { models: rosterModels }).catch(() => {});
+      }
+      await loadChatRosters();
+      showNotification('Round Table settings & user profile saved successfully.');
+      onCouncilsUpdated?.();
+    } catch (err) {
+      setError(err.message || 'Failed to save chat settings');
+    } finally {
+      setIsSavingRoster(false);
+    }
+  };
+
+  const handleResetChatBio = async () => {
+    try {
+      const res = await api.resetChatBio();
+      setChatSystemPrompt(res.system_prompt || '');
+      showNotification('Loaded English user profile template.');
+    } catch (err) {
+      setError(err.message || 'Failed to reset bio template');
+    }
+  };
+
+  const handleCreateNewRoster = async () => {
+    if (!newRosterName.trim()) {
+      setError('Please enter a team name');
+      return;
+    }
+    if (rosterModels.length < 1) {
+      setError('At least 1 participant is required.');
+      return;
+    }
+    setIsSavingRoster(true);
+    try {
+      const created = await api.createChatRoster({
+        name: newRosterName.trim(),
+        description: newRosterDesc.trim(),
+        models: rosterModels,
+      });
+      await api.activateChatRoster(created.id);
+      await loadChatRosters();
+      setShowSaveRosterModal(false);
+      setNewRosterName('');
+      setNewRosterDesc('');
+      showNotification(`Created and activated chat team "${created.name}".`);
+      onCouncilsUpdated?.();
+    } catch (err) {
+      setError(err.message || 'Failed to create chat team');
+    } finally {
+      setIsSavingRoster(false);
+    }
+  };
+
+  const handleDeleteRoster = async (rosterId, e) => {
+    e?.stopPropagation();
+    if (!window.confirm('Are you sure you want to delete this custom chat team?')) return;
+    try {
+      await api.deleteChatRoster(rosterId);
+      await loadChatRosters();
+      showNotification('Chat team deleted.');
+      onCouncilsUpdated?.();
+    } catch (err) {
+      setError(err.message || 'Failed to delete chat team');
     }
   };
 
@@ -443,20 +707,81 @@ export default function ConfigPanel({
   // -------------------------------------------------------------------------
   // Provider Operations
   // -------------------------------------------------------------------------
+  const handlePresetChange = (presetId) => {
+    setProviderPreset(presetId);
+    setProviderTestResult(null);
+    setFetchModelsError(null);
+    setFetchedModels([]);
+    const preset = PROVIDER_PRESETS.find((p) => p.id === presetId);
+    if (preset) {
+      setProviderType(preset.type);
+      setProviderBaseUrl(preset.baseUrl);
+      setProviderModelId(preset.defaultModel);
+      if (!providerName || PROVIDER_PRESETS.some((p) => p.name === providerName)) {
+        setProviderName(preset.name);
+      }
+      if (preset.id === 'custom') {
+        setShowAdvancedUrl(true);
+      }
+    }
+  };
+
   const handleProviderTypeChange = (type) => {
     setProviderType(type);
-    if (type === 'local' && (!providerBaseUrl || providerBaseUrl.includes('deepseek') || providerBaseUrl.includes('openai'))) {
+    if (type === 'local' && (!providerBaseUrl || providerBaseUrl.includes('deepseek') || providerBaseUrl.includes('googleapis') || providerBaseUrl.includes('openai'))) {
       setProviderBaseUrl('http://host.docker.internal:11434/v1');
     } else if (type === 'remote' && providerBaseUrl.includes('host.docker.internal')) {
-      setProviderBaseUrl('https://api.deepseek.com/v1');
+      const preset = PROVIDER_PRESETS.find((p) => p.id === providerPreset);
+      setProviderBaseUrl(preset?.baseUrl || 'https://generativelanguage.googleapis.com/v1beta/openai');
+    }
+  };
+
+  const handleFetchModels = async () => {
+    const selectedPreset = PROVIDER_PRESETS.find((p) => p.id === providerPreset);
+    const effectiveBaseUrl = providerBaseUrl.trim() || selectedPreset?.baseUrl || '';
+    if (!effectiveBaseUrl && providerPreset === 'custom') {
+      setFetchModelsError('Please enter a Base URL before fetching models.');
+      return;
+    }
+
+    try {
+      setIsFetchingModels(true);
+      setFetchModelsError(null);
+      const res = await api.fetchProviderModels({
+        base_url: effectiveBaseUrl,
+        preset: providerPreset,
+        api_key: providerApiKey.trim(),
+      });
+      if (res.success && res.models && res.models.length > 0) {
+        setFetchedModels(res.models);
+        if (!providerModelId || !res.models.includes(providerModelId)) {
+          setProviderModelId(res.models[0]);
+        }
+        showNotification(`Discovered ${res.models.length} models.`);
+      } else {
+        setFetchModelsError(res.error || 'No models returned from endpoint.');
+      }
+    } catch (err) {
+      setFetchModelsError(err.message || 'Failed to fetch models from endpoint.');
+    } finally {
+      setIsFetchingModels(false);
     }
   };
 
   const handleTestProvider = async () => {
-    if (!providerBaseUrl || !providerModelId) {
+    const selectedPreset = PROVIDER_PRESETS.find((p) => p.id === providerPreset);
+    const effectiveBaseUrl = providerBaseUrl.trim() || selectedPreset?.baseUrl || '';
+    if (!effectiveBaseUrl && providerPreset === 'custom') {
       setProviderTestResult({
         success: false,
-        error: 'Please enter both Base URL and Model ID before testing.',
+        error: 'Please enter a Base URL before testing.',
+      });
+      return;
+    }
+    if (!providerModelId.trim()) {
+      setProviderTestResult({
+        success: false,
+        error: 'Please enter or select a Model ID before testing.',
       });
       return;
     }
@@ -465,7 +790,8 @@ export default function ConfigPanel({
       setIsTestingProvider(true);
       setProviderTestResult(null);
       const res = await api.testProvider({
-        base_url: providerBaseUrl.trim(),
+        base_url: effectiveBaseUrl,
+        preset: providerPreset,
         model_id: providerModelId.trim(),
         api_key: providerApiKey.trim(),
       });
@@ -482,8 +808,12 @@ export default function ConfigPanel({
 
   const handleSaveProvider = async (e) => {
     e.preventDefault();
-    if (!providerName.trim() || !providerBaseUrl.trim() || !providerModelId.trim()) {
-      setError('Provider Name, Base URL, and Model ID are required.');
+    const selectedPreset = PROVIDER_PRESETS.find((p) => p.id === providerPreset);
+    const effectiveBaseUrl = providerBaseUrl.trim() || selectedPreset?.baseUrl || '';
+    const effectiveName = providerName.trim() || selectedPreset?.name || providerModelId.trim();
+
+    if (!effectiveName || !effectiveBaseUrl || !providerModelId.trim()) {
+      setError('Provider Name, Base URL (or Preset), and Model ID are required.');
       return;
     }
 
@@ -491,9 +821,10 @@ export default function ConfigPanel({
       setIsSavingProvider(true);
       setError(null);
       const res = await api.saveProvider({
-        name: providerName.trim(),
+        name: effectiveName,
+        preset: providerPreset,
         provider_type: providerType,
-        base_url: providerBaseUrl.trim(),
+        base_url: effectiveBaseUrl,
         model_id: providerModelId.trim(),
         api_key: providerApiKey.trim(),
         default_skill: providerSkill || null,
@@ -503,17 +834,18 @@ export default function ConfigPanel({
       await loadAvailableModels();
       showNotification(`Saved provider "${res.provider.name}".`);
 
-      // Optionally offer to add it to the council immediately
-      const customModelId = res.provider.id;
-      if (window.confirm(`Provider registered successfully! Would you like to add "${customModelId}" as a seat in your active council?`)) {
-        handleAddModel(customModelId, providerSkill || null);
-        setActiveTab('seats');
-      }
+      // Inline banner offer to add to council (no browser popup window.confirm)
+      setSavedProviderBanner({
+        id: res.provider.id,
+        name: res.provider.name,
+        default_skill: providerSkill || null,
+      });
 
-      // Reset form
+      // Reset form but keep preset ready
       setProviderName('');
       setProviderModelId('');
       setProviderApiKey('');
+      setFetchedModels([]);
       setProviderTestResult(null);
     } catch (err) {
       setError(err.message || 'Failed to save provider');
@@ -523,9 +855,13 @@ export default function ConfigPanel({
   };
 
   const handleDeleteProvider = async (providerId) => {
-    if (!window.confirm(`Delete provider "${providerId}"?`)) return;
+    if (deletingProviderId !== providerId) {
+      setDeletingProviderId(providerId);
+      return;
+    }
     try {
       await api.deleteProvider(providerId);
+      setDeletingProviderId(null);
       await loadProviders();
       await loadAvailableModels();
       showNotification(`Provider deleted.`);
@@ -563,6 +899,64 @@ export default function ConfigPanel({
     setActiveTab('seats');
   };
 
+  // -------------------------------------------------------------------------
+  // 4. Agent Personas & Visual Profiles Handlers
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (!selectedProfileModel) return;
+    const p = getAgentProfile(selectedProfileModel);
+    setProfileDisplayName(p.displayName || selectedProfileModel.split('/').pop());
+    setProfileColor(p.color || '#6366f1');
+    setProfileAvatarUrl(p.avatarUrl || '');
+    setProfileAvatarFileError(null);
+  }, [selectedProfileModel, agentProfiles]);
+
+  const handleOpenCustomizeProfile = (modelId) => {
+    const baseModel = (modelId || '').split('@')[0].trim();
+    setSelectedProfileModel(baseModel);
+    const p = getAgentProfile(baseModel);
+    setProfileDisplayName(p.displayName || baseModel.split('/').pop());
+    setProfileColor(p.color || '#6366f1');
+    setProfileAvatarUrl(p.avatarUrl || '');
+    setProfileAvatarFileError(null);
+    setActiveTab('profiles');
+  };
+
+  const handleAvatarFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setProfileAvatarFileError('Görsel boyutu 2MB üzerinde olamaz.');
+      return;
+    }
+    setProfileAvatarFileError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setProfileAvatarUrl(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveProfileSubmit = async (e) => {
+    if (e) e.preventDefault();
+    if (!selectedProfileModel) return;
+    setIsSavingProfile(true);
+    setError(null);
+    try {
+      await saveAgentProfile(selectedProfileModel, {
+        displayName: profileDisplayName.trim(),
+        color: profileColor,
+        avatarUrl: profileAvatarUrl.trim(),
+      });
+      setSuccessMessage(`${profileDisplayName || selectedProfileModel} profili kaydedildi.`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      setError(`Profil kaydedilemedi: ${err.message}`);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   return (
     <div className="config-panel-container">
       <div className="config-panel">
@@ -584,7 +978,14 @@ export default function ConfigPanel({
             className={`studio-tab-btn ${activeTab === 'seats' ? 'active' : ''}`}
             onClick={() => setActiveTab('seats')}
           >
-            <span>Council Seats ({councilModels.length})</span>
+            <span>Council Deliberation ({councilModels.length})</span>
+          </button>
+          <button
+            type="button"
+            className={`studio-tab-btn ${activeTab === 'chat' ? 'active' : ''}`}
+            onClick={() => setActiveTab('chat')}
+          >
+            <span>Chat Rosters ({rosterModels.length})</span>
           </button>
           <button
             type="button"
@@ -599,6 +1000,13 @@ export default function ConfigPanel({
             onClick={() => setActiveTab('skills')}
           >
             <span>Skills Library ({availableSkills.length})</span>
+          </button>
+          <button
+            type="button"
+            className={`studio-tab-btn ${activeTab === 'profiles' ? 'active' : ''}`}
+            onClick={() => setActiveTab('profiles')}
+          >
+            <span>Agent Personas & Colors</span>
           </button>
         </div>
 
@@ -748,6 +1156,15 @@ export default function ConfigPanel({
                                   </button>
                                 )}
 
+                                <button
+                                  type="button"
+                                  className="seat-profile-btn"
+                                  onClick={() => handleOpenCustomizeProfile(baseModel)}
+                                  title="Bu modelin profil resmini, rengini ve ismini özelleştir"
+                                >
+                                  Persona
+                                </button>
+
                                 <div className="reorder-buttons">
                                   <button
                                     type="button"
@@ -887,34 +1304,287 @@ export default function ConfigPanel({
               )}
 
               {/* =============================================================
-                  TAB 2: CUSTOM PROVIDERS (LOCAL & REMOTE)
+                  TAB 2: CHAT ROSTERS (ROUND TABLE CHAT TEAMS)
                   ============================================================= */}
-              {activeTab === 'providers' && (
-                <div className="tab-pane-providers">
-                  {/* Explainer Banner */}
-                  <div className="provider-info-banner">
-                    <div className="banner-text">
-                      <strong>Dynamic OpenAI-Compatible Endpoints</strong>
-                      <p>
-                        Register any local LLM server (<strong>Ollama</strong>, <strong>vLLM</strong>, <strong>LM Studio</strong>)
-                        or cloud provider (<strong>DeepSeek</strong>, <strong>Groq</strong>, <strong>Together</strong>, <strong>OpenAI</strong>).
-                        Once added, they are immediately available for council seats and chairman selection.
-                      </p>
+              {activeTab === 'chat' && (
+                <div className="tab-pane-seats">
+                  {/* Injected Prompt Set & User Profile Section */}
+                  <div className="config-section">
+                    <div className="section-header-row">
+                      <div>
+                        <h3>Injected Prompt Set &amp; User Profile</h3>
+                        <span className="section-subtitle">Custom instructions and persona injected before every message turn</span>
+                      </div>
+                      <div className="prompt-action-btns">
+                        <button
+                          type="button"
+                          className="prompt-template-btn"
+                          onClick={handleResetChatBio}
+                          title="Vault Hakkımda profilini yükle"
+                        >
+                          Vault Profilini Yükle
+                        </button>
+                        <button
+                          type="button"
+                          className="prompt-clear-btn"
+                          onClick={() => setChatSystemPrompt('')}
+                          title="Temizle"
+                        >
+                          Temizle
+                        </button>
+                      </div>
+                    </div>
+                    <p className="config-help">
+                      User profile and working rules. Council and chat models use this context to tailor their answers to you.
+                    </p>
+
+                    <textarea
+                      className="chat-system-prompt-textarea"
+                      value={chatSystemPrompt}
+                      onChange={(e) => setChatSystemPrompt(e.target.value)}
+                      rows={7}
+                      placeholder="Type custom instructions or paste user profile context in English here (e.g. background, tone preferences, no emoji, concise answers)..."
+                    />
+                  </div>
+
+                  {/* Participants Roster */}
+                  <div className="config-section">
+                    <div className="section-header-row">
+                      <h3>Round Table Participants</h3>
+                      <span className="section-subtitle">Min 1 required (Current: {rosterModels.length})</span>
+                    </div>
+                    <p className="config-help">
+                      Assign models participating in the Round Table chat room. Skills are optional — models converse directly and collaborate without formal deliberation stages or chairman synthesis.
+                    </p>
+
+                    <ul className="model-list">
+                      {rosterModels.map((model, index) => {
+                        const [baseModel, currentSkillId = ''] = model.split('@');
+
+                        return (
+                          <li key={`${model}-${index}`} className="model-item">
+                            <div className="model-item-content">
+                              <div className="model-item-primary">
+                                <span className="model-index">{index + 1}.</span>
+                                <div className="model-selects-row">
+                                  {/* Model selector */}
+                                  <select
+                                    className="seat-model-select"
+                                    value={baseModel}
+                                    onChange={(e) => handleRosterModelChange(index, e.target.value)}
+                                  >
+                                    <optgroup label="Local Models (dev-agent-kit)">
+                                      <option value="local/antigravity">local/antigravity (Antigravity Agent)</option>
+                                      <option value="local/claude-code">local/claude-code (Claude Code CLI)</option>
+                                      <option value="local/qwen3.6-27b">local/qwen3.6-27b (vLLM 27B)</option>
+                                    </optgroup>
+                                    {customProviders.length > 0 && (
+                                      <optgroup label="Custom Providers">
+                                        {customProviders.map((cp) => (
+                                          <option key={cp.id} value={cp.id}>
+                                            {cp.name} ({cp.id})
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                    )}
+                                    <optgroup label="Available Models">
+                                      {availableModels.map((m) => (
+                                        <option key={m} value={m}>{m}</option>
+                                      ))}
+                                    </optgroup>
+                                  </select>
+
+                                  {/* Skill selector */}
+                                  <select
+                                    className={`seat-skill-select ${currentSkillId ? 'has-skill' : ''}`}
+                                    value={currentSkillId}
+                                    onChange={(e) => handleRosterSkillChange(index, e.target.value)}
+                                  >
+                                    <option value="">No Domain Skill (General Chat)</option>
+                                    {availableSkills.map((s) => (
+                                      <option key={s.id} value={s.id}>
+                                        {s.badge ? `[${s.badge}] ` : ''}{s.title}
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  {currentSkillId && (
+                                    <button
+                                      type="button"
+                                      className="seat-view-skill-btn"
+                                      onClick={() => {
+                                        setSelectedSkillId(currentSkillId);
+                                        setActiveTab('skills');
+                                      }}
+                                      title="Inspect skill checklist in Skills Library"
+                                    >
+                                      Inspect
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              className="seat-profile-btn"
+                              onClick={() => handleOpenCustomizeProfile(baseModel)}
+                              title="Bu modelin profil resmini, rengini ve ismini özelleştir"
+                            >
+                              Persona
+                            </button>
+
+                            <button
+                              type="button"
+                              className="remove-btn"
+                              onClick={() => handleRemoveRosterModel(index)}
+                              title="Remove participant"
+                              disabled={rosterModels.length <= 1}
+                            >
+                              &times;
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+
+                    {/* Add Participant Box */}
+                    <div className="add-seat-box">
+                      <div className="add-seat-row">
+                        <select
+                          className="add-seat-model-select"
+                          value={newRosterModelInput}
+                          onChange={(e) => setNewRosterModelInput(e.target.value)}
+                        >
+                          <option value="">Select model to add to table...</option>
+                          <optgroup label="Local Models (dev-agent-kit)">
+                            <option value="local/antigravity">local/antigravity (Antigravity Agent)</option>
+                            <option value="local/claude-code">local/claude-code (Claude Code CLI)</option>
+                            <option value="local/qwen3.6-27b">local/qwen3.6-27b (vLLM 27B)</option>
+                          </optgroup>
+                          {customProviders.length > 0 && (
+                            <optgroup label="Custom Registered Providers">
+                              {customProviders.map((cp) => (
+                                <option key={cp.id} value={cp.id}>
+                                  {cp.name} ({cp.id})
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          <optgroup label="Available Models">
+                            {availableModels.map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </optgroup>
+                        </select>
+
+                        <select
+                          className="add-seat-skill-select"
+                          value={newRosterModelSkill}
+                          onChange={(e) => setNewRosterModelSkill(e.target.value)}
+                        >
+                          <option value="">Assign Skill (Optional)</option>
+                          {availableSkills.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.badge ? `[${s.badge}] ` : ''}{s.title}
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          type="button"
+                          className="add-seat-submit-btn"
+                          onClick={() => {
+                            if (newRosterModelInput) {
+                              handleAddRosterModel(newRosterModelInput, newRosterModelSkill || null);
+                              setNewRosterModelInput('');
+                              setNewRosterModelSkill('');
+                            }
+                          }}
+                          disabled={!newRosterModelInput}
+                        >
+                          + Add Participant
+                        </button>
+                      </div>
                     </div>
                   </div>
 
+                  {/* Actions Footer */}
+                  <div className="config-actions">
+                    <button
+                      type="button"
+                      className="save-btn"
+                      onClick={handleSaveRosterChanges}
+                      disabled={isSavingRoster || rosterModels.length < 1}
+                    >
+                      {isSavingRoster ? 'Saving...' : 'Save Round Table Settings'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* =============================================================
+                  TAB 3: CUSTOM PROVIDERS (LOCAL & REMOTE)
+                  ============================================================= */}
+              {activeTab === 'providers' && (
+                <div className="tab-pane-providers">
                   {/* Add Provider Form */}
                   <div className="provider-form-card">
-                    <h3 className="provider-form-title">Add Custom Provider / LLM Endpoint</h3>
+                    <div className="provider-form-header">
+                      <div>
+                        <h3 className="provider-form-title">Add Custom Provider / LLM Endpoint</h3>
+                        <p className="provider-form-subtitle">
+                          Register local servers (Ollama, vLLM) or cloud providers (Groq, Gemini, DeepSeek). Added endpoints are immediately available for council seats and chairman selection.
+                        </p>
+                      </div>
+                      <span className="preset-quick-badge">
+                        Preset: {PROVIDER_PRESETS.find((p) => p.id === providerPreset)?.name || 'Custom'}
+                      </span>
+                    </div>
 
                     <form onSubmit={handleSaveProvider}>
+                      {/* Preset Selection Row */}
+                      <div className="form-group form-group-full preset-selection-container">
+                        <label htmlFor="provider-preset">Choose Provider Preset / Service</label>
+                        <div className="preset-selector-row">
+                          <select
+                            id="provider-preset"
+                            value={providerPreset}
+                            onChange={(e) => handlePresetChange(e.target.value)}
+                            className="preset-select"
+                          >
+                            {PROVIDER_PRESETS.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} {p.requiresKey ? '• (API Key)' : '• (Local / Keyless)'}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="advanced-toggle-btn"
+                            onClick={() => setShowAdvancedUrl(!showAdvancedUrl)}
+                            title="Toggle custom Base URL configuration"
+                          >
+                            {showAdvancedUrl ? 'Hide Base URL' : 'Custom Base URL'}
+                          </button>
+                        </div>
+                        <span className="field-hint">
+                          {PROVIDER_PRESETS.find((p) => p.id === providerPreset)?.keyHint || 'Select a service preset.'}
+                          {!showAdvancedUrl && providerPreset !== 'custom' && (
+                            <span className="preset-url-preview">
+                              {' '}Base URL is pre-configured (<code>{PROVIDER_PRESETS.find((p) => p.id === providerPreset)?.baseUrl}</code>).
+                            </span>
+                          )}
+                        </span>
+                      </div>
+
                       <div className="form-row-2col">
                         <div className="form-group">
                           <label htmlFor="provider-name">Provider / Model Friendly Name *</label>
                           <input
                             id="provider-name"
                             type="text"
-                            placeholder="e.g. Ollama LLaMA 3.3 (70B) or DeepSeek Direct"
+                            placeholder="e.g. Google AI Studio or Groq Cloud"
                             value={providerName}
                             onChange={(e) => setProviderName(e.target.value)}
                             required
@@ -922,7 +1592,7 @@ export default function ConfigPanel({
                         </div>
 
                         <div className="form-group">
-                          <label>Provider Type *</label>
+                          <label>Provider Type</label>
                           <div className="type-toggle-group">
                             <button
                               type="button"
@@ -942,49 +1612,100 @@ export default function ConfigPanel({
                         </div>
                       </div>
 
-                      <div className="form-row-2col">
-                        <div className="form-group">
-                          <label htmlFor="provider-url">Base URL (OpenAI-Compatible) *</label>
+                      {/* Base URL (Optional when preset is active) */}
+                      {(showAdvancedUrl || providerPreset === 'custom') && (
+                        <div className="form-group form-group-full">
+                          <label htmlFor="provider-url">
+                            Base URL (OpenAI-Compatible) {providerPreset !== 'custom' ? '(Optional Overwrite)' : '*'}
+                          </label>
                           <input
                             id="provider-url"
                             type="text"
-                            placeholder="http://host.docker.internal:11434/v1"
+                            placeholder={PROVIDER_PRESETS.find((p) => p.id === providerPreset)?.baseUrl || 'http://host.docker.internal:11434/v1'}
                             value={providerBaseUrl}
                             onChange={(e) => setProviderBaseUrl(e.target.value)}
-                            required
                           />
                           <span className="field-hint">
-                            For local servers running on your host machine, use <code>http://host.docker.internal:&lt;port&gt;/v1</code>.
+                            Leave blank to use the standard default endpoint for {PROVIDER_PRESETS.find((p) => p.id === providerPreset)?.name}.
                           </span>
                         </div>
-
-                        <div className="form-group">
-                          <label htmlFor="provider-model">Model ID (on Server) *</label>
-                          <input
-                            id="provider-model"
-                            type="text"
-                            placeholder="e.g. llama3.3:70b or deepseek-chat"
-                            value={providerModelId}
-                            onChange={(e) => setProviderModelId(e.target.value)}
-                            required
-                          />
-                          <span className="field-hint">The model name sent in the <code>"model"</code> JSON payload.</span>
-                        </div>
-                      </div>
+                      )}
 
                       <div className="form-row-2col">
                         <div className="form-group">
-                          <label htmlFor="provider-key">API Key (Optional for Local)</label>
+                          <label htmlFor="provider-key">
+                            API Key {PROVIDER_PRESETS.find((p) => p.id === providerPreset)?.requiresKey ? '*' : '(Optional for Local)'}
+                          </label>
                           <input
                             id="provider-key"
                             type="password"
                             autoComplete="new-password"
-                            placeholder="sk-... or leave empty for Ollama"
+                            placeholder="Paste API Key here..."
                             value={providerApiKey}
                             onChange={(e) => setProviderApiKey(e.target.value)}
                           />
                         </div>
 
+                        <div className="form-group">
+                          <div className="label-with-action">
+                            <label htmlFor="provider-model">
+                              Model ID * {fetchedModels.length > 0 && `(${fetchedModels.length} fetched)`}
+                            </label>
+                            {fetchedModels.length > 0 && (
+                              <button
+                                type="button"
+                                className="text-link-btn"
+                                onClick={() => setFetchedModels([])}
+                              >
+                                Manual input
+                              </button>
+                            )}
+                          </div>
+
+                          {fetchedModels.length > 0 ? (
+                            <select
+                              id="provider-model"
+                              value={providerModelId}
+                              onChange={(e) => setProviderModelId(e.target.value)}
+                              className="model-dropdown-select"
+                            >
+                              {fetchedModels.map((m) => (
+                                <option key={m} value={m}>{m}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="model-input-with-fetch">
+                              <input
+                                id="provider-model"
+                                type="text"
+                                placeholder="e.g. gemini-3.6-flash or llama-3.3-70b-versatile"
+                                value={providerModelId}
+                                onChange={(e) => setProviderModelId(e.target.value)}
+                                required
+                              />
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            className="fetch-models-inline-btn"
+                            onClick={handleFetchModels}
+                            disabled={isFetchingModels}
+                            title="Query endpoint for available model list"
+                          >
+                            {isFetchingModels ? 'Querying /models...' : 'Fetch Models from Server'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Fetch Models Error */}
+                      {fetchModelsError && (
+                        <div className="test-result-box failure">
+                          <span>✕ Model Discovery Notice: {fetchModelsError}</span>
+                        </div>
+                      )}
+
+                      <div className="form-row-2col">
                         <div className="form-group">
                           <label htmlFor="provider-skill">Default Skill Persona (Optional)</label>
                           <select
@@ -1000,6 +1721,7 @@ export default function ConfigPanel({
                             ))}
                           </select>
                         </div>
+                        <div className="form-group empty-spacer" />
                       </div>
 
                       {/* Connection Test Result */}
@@ -1019,7 +1741,7 @@ export default function ConfigPanel({
                           type="button"
                           className="test-conn-btn"
                           onClick={handleTestProvider}
-                          disabled={isTestingProvider || !providerBaseUrl || !providerModelId}
+                          disabled={isTestingProvider || !providerModelId}
                         >
                           {isTestingProvider ? 'Testing Connection...' : 'Test Connection'}
                         </button>
@@ -1027,13 +1749,48 @@ export default function ConfigPanel({
                         <button
                           type="submit"
                           className="save-provider-btn"
-                          disabled={isSavingProvider || !providerName || !providerBaseUrl || !providerModelId}
+                          disabled={isSavingProvider || !providerModelId}
                         >
                           {isSavingProvider ? 'Saving...' : 'Save Provider'}
                         </button>
                       </div>
                     </form>
                   </div>
+
+                  {/* Saved Provider Inline Banner (Replaces window.confirm popup) */}
+                  {savedProviderBanner && (
+                    <div className="provider-save-success-banner">
+                      <div className="banner-badge-icon">✓</div>
+                      <div className="banner-details">
+                        <div className="banner-headline">
+                          Provider <strong>"{savedProviderBanner.name}"</strong> registered successfully!
+                        </div>
+                        <div className="banner-subtext">
+                          Endpoint is verified and active. Would you like to add it as a seat to your council right now?
+                        </div>
+                      </div>
+                      <div className="banner-action-buttons">
+                        <button
+                          type="button"
+                          className="banner-add-seat-btn"
+                          onClick={() => {
+                            handleAddModel(savedProviderBanner.id, savedProviderBanner.default_skill);
+                            setActiveTab('seats');
+                            setSavedProviderBanner(null);
+                          }}
+                        >
+                          + Add as Council Seat
+                        </button>
+                        <button
+                          type="button"
+                          className="banner-dismiss-btn"
+                          onClick={() => setSavedProviderBanner(null)}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Top Bar for Provider Management */}
                   <div className="providers-control-bar">
@@ -1198,14 +1955,35 @@ export default function ConfigPanel({
                                   )}
                                 </div>
 
-                                <button
-                                  type="button"
-                                  className="delete-provider-btn"
-                                  onClick={() => handleDeleteProvider(cp.id)}
-                                  title="Delete custom provider"
-                                >
-                                  &times;
-                                </button>
+                                {deletingProviderId === cp.id ? (
+                                  <div className="delete-confirm-wrap">
+                                    <button
+                                      type="button"
+                                      className="delete-confirm-yes-btn"
+                                      onClick={() => handleDeleteProvider(cp.id)}
+                                      title="Confirm permanent deletion"
+                                    >
+                                      Confirm Delete
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="delete-confirm-no-btn"
+                                      onClick={() => setDeletingProviderId(null)}
+                                      title="Cancel"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="delete-provider-btn"
+                                    onClick={() => handleDeleteProvider(cp.id)}
+                                    title="Delete custom provider"
+                                  >
+                                    &times;
+                                  </button>
+                                )}
                               </div>
 
                               <div className="provider-card-title-row">
@@ -1357,6 +2135,250 @@ export default function ConfigPanel({
                   </div>
                 </div>
               )}
+
+              {/* =============================================================
+                  TAB 5: AGENT PERSONAS & VISUAL STYLING
+                  ============================================================= */}
+              {activeTab === 'profiles' && (() => {
+                const allDistinctModels = Array.from(new Set([
+                  'local/antigravity',
+                  'local/claude-code',
+                  'local/qwen3.6-27b',
+                  ...availableModels,
+                  ...customProviders.map((cp) => cp.id),
+                  ...councilModels.map((s) => (s.includes('@') ? s.split('@')[0] : s)),
+                  ...rosterModels.map((s) => (s.includes('@') ? s.split('@')[0] : s)),
+                  ...Object.keys(agentProfiles || {}),
+                ])).filter(Boolean);
+
+                return (
+                  <div className="tab-pane-profiles">
+                    <div className="provider-form-header" style={{ marginBottom: '1rem' }}>
+                      <div>
+                        <h3 className="provider-form-title">Agent Personas &amp; Visual Styling</h3>
+                        <p className="provider-form-subtitle">
+                          Modellerin Round Table grup sohbetinde ve Deliberation turlarında görünecek profil resmini (avatar), tema rengini ve görünen ismini özelleştirin.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="profiles-layout">
+                      {/* Left Column: Model List */}
+                      <div className="profiles-sidebar">
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#8b949e', textTransform: 'uppercase', marginBottom: '8px', padding: '0 4px' }}>
+                          Modeller ({allDistinctModels.length})
+                        </div>
+                        {allDistinctModels.map((m) => {
+                          const prof = getAgentProfile(m);
+                          const isSelected = selectedProfileModel === m;
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              className={`profile-model-item ${isSelected ? 'active' : ''}`}
+                              style={{ '--item-color': prof.color }}
+                              onClick={() => setSelectedProfileModel(m)}
+                            >
+                              <div className="profile-item-avatar">
+                                {prof.avatarUrl ? (
+                                  <img src={prof.avatarUrl} alt={prof.displayName} />
+                                ) : (
+                                  <span>{prof.initials}</span>
+                                )}
+                              </div>
+                              <div className="profile-item-info">
+                                <span className="profile-item-name">{prof.displayName}</span>
+                                <span className="profile-item-id">{m}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Right Column: Editor */}
+                      <div className="profile-editor-card">
+                        <div className="profile-editor-header">
+                          <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#f0f6fc' }}>
+                            {selectedProfileModel}
+                          </h3>
+                          <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#8b949e' }}>
+                            Görünen ismi, sohbet rengini ve avatar görselini güncelleyin.
+                          </p>
+                        </div>
+
+                        <form onSubmit={handleSaveProfileSubmit} className="profile-form">
+                          {/* Display Name */}
+                          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#c9d1d9', marginBottom: '6px' }}>
+                              Görünen İsim (Display Name)
+                            </label>
+                            <input
+                              type="text"
+                              value={profileDisplayName}
+                              onChange={(e) => setProfileDisplayName(e.target.value)}
+                              placeholder="Örn: Antigravity, Qwen 27B, Claude Code"
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                background: '#0d1117',
+                                border: '1px solid #30363d',
+                                borderRadius: '6px',
+                                color: '#f0f6fc',
+                                fontSize: '0.9rem',
+                              }}
+                            />
+                          </div>
+
+                          {/* Theme Color */}
+                          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#c9d1d9', marginBottom: '6px' }}>
+                              Tema &amp; Sohbet Rengi
+                            </label>
+                            <div className="color-swatches-grid">
+                              {COLOR_SWATCHES.map((swatch) => (
+                                <button
+                                  key={swatch.value}
+                                  type="button"
+                                  className={`swatch-btn ${profileColor.toLowerCase() === swatch.value.toLowerCase() ? 'active' : ''}`}
+                                  style={{ backgroundColor: swatch.value }}
+                                  onClick={() => setProfileColor(swatch.value)}
+                                  title={`${swatch.name} (${swatch.value})`}
+                                />
+                              ))}
+                              <div className="custom-color-picker-wrap">
+                                <input
+                                  type="color"
+                                  value={profileColor.startsWith('#') && profileColor.length === 7 ? profileColor : '#6366f1'}
+                                  onChange={(e) => setProfileColor(e.target.value)}
+                                  className="color-native-input"
+                                  title="Özel renk seç"
+                                />
+                                <input
+                                  type="text"
+                                  value={profileColor}
+                                  onChange={(e) => setProfileColor(e.target.value)}
+                                  className="color-hex-text"
+                                  placeholder="#6366f1"
+                                  maxLength={7}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Avatar Image */}
+                          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#c9d1d9', marginBottom: '6px' }}>
+                              Profil Resmi (Avatar)
+                            </label>
+                            <input
+                              type="text"
+                              value={profileAvatarUrl}
+                              onChange={(e) => setProfileAvatarUrl(e.target.value)}
+                              placeholder="Görsel URL'si (https://...) veya yerel dosya seçin"
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                background: '#0d1117',
+                                border: '1px solid #30363d',
+                                borderRadius: '6px',
+                                color: '#f0f6fc',
+                                fontSize: '0.9rem',
+                              }}
+                            />
+                            <div className="avatar-upload-row">
+                              <label className="avatar-file-btn">
+                                Dosyadan Yükle (PNG/JPG/SVG/WebP)
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={handleAvatarFileUpload}
+                                  style={{ display: 'none' }}
+                                />
+                              </label>
+                              {profileAvatarUrl && (
+                                <button
+                                  type="button"
+                                  className="avatar-clear-btn"
+                                  onClick={() => setProfileAvatarUrl('')}
+                                >
+                                  Görseli Kaldır
+                                </button>
+                              )}
+                            </div>
+                            {profileAvatarFileError && (
+                              <span style={{ color: '#f85149', fontSize: '0.78rem', marginTop: '6px', display: 'block' }}>
+                                {profileAvatarFileError}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Live Preview Card */}
+                          <div className="profile-preview-card">
+                            <span className="profile-preview-label">Canlı Sohbet Önizlemesi</span>
+                            <div className="profile-preview-bubble">
+                              <div
+                                className="profile-item-avatar"
+                                style={{
+                                  '--item-color': profileColor,
+                                  width: '40px',
+                                  height: '40px',
+                                  fontSize: '13px',
+                                }}
+                              >
+                                {profileAvatarUrl ? (
+                                  <img src={profileAvatarUrl} alt="Preview" />
+                                ) : (
+                                  <span>
+                                    {(profileDisplayName || selectedProfileModel)
+                                      .replace(/[^a-zA-Z0-9 ]/g, '')
+                                      .trim()
+                                      .slice(0, 2)
+                                      .toUpperCase() || 'AI'}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ fontWeight: 600, color: profileColor, fontSize: '0.9rem' }}>
+                                    {profileDisplayName || selectedProfileModel}
+                                  </span>
+                                  <span style={{ fontSize: '0.72rem', color: '#8b949e', fontFamily: 'monospace' }}>
+                                    {selectedProfileModel}
+                                  </span>
+                                </div>
+                                <div
+                                  style={{
+                                    background: '#161b22',
+                                    border: '1px solid #30363d',
+                                    borderRadius: '6px',
+                                    padding: '8px 12px',
+                                    fontSize: '0.85rem',
+                                    color: '#c9d1d9',
+                                    lineHeight: '1.4',
+                                  }}
+                                >
+                                  Round Table ve Council deliberasyonunda yanıtlarım bu renkte ve avatarla görünecek.
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Submit */}
+                          <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                            <button
+                              type="submit"
+                              className="confirm-save-btn"
+                              disabled={isSavingProfile}
+                            >
+                              {isSavingProfile ? 'Kaydediliyor...' : 'Profili Kaydet'}
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>
@@ -1396,6 +2418,46 @@ export default function ConfigPanel({
                 disabled={isSaving || !newCouncilName.trim()}
               >
                 {isSaving ? 'Saving...' : 'Save Profile'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Chat Team Modal */}
+      {showSaveRosterModal && (
+        <div className="save-modal-overlay" onClick={() => setShowSaveRosterModal(false)}>
+          <div className="save-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="save-modal-header">
+              <h3>Save as New Chat Team</h3>
+              <button className="close-btn" onClick={() => setShowSaveRosterModal(false)}>&times;</button>
+            </div>
+            <div className="save-modal-body">
+              <label>Team Name *</label>
+              <input
+                type="text"
+                value={newRosterName}
+                onChange={(e) => setNewRosterName(e.target.value)}
+                placeholder="e.g. Creative Brainstormers"
+              />
+
+              <label>Description</label>
+              <textarea
+                value={newRosterDesc}
+                onChange={(e) => setNewRosterDesc(e.target.value)}
+                placeholder="Brief summary of this chat team's roles and vibe..."
+                rows={3}
+              />
+            </div>
+            <div className="save-modal-footer">
+              <button type="button" className="cancel-btn" onClick={() => setShowSaveRosterModal(false)}>Cancel</button>
+              <button
+                type="button"
+                className="confirm-save-btn"
+                onClick={handleCreateNewRoster}
+                disabled={isSavingRoster || !newRosterName.trim()}
+              >
+                {isSavingRoster ? 'Saving...' : 'Save Team'}
               </button>
             </div>
           </div>

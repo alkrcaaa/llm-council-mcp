@@ -130,14 +130,18 @@ export const api = {
    * Create a new conversation.
    * @param {string} [councilId] - Optional council profile ID to bind
    */
-  async createConversation(councilId = null) {
+  async createConversation(councilId = null, conversationType = 'deliberation') {
     const validCouncilId = typeof councilId === 'string' && councilId.trim() ? councilId.trim() : null;
+    const body = {
+      ...(validCouncilId ? { council_id: validCouncilId } : {}),
+      conversation_type: conversationType || 'deliberation',
+    };
     const response = await fetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
       }),
-      body: JSON.stringify(validCouncilId ? { council_id: validCouncilId } : {}),
+      body: JSON.stringify(body),
     });
     if (!response.ok) {
       const err = await response.json().catch(() => ({ detail: 'Failed to create conversation' }));
@@ -229,6 +233,168 @@ export const api = {
     if (!response.ok) {
       const err = await response.json().catch(() => ({ detail: 'Failed to delete council' }));
       throw new Error(err.detail || 'Failed to delete council');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get all chat rosters and active roster ID.
+   */
+  async getChatRosters() {
+    const response = await fetch(`${API_BASE}/api/chat-rosters`);
+    if (!response.ok) {
+      throw new Error('Failed to get chat rosters');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get currently active chat roster.
+   */
+  async getActiveChatRoster() {
+    const response = await fetch(`${API_BASE}/api/chat-rosters/active`);
+    if (!response.ok) {
+      throw new Error('Failed to get active chat roster');
+    }
+    return response.json();
+  },
+
+  /**
+   * Activate a chat roster by ID.
+   */
+  async activateChatRoster(rosterId) {
+    const response = await fetch(`${API_BASE}/api/chat-rosters/${encodeURIComponent(rosterId)}/activate`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to activate chat roster');
+    }
+    return response.json();
+  },
+
+  /**
+   * Create a new custom chat roster.
+   */
+  async createChatRoster(rosterData) {
+    const response = await fetch(`${API_BASE}/api/chat-rosters`, {
+      method: 'POST',
+      headers: this.getAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify(rosterData),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to create chat roster' }));
+      throw new Error(err.detail || 'Failed to create chat roster');
+    }
+    return response.json();
+  },
+
+  /**
+   * Update a chat roster.
+   */
+  async updateChatRoster(rosterId, updates) {
+    const response = await fetch(`${API_BASE}/api/chat-rosters/${encodeURIComponent(rosterId)}`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify(updates),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to update chat roster' }));
+      throw new Error(err.detail || 'Failed to update chat roster');
+    }
+    return response.json();
+  },
+
+  /**
+   * Delete a custom chat roster.
+   */
+  async deleteChatRoster(rosterId) {
+    const response = await fetch(`${API_BASE}/api/chat-rosters/${encodeURIComponent(rosterId)}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to delete chat roster' }));
+      throw new Error(err.detail || 'Failed to delete chat roster');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get round table chat settings (models and injected custom prompt / user bio).
+   */
+  async getChatSettings() {
+    const response = await fetch(`${API_BASE}/api/chat-settings`);
+    if (!response.ok) {
+      throw new Error('Failed to get chat settings');
+    }
+    return response.json();
+  },
+
+  /**
+   * Update round table chat settings.
+   * @param {{ models?: string[], system_prompt?: string }} settings
+   */
+  async updateChatSettings(settings) {
+    const response = await fetch(`${API_BASE}/api/chat-settings`, {
+      method: 'POST',
+      headers: this.getAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify(settings),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to update chat settings' }));
+      throw new Error(err.detail || 'Failed to update chat settings');
+    }
+    return response.json();
+  },
+
+  /**
+   * Reset injected prompt to canonical English bio template.
+   */
+  async resetChatBio() {
+    const response = await fetch(`${API_BASE}/api/chat-settings/reset-bio`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to reset chat bio');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get all agent visual profiles (names, colors, avatar URLs).
+   */
+  async getAgentProfiles() {
+    const response = await fetch(`${API_BASE}/api/agent-profiles`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch agent profiles');
+    }
+    return response.json();
+  },
+
+  /**
+   * Update visual profile for a model.
+   */
+  async updateAgentProfile(modelId, profileData) {
+    const cleanId = (modelId || '').split('@')[0].trim();
+    const response = await fetch(`${API_BASE}/api/agent-profiles/${cleanId}`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify(profileData),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update agent profile');
     }
     return response.json();
   },
@@ -896,6 +1062,58 @@ export const api = {
   },
 
   /**
+   * Reconnect to an active stream for a conversation (survives F5 / page reload / tab switch).
+   * @param {string} conversationId
+   * @param {function} onEvent
+   * @returns {Promise<boolean>} true if connected and stream finished, false if no active stream
+   */
+  async subscribeToConversationEvents(conversationId, onEvent) {
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/conversations/${conversationId}/events`,
+        {
+          method: 'GET',
+          headers: this.getAuthHeaders(),
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return false;
+        }
+        throw new Error(`Failed to connect to stream: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            try {
+              const event = JSON.parse(data);
+              onEvent(event.type, event);
+            } catch (e) {
+              console.error('Failed to parse SSE event:', e);
+            }
+          }
+        }
+      }
+      return true;
+    } catch (err) {
+      console.warn('Stream subscription ended or failed:', err);
+      return false;
+    }
+  },
+
+  /**
    * Scout candidate technologies, libraries, and skills across channels.
    * @param {string} query - The keywords or question to scout
    * @param {number} maxCandidates - Max candidate items to return
@@ -993,7 +1211,7 @@ export const api = {
 
   /**
    * Test connectivity to an OpenAI-compatible endpoint.
-   * @param {Object} data { base_url, model_id, api_key }
+   * @param {Object} data { base_url, preset, model_id, api_key }
    */
   async testProvider(data) {
     const response = await fetch(`${API_BASE}/api/providers/test`, {
@@ -1004,6 +1222,34 @@ export const api = {
     if (!response.ok) {
       const err = await response.json().catch(() => ({ error: 'Connection test failed' }));
       throw new Error(err.error || 'Connection test failed');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get standard provider presets.
+   */
+  async getProviderPresets() {
+    const response = await fetch(`${API_BASE}/api/providers/presets`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch provider presets');
+    }
+    return response.json();
+  },
+
+  /**
+   * Fetch available models from an endpoint.
+   * @param {Object} data { base_url, preset, api_key }
+   */
+  async fetchProviderModels(data) {
+    const response = await fetch(`${API_BASE}/api/providers/fetch-models`, {
+      method: 'POST',
+      headers: this.getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Failed to fetch models' }));
+      throw new Error(err.error || err.detail || 'Failed to fetch models');
     }
     return response.json();
   },

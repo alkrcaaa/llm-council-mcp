@@ -1,7 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,700&family=Google+Sans+Text:ital,wght@0,400;0,500;0,700;1,400;1,500;1,700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* Local mappings for OpenAI Sans if available on system / browser */
+@font-face {
+  font-family: 'OpenAI Sans';
+  src: local('OpenAI Sans'), local('OpenAISans'), local('OpenAI Sans Regular');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenAI Sans';
+  src: local('OpenAI Sans Medium'), local('OpenAISans-Medium'), local('OpenAI Sans-Medium');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenAI Sans';
+  src: local('OpenAI Sans SemiBold'), local('OpenAISans-SemiBold'), local('OpenAI Sans-SemiBold');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenAI Sans';
+  src: local('OpenAI Sans Bold'), local('OpenAISans-Bold'), local('OpenAI Sans-Bold');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  /* Fonts: Clean system developer typography */
-  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
-  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  /* Fonts: OpenAI Sans primary, Google Sans / Google Sans Text fallback */
+  --font-display: 'OpenAI Sans', 'OpenAISans', 'Google Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body: 'OpenAI Sans', 'OpenAISans', 'Google Sans Text', 'Google Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
 
   /* Palette: Modern Obsidian & Electric Azure (matches LoginModal) */
@@ -76,6 +108,10 @@ body {
   overflow: hidden;
 }
 
+button, input, textarea, select {
+  font-family: inherit;
+}
+
 #root {
   height: 100vh;
   width: 100vw;
@@ -103,10 +139,10 @@ body {
 
 /* Global Markdown Typography */
 .markdown-content {
-  padding: 12px 14px;
+  padding: 0;
   color: var(--text-primary);
-  font-size: 14px;
-  line-height: 1.65;
+  font-size: 14.5px;
+  line-height: 1.7;
 }
 
 .markdown-content p {
@@ -122,15 +158,16 @@ body {
 .markdown-content h3,
 .markdown-content h4 {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
-  margin: 20px 0 10px 0;
+  margin: 22px 0 10px 0;
   letter-spacing: -0.02em;
 }
 
 .markdown-content h1 { font-size: 20px; }
 .markdown-content h2 { font-size: 17px; }
 .markdown-content h3 { font-size: 15px; }
+.markdown-content h4 { font-size: 13.5px; }
 
 .markdown-content h1:first-child,
 .markdown-content h2:first-child,
@@ -141,30 +178,30 @@ body {
 .markdown-content ul,
 .markdown-content ol {
   margin: 0 0 14px 0;
-  padding-left: 20px;
+  padding-left: 22px;
 }
 
 .markdown-content li {
-  margin: 5px 0;
+  margin: 6px 0;
 }
 
 .markdown-content pre {
-  background: #06080a;
+  background: #090d13;
   border: 1px solid var(--border-subtle);
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  border-radius: 12px;
   overflow-x: auto;
-  margin: 12px 0;
+  margin: 14px 0;
   font-family: var(--font-mono);
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 .markdown-content code {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 2px 5px;
-  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  border-radius: 6px;
   font-family: var(--font-mono);
   font-size: 0.88em;
   color: #e2e8f0;
@@ -178,9 +215,10 @@ body {
 
 .markdown-content blockquote {
   margin: 14px 0;
-  padding: 8px 16px;
-  border-left: 3px solid var(--accent-brass);
-  background: rgba(229, 169, 60, 0.04);
+  padding: 10px 18px;
+  border-left: 3px solid var(--accent-primary);
+  background: var(--accent-subtle);
+  border-radius: 0 10px 10px 0;
   color: var(--text-secondary);
   font-style: italic;
 }
@@ -188,5 +226,5 @@ body {
 .markdown-content hr {
   border: none;
   border-top: 1px solid var(--border-subtle);
-  margin: 18px 0;
+  margin: 20px 0;
 }

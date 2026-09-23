@@ -67,7 +67,6 @@ export default function SkillViewerModal({ initialSkillId = null, onClose }) {
         {/* Modal Header */}
         <div className="skill-viewer-header">
           <div className="skill-header-title-wrap">
-            <span className="skill-header-icon">📚</span>
             <h2>Domain Skills & Persona Guidelines</h2>
           </div>
           <button className="skill-close-btn" onClick={onClose} title="Close (Esc)">
@@ -133,7 +132,6 @@ export default function SkillViewerModal({ initialSkillId = null, onClose }) {
                 {skillDetails.guidelines && (
                   <div className="skill-gate-box">
                     <div className="skill-gate-header">
-                      <span className="gate-icon">⚖️</span>
                       <h4>Mandatory Council Gate & Operative Checklist</h4>
                     </div>
                     <p className="skill-gate-info">

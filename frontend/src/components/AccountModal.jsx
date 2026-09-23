@@ -80,7 +80,6 @@ export default function AccountModal({ isOpen, onClose, currentUser = 'admin' })
       >
         <div className="account-modal-header">
           <div className="account-modal-title-row">
-            <span className="account-icon">🛡️</span>
             <div>
               <h2 id="account-modal-title">Hesap & Şifre Yönetimi</h2>
               <p className="account-subtitle">Aktif kullanıcı: <strong>{currentUser}</strong></p>
@@ -91,14 +90,12 @@ export default function AccountModal({ isOpen, onClose, currentUser = 'admin' })
 
         {error && (
           <div className="account-alert account-alert-error" role="alert">
-            <span className="alert-icon">⚠️</span>
             <span>{error}</span>
           </div>
         )}
 
         {success && (
           <div className="account-alert account-alert-success" role="status">
-            <span className="alert-icon">✓</span>
             <span>{success}</span>
           </div>
         )}
@@ -167,7 +164,7 @@ export default function AccountModal({ isOpen, onClose, currentUser = 'admin' })
 
         <div className="account-modal-footer">
           <span className="footer-hint">
-            💡 Yeni şifreniz kalıcı depolama birimine (data volume) güvenli PBKDF2 hash ile kaydedilir.
+            Yeni şifreniz kalıcı depolama birimine (data volume) güvenli PBKDF2 hash ile kaydedilir.
           </span>
         </div>
       </div>

@@ -45,6 +45,8 @@ from . import cache
 from . import embeddings
 from . import ingestion
 from . import research
+from . import roundtable
+from . import agent_profiles
 
 app = FastAPI(title="LLM Council API")
 
@@ -134,6 +136,7 @@ ACTIVE_DELIBERATION_CONTEXTS: Dict[str, DeliberationContext] = {}
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
     council_id: Optional[str] = None
+    conversation_type: Optional[str] = "deliberation"
 
 
 class CreateCouncilRequest(BaseModel):
@@ -152,6 +155,28 @@ class UpdateCouncilRequest(BaseModel):
     description: Optional[str] = None
     council_models: Optional[List[str]] = None
     chairman_model: Optional[str] = None
+
+
+class CreateChatRosterRequest(BaseModel):
+    """Request to create a new custom chat roster."""
+    name: str
+    icon: str = "💬"
+    description: str = ""
+    models: List[str]
+
+
+class UpdateChatRosterRequest(BaseModel):
+    """Request to update a chat roster."""
+    name: Optional[str] = None
+    icon: Optional[str] = None
+    description: Optional[str] = None
+    models: Optional[List[str]] = None
+
+
+class UpdateChatSettingsRequest(BaseModel):
+    """Request to update round table chat settings."""
+    models: Optional[List[str]] = None
+    system_prompt: Optional[str] = None
 
 
 class SendMessageRequest(BaseModel):
@@ -234,9 +259,10 @@ class AvailableModelsResponse(BaseModel):
 class ProviderRequest(BaseModel):
     """Request to create or update a custom LLM provider."""
     id: Optional[str] = None
-    name: str
-    provider_type: str = "local"  # "local" or "remote"
-    base_url: str
+    name: Optional[str] = ""
+    preset: Optional[str] = None
+    provider_type: Optional[str] = "local"  # "local" or "remote"
+    base_url: Optional[str] = ""
     model_id: str
     api_key: Optional[str] = ""
     default_skill: Optional[str] = None
@@ -244,9 +270,24 @@ class ProviderRequest(BaseModel):
 
 class TestProviderRequest(BaseModel):
     """Request to test connectivity to an OpenAI-compatible endpoint."""
-    base_url: str
+    base_url: Optional[str] = ""
+    preset: Optional[str] = None
     model_id: str
     api_key: Optional[str] = ""
+
+
+class FetchModelsRequest(BaseModel):
+    """Request to discover models from an endpoint."""
+    base_url: Optional[str] = ""
+    preset: Optional[str] = None
+    api_key: Optional[str] = ""
+
+
+class UpdateAgentProfileRequest(BaseModel):
+    """Request to update display name, color or avatar for a model."""
+    display_name: Optional[str] = None
+    color: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 
 class ConversationMetadata(BaseModel):
@@ -255,6 +296,7 @@ class ConversationMetadata(BaseModel):
     created_at: str
     title: str
     tags: List[str] = []
+    conversation_type: Optional[str] = "deliberation"
     message_count: int
     council_id: Optional[str] = None
     council_name: Optional[str] = None
@@ -268,6 +310,7 @@ class Conversation(BaseModel):
     created_at: str
     title: str
     tags: List[str] = []
+    conversation_type: Optional[str] = "deliberation"
     council_id: Optional[str] = None
     council_name: Optional[str] = None
     council_models: Optional[List[str]] = None
@@ -347,17 +390,34 @@ async def list_conversations(tag: Optional[str] = Query(None, description="Filte
 
 @app.post("/api/conversations", response_model=Conversation, dependencies=[Depends(require_auth)])
 async def create_conversation(request: CreateConversationRequest):
-    """Create a new conversation bound to an active or requested council profile."""
+    """Create a new conversation bound to an active or requested council profile or chat roster."""
     conversation_id = str(uuid.uuid4())
-    council_id = request.council_id or councils.get_active_council_id()
-    council_obj = councils.get_council_by_id(council_id) or councils.get_active_council()
-    conversation = storage.create_conversation(
-        conversation_id,
-        council_id=council_obj["id"],
-        council_name=council_obj["name"],
-        council_models=council_obj["council_models"],
-        chairman_model=council_obj["chairman_model"],
-    )
+    conv_type = request.conversation_type or "deliberation"
+
+    if conv_type == "roundtable":
+        chat_cfg = councils.get_chat_settings()
+        models = chat_cfg.get("models") or ["local/antigravity", "thinkingmachines/inkling:free", "local/qwen3.6-27b"]
+        sys_prompt = chat_cfg.get("system_prompt", "")
+        conversation = storage.create_conversation(
+            conversation_id,
+            council_id="roundtable",
+            council_name="Round Table",
+            council_models=models,
+            chairman_model=None,
+            conversation_type="roundtable",
+            system_prompt=sys_prompt,
+        )
+    else:
+        council_id = request.council_id or councils.get_active_council_id()
+        council_obj = councils.get_council_by_id(council_id) or councils.get_active_council()
+        conversation = storage.create_conversation(
+            conversation_id,
+            council_id=council_obj["id"],
+            council_name=council_obj["name"],
+            council_models=council_obj["council_models"],
+            chairman_model=council_obj["chairman_model"],
+            conversation_type="deliberation",
+        )
     return conversation
 
 
@@ -382,6 +442,14 @@ async def get_conversation(conversation_id: str):
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Self-heal stale status if no background task is actively running
+    if conversation.get("status") in ("deliberating", "streaming"):
+        ctx = ACTIVE_DELIBERATION_CONTEXTS.get(conversation_id)
+        if not ctx or ctx.done or (ctx.task and ctx.task.done()):
+            conversation["status"] = "idle"
+            storage.save_conversation(conversation)
+
     return conversation
 
 
@@ -400,13 +468,23 @@ async def update_conversation_council(conversation_id: str, council_id: str = Bo
     conversation = storage.get_conversation(conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    c_obj = councils.get_council_by_id(council_id)
+
+    roster_obj = councils.get_chat_roster_by_id(council_id)
+    if roster_obj and conversation.get("conversation_type") == "roundtable":
+        conversation["council_id"] = roster_obj["id"]
+        conversation["council_name"] = roster_obj["name"]
+        conversation["council_models"] = roster_obj["models"]
+        conversation["chairman_model"] = None
+        storage.save_conversation(conversation)
+        return conversation
+
+    c_obj = councils.get_council_by_id(council_id) or roster_obj
     if not c_obj:
-        raise HTTPException(status_code=400, detail="Council profile not found")
+        raise HTTPException(status_code=400, detail="Council profile or chat roster not found")
     conversation["council_id"] = c_obj["id"]
     conversation["council_name"] = c_obj["name"]
-    conversation["council_models"] = c_obj["council_models"]
-    conversation["chairman_model"] = c_obj["chairman_model"]
+    conversation["council_models"] = c_obj.get("council_models") or c_obj.get("models")
+    conversation["chairman_model"] = c_obj.get("chairman_model")
     storage.save_conversation(conversation)
     return conversation
 
@@ -505,6 +583,107 @@ async def delete_council_profile(council_id: str):
     return {"status": "ok", "deleted_id": council_id}
 
 
+# -----------------------------------------------------------------------------
+# Chat Rosters Endpoints (Round Table Chat Mode)
+# -----------------------------------------------------------------------------
+
+@app.get("/api/chat-rosters")
+async def get_chat_rosters():
+    """List all chat rosters and the active roster for round table mode."""
+    return {
+        "rosters": councils.get_all_chat_rosters(),
+        "active_roster_id": councils.get_active_chat_roster_id(),
+    }
+
+
+@app.get("/api/chat-rosters/active")
+async def get_current_active_chat_roster():
+    """Get the currently active chat roster."""
+    return councils.get_active_chat_roster()
+
+
+@app.post("/api/chat-rosters/{roster_id}/activate")
+async def activate_chat_roster(roster_id: str):
+    """Activate a chat roster as default for round table chats."""
+    target = councils.set_active_chat_roster(roster_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Chat roster not found")
+    return target
+
+
+@app.post("/api/chat-rosters")
+async def create_new_chat_roster(request: CreateChatRosterRequest):
+    """Create a new custom chat roster."""
+    if len(request.models) < 1:
+        raise HTTPException(status_code=400, detail="At least 1 participant model is required")
+    created = councils.create_custom_chat_roster(
+        name=request.name,
+        models=request.models,
+        icon=request.icon,
+        description=request.description,
+    )
+    return created
+
+
+@app.put("/api/chat-rosters/{roster_id}")
+async def update_chat_roster(roster_id: str, request: UpdateChatRosterRequest):
+    """Update an existing chat roster."""
+    updates = {k: v for k, v in request.dict().items() if v is not None}
+    updated = councils.update_chat_roster(roster_id, updates)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Chat roster not found")
+    return updated
+
+
+@app.delete("/api/chat-rosters/{roster_id}")
+async def delete_chat_roster(roster_id: str):
+    """Delete a custom chat roster."""
+    success = councils.delete_chat_roster(roster_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="Cannot delete built-in or non-existent chat roster")
+    return {"status": "ok", "deleted_id": roster_id}
+
+
+@app.get("/api/chat-settings")
+async def get_chat_settings():
+    """Get the current round table chat configuration."""
+    return councils.get_chat_settings()
+
+
+@app.post("/api/chat-settings")
+async def update_chat_settings(request: UpdateChatSettingsRequest):
+    """Update round table chat configuration (participating models and/or custom user prompt)."""
+    return councils.update_chat_settings(
+        models=request.models,
+        system_prompt=request.system_prompt,
+    )
+
+
+@app.post("/api/chat-settings/reset-bio")
+async def reset_chat_bio():
+    """Reset the injected prompt to the default profile template."""
+    prompt = councils.reset_chat_system_prompt()
+    return {"system_prompt": prompt}
+
+
+@app.get("/api/agent-profiles")
+async def get_all_agent_profiles():
+    """Get visual profiles for all agents/models (custom colors, display names, avatars)."""
+    return agent_profiles.load_agent_profiles()
+
+
+@app.put("/api/agent-profiles/{model_id:path}")
+async def update_single_agent_profile(model_id: str, request: UpdateAgentProfileRequest):
+    """Update visual profile (color, avatar, name) for a model."""
+    return agent_profiles.update_agent_profile(
+        model_id=model_id,
+        display_name=request.display_name,
+        color=request.color,
+        avatar_url=request.avatar_url,
+    )
+
+
+
 @app.put("/api/conversations/{conversation_id}/tags", dependencies=[Depends(require_auth)])
 async def update_tags(conversation_id: str, request: UpdateTagsRequest):
     """Update tags for a conversation."""
@@ -598,6 +777,25 @@ async def create_or_update_provider(request: ProviderRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/providers/presets")
+async def get_provider_presets():
+    """Get list of standard provider presets with default configs."""
+    from backend import providers
+    return {"presets": providers.PROVIDER_PRESETS}
+
+
+@app.post("/api/providers/fetch-models")
+async def fetch_provider_models_endpoint(request: FetchModelsRequest):
+    """Discover available models from an OpenAI-compatible endpoint."""
+    from backend import providers
+    result = await providers.fetch_models_from_endpoint(
+        base_url=request.base_url,
+        preset=request.preset,
+        api_key=request.api_key,
+    )
+    return result
+
+
 @app.delete("/api/providers/{provider_id:path}", dependencies=[Depends(require_auth)])
 async def delete_provider(provider_id: str):
     """Delete a custom provider."""
@@ -616,6 +814,7 @@ async def test_provider(request: TestProviderRequest):
         base_url=request.base_url,
         model_id=request.model_id,
         api_key=request.api_key,
+        preset=request.preset,
     )
     return result
 
@@ -1102,6 +1301,31 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
         return ""
 
     async def _execute_deliberation_stream():
+        # Check if conversation is in unconstrained round-table group chat mode
+        if conversation.get("conversation_type") == "roundtable":
+            try:
+                title_task = None
+                if is_first_message:
+                    title_task = asyncio.create_task(generate_conversation_title(request.content))
+
+                async for event in roundtable.run_roundtable_stream(conversation_id, request.content):
+                    yield f"data: {json.dumps(event)}\n\n"
+
+                if title_task:
+                    try:
+                        title = await title_task
+                        storage.update_conversation_title(conversation_id, title)
+                        yield f"data: {json.dumps({'type': 'title_complete', 'title': title})}\n\n"
+                    except Exception as te:
+                        print(f"Failed to generate title: {te}")
+
+                yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            return
+
         try:
             # Track timing for process events
             stage_start_time = time.time()
@@ -2730,7 +2954,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
         ACTIVE_DELIBERATION_CONTEXTS[conversation_id] = ctx
 
         async def _background_pump():
-            storage.set_conversation_status(conversation_id, "deliberating")
+            is_rt = conversation.get("conversation_type") == "roundtable"
+            storage.set_conversation_status(conversation_id, "streaming" if is_rt else "deliberating")
             try:
                 async for chunk in _execute_deliberation_stream():
                     ctx.broadcast(chunk)
@@ -2747,7 +2972,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 ACTIVE_DELIBERATION_CONTEXTS.pop(conversation_id, None)
                 ACTIVE_DELIBERATIONS.pop(conversation_id, None)
                 conv = storage.get_conversation(conversation_id)
-                if conv and conv.get("status") == "deliberating":
+                if conv and conv.get("status") in ("deliberating", "streaming"):
                     storage.set_conversation_status(conversation_id, "idle")
 
         worker_task = asyncio.create_task(_background_pump())
@@ -2775,6 +3000,40 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+        }
+    )
+
+
+@app.get("/api/conversations/{conversation_id}/events")
+async def stream_existing_conversation(conversation_id: str):
+    """
+    Reconnect to an ongoing background deliberation or round table stream.
+    Replays buffered history and streams live chunks for seamless page reload (F5) / tab switch recovery.
+    """
+    ctx = ACTIVE_DELIBERATION_CONTEXTS.get(conversation_id)
+    if not ctx or ctx.done or (ctx.task and ctx.task.done()):
+        raise HTTPException(status_code=404, detail="No active stream for this conversation")
+
+    async def client_sse_stream():
+        q = ctx.add_subscriber()
+        try:
+            while True:
+                chunk = await q.get()
+                if chunk is None:
+                    break
+                yield chunk
+        except asyncio.CancelledError:
+            pass
+        finally:
+            ctx.remove_subscriber(q)
+
+    return StreamingResponse(
+        client_sse_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         }
     )
 

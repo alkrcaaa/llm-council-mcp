@@ -18,6 +18,81 @@ load_dotenv(override=True)
 
 PROVIDERS_FILE = "data/custom_providers.json"
 
+PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
+    "google": {
+        "id": "google",
+        "name": "Google AI Studio (Gemini)",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "provider_type": "remote",
+        "requires_key": True,
+        "default_model": "gemini-3.6-flash",
+        "key_hint": "Google AI Studio API Key",
+    },
+    "groq": {
+        "id": "groq",
+        "name": "Groq Cloud",
+        "base_url": "https://api.groq.com/openai/v1",
+        "provider_type": "remote",
+        "requires_key": True,
+        "default_model": "llama-3.3-70b-versatile",
+        "key_hint": "Groq API Key (starts with gsk_...)",
+    },
+    "deepseek": {
+        "id": "deepseek",
+        "name": "DeepSeek",
+        "base_url": "https://api.deepseek.com/v1",
+        "provider_type": "remote",
+        "requires_key": True,
+        "default_model": "deepseek-chat",
+        "key_hint": "DeepSeek API Key (starts with sk-...)",
+    },
+    "openai": {
+        "id": "openai",
+        "name": "OpenAI",
+        "base_url": "https://api.openai.com/v1",
+        "provider_type": "remote",
+        "requires_key": True,
+        "default_model": "gpt-4o-mini",
+        "key_hint": "OpenAI API Key (starts with sk-...)",
+    },
+    "openrouter": {
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "base_url": "https://openrouter.ai/api/v1",
+        "provider_type": "remote",
+        "requires_key": True,
+        "default_model": "openrouter/auto",
+        "key_hint": "OpenRouter API Key (starts with sk-or-...)",
+    },
+    "ollama": {
+        "id": "ollama",
+        "name": "Ollama (Local)",
+        "base_url": "http://host.docker.internal:11434/v1",
+        "provider_type": "local",
+        "requires_key": False,
+        "default_model": "llama3.3:latest",
+        "key_hint": "Usually not needed for local Ollama",
+    },
+    "lmstudio": {
+        "id": "lmstudio",
+        "name": "LM Studio / vLLM (Local)",
+        "base_url": "http://host.docker.internal:1234/v1",
+        "provider_type": "local",
+        "requires_key": False,
+        "default_model": "default",
+        "key_hint": "Usually not needed for local server",
+    },
+    "custom": {
+        "id": "custom",
+        "name": "Custom OpenAI Endpoint",
+        "base_url": "",
+        "provider_type": "remote",
+        "requires_key": False,
+        "default_model": "",
+        "key_hint": "Enter custom base URL and API key",
+    },
+}
+
 
 def _ensure_data_dir() -> None:
     Path(PROVIDERS_FILE).parent.mkdir(parents=True, exist_ok=True)
@@ -99,6 +174,25 @@ def get_system_providers() -> List[Dict[str, Any]]:
         "source": ".env (OPENROUTER_API_KEY)",
     })
 
+    # 5. Local Ollama Endpoint (if declared in .env)
+    ollama_base = os.getenv("OLLAMA_BASE_URL", "").strip().rstrip("/")
+    if ollama_base:
+        if ":11434" in ollama_base and not ollama_base.endswith("/v1"):
+            ollama_base += "/v1"
+        ollama_model = os.getenv("OLLAMA_MODEL_ID", "llama3.3:latest")
+        system_list.append({
+            "id": f"local/{ollama_model}",
+            "name": f"Ollama Local ({ollama_model})",
+            "provider_type": "local",
+            "base_url": ollama_base,
+            "model_id": ollama_model,
+            "api_key": "not-needed",
+            "api_key_masked": "",
+            "api_key_set": False,
+            "is_system": True,
+            "source": ".env (OLLAMA_BASE_URL)",
+        })
+
     return system_list
 
 
@@ -128,10 +222,18 @@ def save_providers(providers: List[Dict[str, Any]]) -> bool:
 
 
 def get_provider_by_id(provider_id: str) -> Optional[Dict[str, Any]]:
-    """Lookup provider by its unique identifier (e.g. 'custom/my-ollama')."""
+    """Lookup provider by its unique identifier (e.g. 'local/llama3.3:latest' or 'custom/gemini-3-6-flash')."""
     providers = load_providers()
+    # 1. Exact ID match
     for p in providers:
         if p.get("id") == provider_id:
+            return p
+    # 2. Secondary match: match by model_id or with/without local/ or custom/ prefix
+    clean_target = provider_id.removeprefix("local/").removeprefix("custom/")
+    for p in providers:
+        p_id_clean = p.get("id", "").removeprefix("local/").removeprefix("custom/")
+        p_mid_clean = p.get("model_id", "").removeprefix("local/")
+        if clean_target in (p_id_clean, p_mid_clean):
             return p
     return None
 
@@ -141,37 +243,77 @@ def add_or_update_provider(provider_data: Dict[str, Any]) -> Dict[str, Any]:
     Register or update a custom provider.
     
     Fields expected:
-    - id: optional, generated if not provided
-    - name: friendly label
+    - id: optional, generated if not provided (local/<model> for local, custom/<slug> for remote)
+    - name: friendly label (optional if preset is provided)
+    - preset: optional preset key (e.g. 'google', 'groq', 'ollama')
     - provider_type: 'local' | 'remote'
-    - base_url: OpenAI-compatible base URL (e.g. http://host.docker.internal:11434/v1)
-    - model_id: target model ID on server (e.g. llama3.3:70b)
+    - base_url: OpenAI-compatible base URL (optional if preset is provided)
+    - model_id: target model ID on server (e.g. llama3.3:latest or gemini-3.6-flash)
     - api_key: optional bearer token
     - default_skill: optional default skill id
     """
     providers = load_providers()
     
+    preset = (provider_data.get("preset") or "").strip().lower()
+    preset_info = PROVIDER_PRESETS.get(preset, {})
+
     name = (provider_data.get("name") or "").strip()
-    provider_type = (provider_data.get("provider_type") or "local").strip().lower()
+    if not name and preset_info:
+        name = preset_info.get("name", "")
+
+    provider_type = (provider_data.get("provider_type") or "").strip().lower()
+    if not provider_type:
+        provider_type = preset_info.get("provider_type", "remote" if preset else "local")
+
     base_url = (provider_data.get("base_url") or "").strip().rstrip("/")
+    if not base_url and preset_info:
+        base_url = preset_info.get("base_url", "")
+
     model_id = (provider_data.get("model_id") or "").strip()
+    if not model_id and preset_info:
+        model_id = preset_info.get("default_model", "")
+
     api_key = (provider_data.get("api_key") or "").strip()
     default_skill = (provider_data.get("default_skill") or "").strip() or None
 
-    if not name or not base_url or not model_id:
-        raise ValueError("Name, Base URL, and Model ID are required.")
+    # Local host and Ollama normalization
+    is_local = provider_type == "local" or preset in ("ollama", "lmstudio")
+    if is_local:
+        # Convert localhost / 127.0.0.1 to host.docker.internal inside Docker
+        base_url = (
+            base_url.replace("://localhost:", "://host.docker.internal:")
+            .replace("://127.0.0.1:", "://host.docker.internal:")
+        )
+        if ":11434" in base_url and not base_url.endswith("/v1") and not base_url.endswith("/chat/completions"):
+            base_url = f"{base_url}/v1"
+        if not api_key:
+            api_key = "not-needed"
 
-    # Format unique identifier: e.g. custom/<slug>
+    if not name:
+        raise ValueError("Provider Name is required.")
+    if not base_url:
+        raise ValueError("Base URL is required (or select a Provider Preset).")
+    if not model_id:
+        raise ValueError("Model ID is required.")
+
+    # Format unique identifier:
+    # Local models use the council-native 'local/<model_id>' namespace (0 cost, local badge)
+    # Remote custom models use 'custom/<slug>'
     raw_id = (provider_data.get("id") or "").strip()
     if not raw_id:
-        slug = "".join(c if c.isalnum() or c in "-_" else "-" for c in name.lower())
-        raw_id = f"custom/{slug.strip('-')}"
+        if is_local:
+            clean_model = model_id.removeprefix("local/")
+            raw_id = f"local/{clean_model}"
+        else:
+            slug = "".join(c if c.isalnum() or c in "-_" else "-" for c in name.lower())
+            raw_id = f"custom/{slug.strip('-')}"
 
     # Normalize completions URL: if not ending in /chat/completions, ensure proper base
     entry = {
         "id": raw_id,
         "name": name,
-        "provider_type": provider_type,
+        "preset": preset or None,
+        "provider_type": "local" if is_local else "remote",
         "base_url": base_url,
         "model_id": model_id,
         "api_key": api_key,
@@ -201,16 +343,26 @@ def delete_provider(provider_id: str) -> bool:
 
 
 async def test_provider_connection(
-    base_url: str,
-    model_id: str,
+    base_url: Optional[str] = None,
+    model_id: str = "",
     api_key: Optional[str] = None,
-    timeout: float = 10.0
+    preset: Optional[str] = None,
+    timeout: float = 12.0
 ) -> Dict[str, Any]:
     """
     Test connectivity to an OpenAI-compatible endpoint with a minimal ping prompt.
     """
-    base = base_url.rstrip("/")
-    endpoint = base if base.endswith("/chat/completions") else f"{base}/chat/completions"
+    resolved_base = (base_url or "").strip().rstrip("/")
+    if not resolved_base and preset and preset in PROVIDER_PRESETS:
+        resolved_base = PROVIDER_PRESETS[preset]["base_url"]
+
+    if not resolved_base or not model_id:
+        return {
+            "success": False,
+            "error": "Base URL (or Preset) and Model ID are required to test connection.",
+        }
+
+    endpoint = resolved_base if resolved_base.endswith("/chat/completions") else f"{resolved_base}/chat/completions"
     
     headers = {"Content-Type": "application/json"}
     if api_key and api_key.strip() and api_key.strip() != "not-needed":
@@ -244,11 +396,18 @@ async def test_provider_connection(
                     "message": f"Successfully connected to {model_id} ({elapsed_ms}ms)",
                 }
             else:
+                err_body = resp.text[:300]
+                try:
+                    j = resp.json()
+                    if "error" in j:
+                        err_body = j["error"].get("message", err_body) if isinstance(j["error"], dict) else str(j["error"])
+                except Exception:
+                    pass
                 return {
                     "success": False,
                     "status_code": resp.status_code,
                     "latency_ms": elapsed_ms,
-                    "error": f"HTTP {resp.status_code}: {resp.text[:200]}",
+                    "error": f"HTTP {resp.status_code}: {err_body}",
                 }
     except httpx.ConnectError:
         return {
@@ -264,6 +423,160 @@ async def test_provider_connection(
         return {
             "success": False,
             "error": f"Error testing connection: {str(e)}",
+        }
+
+
+async def fetch_models_from_endpoint(
+    base_url: Optional[str] = None,
+    preset: Optional[str] = None,
+    api_key: Optional[str] = None,
+    timeout: float = 10.0,
+) -> Dict[str, Any]:
+    """
+    Fetch available models list from an OpenAI-compatible /models endpoint.
+    Supports OpenAI, Google AI Studio OpenAI shim, Groq, DeepSeek, Ollama, etc.
+    """
+    resolved_base = (base_url or "").strip().rstrip("/")
+    if not resolved_base and preset and preset in PROVIDER_PRESETS:
+        resolved_base = PROVIDER_PRESETS[preset]["base_url"]
+
+    if not resolved_base:
+        return {
+            "success": False,
+            "error": "Base URL or a valid Provider Preset is required to fetch models.",
+            "models": [],
+        }
+
+    # Normalize endpoint: ensure we target /models
+    if resolved_base.endswith("/chat/completions"):
+        models_url = resolved_base[:-len("/chat/completions")] + "/models"
+    elif resolved_base.endswith("/models"):
+        models_url = resolved_base
+    else:
+        models_url = f"{resolved_base}/models"
+
+    headers = {"Accept": "application/json"}
+    if api_key and api_key.strip() and api_key.strip() != "not-needed":
+        headers["Authorization"] = f"Bearer {api_key.strip()}"
+
+    start = time.time()
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(models_url, headers=headers)
+            elapsed_ms = int((time.time() - start) * 1000)
+
+            if resp.status_code != 200:
+                # Try secondary fallback for Ollama: /api/tags if /v1/models returned 404
+                if "11434" in resolved_base or preset == "ollama":
+                    try:
+                        base_root = resolved_base.split("/v1")[0]
+                        alt_url = f"{base_root}/api/tags"
+                        alt_resp = await client.get(alt_url, headers=headers)
+                        if alt_resp.status_code == 200:
+                            alt_data = alt_resp.json()
+                            raw_models = [m.get("name") for m in alt_data.get("models", []) if m.get("name")]
+                            return {
+                                "success": True,
+                                "models": sorted(list(set(raw_models))),
+                                "count": len(raw_models),
+                                "latency_ms": elapsed_ms,
+                            }
+                    except Exception:
+                        pass
+
+                err_text = resp.text[:250]
+                try:
+                    err_json = resp.json()
+                    if "error" in err_json:
+                        err_text = err_json["error"].get("message", err_text) if isinstance(err_json["error"], dict) else str(err_json["error"])
+                except Exception:
+                    pass
+                return {
+                    "success": False,
+                    "status_code": resp.status_code,
+                    "error": f"HTTP {resp.status_code}: {err_text}",
+                    "models": [],
+                }
+
+            data = resp.json()
+            raw_models: List[str] = []
+
+            # 1. Standard OpenAI format: {"data": [{"id": "model_name"}, ...]}
+            if isinstance(data, dict) and "data" in data and isinstance(data["data"], list):
+                for item in data["data"]:
+                    if isinstance(item, dict) and "id" in item:
+                        raw_models.append(item["id"])
+                    elif isinstance(item, str):
+                        raw_models.append(item)
+            # 2. Ollama / custom format: {"models": [{"name": "..."}, ...]}
+            elif isinstance(data, dict) and "models" in data and isinstance(data["models"], list):
+                for item in data["models"]:
+                    if isinstance(item, dict):
+                        name = item.get("name") or item.get("id") or item.get("model")
+                        if name:
+                            raw_models.append(name)
+                    elif isinstance(item, str):
+                        raw_models.append(item)
+            # 3. Direct array format: ["model-1", "model-2"]
+            elif isinstance(data, list):
+                for item in data:
+                    if isinstance(item, str):
+                        raw_models.append(item)
+                    elif isinstance(item, dict) and "id" in item:
+                        raw_models.append(item["id"])
+
+            cleaned: List[str] = []
+            seen = set()
+            for m in raw_models:
+                m_str = str(m).strip()
+                if not m_str:
+                    continue
+                # For Google AI Studio: normalize "models/gemini-3.6-flash" to "gemini-3.6-flash"
+                display_id = m_str[7:] if m_str.startswith("models/") else m_str
+                if display_id not in seen:
+                    seen.add(display_id)
+                    cleaned.append(display_id)
+
+            # Sort intelligently: put prominent chat models first, filter preview noise down
+            def _rank(name: str) -> int:
+                n = name.lower()
+                if any(x in n for x in ("embed", "tts", "audio", "veo", "clip", "transcribe", "robotics", "image")):
+                    return 100
+                if "gemini-3.6" in n:
+                    return 1
+                if "gemini-3.7" in n or "gemini-3.5" in n:
+                    return 2
+                if "gemini-2.5-pro" in n or "gemini-2.5-flash" in n:
+                    return 3
+                if "gemini" in n or "gpt-4" in n or "claude" in n or "deepseek" in n or "llama" in n:
+                    return 10
+                return 50
+
+            cleaned.sort(key=lambda x: (_rank(x), x))
+
+            return {
+                "success": True,
+                "models": cleaned,
+                "count": len(cleaned),
+                "latency_ms": elapsed_ms,
+            }
+    except httpx.ConnectError:
+        return {
+            "success": False,
+            "error": f"Connection refused to {models_url}. If running inside Docker, use 'http://host.docker.internal:<port>' to reach host services.",
+            "models": [],
+        }
+    except httpx.TimeoutException:
+        return {
+            "success": False,
+            "error": f"Connection timed out after {timeout}s fetching models.",
+            "models": [],
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error fetching models: {str(e)}",
+            "models": [],
         }
 
 

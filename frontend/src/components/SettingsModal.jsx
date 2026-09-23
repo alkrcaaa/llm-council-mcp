@@ -100,7 +100,6 @@ export default function SettingsModal({
         {/* Modal Header */}
         <div className="settings-modal-header">
           <div className="settings-header-left">
-            <span className="settings-header-icon">⚙️</span>
             <div>
               <div className="settings-header-title-row">
                 <h2>Deliberation Settings</h2>
@@ -132,7 +131,7 @@ export default function SettingsModal({
             className={`settings-tab-btn ${activeTab === 'prompt' ? 'active' : ''}`}
             onClick={() => setActiveTab('prompt')}
           >
-            <span>📝 Prompt & Reasoning</span>
+            <span>Prompt & Reasoning</span>
             {promptActive && <span className="tab-active-dot" />}
           </button>
           <button
@@ -140,7 +139,7 @@ export default function SettingsModal({
             className={`settings-tab-btn ${activeTab === 'consensus' ? 'active' : ''}`}
             onClick={() => setActiveTab('consensus')}
           >
-            <span>⚖️ Consensus & Deliberation</span>
+            <span>Consensus & Deliberation</span>
             {consensusActive && <span className="tab-active-dot" />}
           </button>
           <button
@@ -148,7 +147,7 @@ export default function SettingsModal({
             className={`settings-tab-btn ${activeTab === 'advanced' ? 'active' : ''}`}
             onClick={() => setActiveTab('advanced')}
           >
-            <span>🚀 Routing & Optimization</span>
+            <span>Routing & Optimization</span>
             {advancedActive && <span className="tab-active-dot" />}
           </button>
         </div>

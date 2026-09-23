@@ -38,3 +38,5 @@ SESSION_HANDOFF.md
 # Local test/audit artifacts (may contain secrets from live env)
 test-results/
 test-results-v2/
+# Local skill prompts mounted into the backend (SKILLS_DIR)
+/skills/

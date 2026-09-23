@@ -68,7 +68,7 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings, useW
             onClick={() => setViewMode('matrix')}
             title="Show who ranked whom in a cross-model matrix"
           >
-            📊 Peer Matrix
+            Peer Matrix
           </button>
           <button
             type="button"
@@ -76,7 +76,7 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings, useW
             onClick={() => setViewMode('tabs')}
             title="View full detailed critique from each model"
           >
-            📝 Detailed Critiques
+            Detailed Critiques
           </button>
         </div>
       </div>

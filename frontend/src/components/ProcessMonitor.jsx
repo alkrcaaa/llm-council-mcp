@@ -158,7 +158,6 @@ export default function ProcessMonitor({
             ))}
           </div>
           <div className="verbosity-description-box">
-            <span className="desc-icon">💡</span>
             <span className="desc-text">{verbosityDescriptions[verbosity]}</span>
           </div>
         </div>

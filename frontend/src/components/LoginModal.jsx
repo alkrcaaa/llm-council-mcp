@@ -38,7 +38,6 @@ export default function LoginModal({ onLoginSuccess }) {
     <div className="login-modal-backdrop">
       <div className="login-modal-card">
         <div className="login-modal-header">
-          <div className="login-brand-icon">🏛️</div>
           <h2>LLM Council</h2>
           <p className="login-subtitle">Multi-model deliberation & architecture synthesis engine</p>
         </div>

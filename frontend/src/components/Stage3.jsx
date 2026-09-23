@@ -248,6 +248,7 @@ export default function Stage3({
           currentRound={debateRound}
           judgmentStreaming={debateJudgmentStreaming}
           isJudging={isJudging}
+          chairmanModel={finalResponse?.model || streamingModel || ''}
         />
       </div>
     );

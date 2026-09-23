@@ -91,13 +91,18 @@ def get_model_pricing(model: str) -> Dict[str, float]:
     Get pricing for a specific model.
 
     Args:
-        model: OpenRouter model identifier (e.g., "openai/gpt-4o" or "local/qwen3.6-27b@owasp-security")
+        model: OpenRouter or local model identifier (e.g., "openai/gpt-4o" or "local/qwen3.6-27b@owasp-security")
 
     Returns:
         Dict with 'input' and 'output' prices per 1M tokens
     """
     base_model = model.split("@")[0] if "@" in model else model
-    return MODEL_PRICING.get(base_model, DEFAULT_PRICING)
+    if base_model in MODEL_PRICING:
+        return MODEL_PRICING[base_model]
+    # Any local model (e.g. local/llama3.3, local/ollama-*) that is not a paid shim has $0 cost
+    if base_model.startswith("local/") and base_model not in ("local/claude-code", "local/antigravity"):
+        return {"input": 0.0, "output": 0.0}
+    return DEFAULT_PRICING
 
 
 def calculate_cost(

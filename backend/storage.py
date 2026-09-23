@@ -24,6 +24,8 @@ def create_conversation(
     council_name: Optional[str] = None,
     council_models: Optional[List[str]] = None,
     chairman_model: Optional[str] = None,
+    conversation_type: str = "deliberation",
+    system_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Create a new conversation.
@@ -34,6 +36,8 @@ def create_conversation(
         council_name: Associated council display name
         council_models: Snapshot of models in the council
         chairman_model: Snapshot of chairman model
+        conversation_type: "deliberation" (3-stage ADR engine) or "roundtable" (direct multi-agent group chat)
+        system_prompt: Optional user bio / behavioral system prompt injected before message turns
 
     Returns:
         New conversation dict
@@ -45,10 +49,12 @@ def create_conversation(
         "created_at": datetime.utcnow().isoformat(),
         "title": "New Conversation",
         "tags": [],
+        "conversation_type": conversation_type,
         "council_id": council_id,
         "council_name": council_name,
         "council_models": council_models,
         "chairman_model": chairman_model,
+        "system_prompt": system_prompt,
         "status": "idle",
         "messages": []
     }
@@ -121,6 +127,7 @@ def list_conversations() -> List[Dict[str, Any]]:
                         "created_at": data["created_at"],
                         "title": data.get("title", "New Conversation"),
                         "tags": data.get("tags", []),
+                        "conversation_type": data.get("conversation_type", "deliberation"),
                         "council_id": data.get("council_id"),
                         "council_name": data.get("council_name"),
                         "status": data.get("status", "idle"),
@@ -153,7 +160,8 @@ def add_user_message(conversation_id: str, content: str):
 
     conversation["messages"].append({
         "role": "user",
-        "content": content
+        "content": content,
+        "created_at": datetime.utcnow().isoformat()
     })
 
     save_conversation(conversation)
@@ -182,7 +190,8 @@ def add_assistant_message(
         "role": "assistant",
         "stage1": stage1,
         "stage2": stage2,
-        "stage3": stage3
+        "stage3": stage3,
+        "created_at": datetime.utcnow().isoformat()
     })
     conversation["status"] = "idle"
     conversation["last_error"] = None

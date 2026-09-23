@@ -10,8 +10,9 @@ services:
       context: ..
       dockerfile: infra/backend.Dockerfile
     ports:
-      # Loopback only: the API runs local CLI agents via the shims and spends API credit.
-      - "127.0.0.1:8001:8001"
+      # Loopback by default: the API can run local CLI agents via the shims and spends API
+      # credit. Set BACKEND_BIND_HOST/FRONTEND_BIND_HOST=0.0.0.0 to reach it from the LAN.
+      - "${BACKEND_BIND_HOST:-127.0.0.1}:8001:8001"
     environment:
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       # CLAUDE_SHIM_SECRET / ANTIGRAVITY_SHIM_SECRET come only from env_file (../.env),
@@ -27,7 +28,7 @@ services:
       - council-data:/app/data
       - ../backend:/app/backend
       - ../.env:/app/.env:ro
-      - ${SKILLS_DIR:-${HOME}/.gemini/config/skills}:/app/skills:ro
+      - ${SKILLS_DIR:-../skills}:/app/skills:ro
       - ${WORKSPACE_DIR:-..}:/app/workspace:ro
     extra_hosts:
       # Lets the container reach the claude-code-shim running on the host
@@ -47,7 +48,7 @@ services:
       context: ..
       dockerfile: infra/frontend.Dockerfile
     ports:
-      - "127.0.0.1:5173:5173"
+      - "${FRONTEND_BIND_HOST:-127.0.0.1}:5173:5173"
     volumes:
       - ../frontend/src:/app/src
       - ../frontend/index.html:/app/index.html

@@ -8,16 +8,16 @@ load_dotenv(override=True)
 # OpenRouter API key
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# Council members - list of OpenRouter model identifiers
+# Council members - list of model identifiers
 COUNCIL_MODELS = [
-    "openai/gpt-4o",
-    "anthropic/claude-3-5-sonnet",
-    "deepseek/deepseek-chat",
-    "google/gemini-2.0-flash-001",
+    "local/antigravity@red-team-reasoning",
+    "custom/gemini-3-6-flash@red-team-reasoning",
+    "local/qwen3.6-27b@first-principles",
+    "custom/groq@deep-research",
 ]
 
 # Chairman model - synthesizes final response
-CHAIRMAN_MODEL = "anthropic/claude-3-5-sonnet"
+CHAIRMAN_MODEL = "local/claude-code"
 
 
 # OpenRouter API endpoint
@@ -48,6 +48,18 @@ LOCAL_MODELS = {
         "api_key": os.getenv("ANTIGRAVITY_SHIM_SECRET", "not-needed"),
     },
 }
+
+# Optional Local Ollama from .env
+_ollama_base = os.getenv("OLLAMA_BASE_URL", "").strip().rstrip("/")
+if _ollama_base:
+    if ":11434" in _ollama_base and not _ollama_base.endswith("/v1"):
+        _ollama_base += "/v1"
+    _ollama_model = os.getenv("OLLAMA_MODEL_ID", "llama3.3:latest")
+    LOCAL_MODELS[f"local/{_ollama_model}"] = {
+        "base_url": f"{_ollama_base}/chat/completions",
+        "model_id": _ollama_model,
+        "api_key": "not-needed",
+    }
 
 # Data directory for conversation storage
 DATA_DIR = "data/conversations"

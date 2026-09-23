@@ -113,30 +113,124 @@ Calls to `ask_council` return a structured, high-density Markdown Architectural 
 
 ## 🚀 Quick Setup
 
-### 1. Configure Environment
+> **Using an AI coding agent?** Tell it: *"Clone https://github.com/alkrcaaa/llm-council-mcp
+> and install it by following `AGENT_INSTALL.md`."* That file also covers reporting issues
+> and contributing via pull requests.
 
-Copy the template and configure your local endpoints or OpenRouter API key:
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) with Compose v2 (`docker compose version` works)
+- An [OpenRouter API key](https://openrouter.ai/keys) for cloud models (models ending in `:free` cost $0)
+
+### 1. Install & start (one command)
 
 ```bash
-cp .env.example .env
+git clone https://github.com/alkrcaaa/llm-council-mcp.git llm-council
+cd llm-council
+./setup.sh
 ```
 
-```bash
-# Optional: OpenRouter API key (only needed for cloud models)
-OPENROUTER_API_KEY=sk-or-v1-...
+On the first run `setup.sh`:
 
-# Optional: Local vLLM / OpenAI-compatible endpoint (defaults to host gateway)
+1. creates `.env` from `.env.example` and asks for your OpenRouter key,
+2. generates a random admin password and `JWT_SECRET`,
+3. builds and starts the backend + frontend containers,
+4. prints the URL and login credentials.
+
+Open **http://localhost:5173** and sign in with the printed credentials (username `admin`). Change the password from the UI after the first login.
+
+| Command | What it does |
+| :--- | :--- |
+| `./setup.sh` | Start (or rebuild after `git pull`). Safe to re-run; existing secrets are kept |
+| `./setup.sh stop` | Stop the containers. Conversations and settings stay in the `council-data` volume |
+| `./setup.sh logs` | Follow container logs |
+| `./setup.sh shims` | Run your Claude Code / Antigravity CLI as council seats (see below) |
+
+### 2. Set up your models
+
+The built-in boards are tuned for the author's machine: they use host-side agent shims
+(`local/claude-code`, `local/antigravity`), a local vLLM server (`local/qwen3.6-27b`) and
+API-key providers (`custom/gemini-*`, `custom/groq`). **On a fresh install those seats
+won't answer until you configure them.** The quickest path:
+
+1. Open **Configure Models** in the UI.
+2. Create your own council (or edit a copy of a built-in one) using OpenRouter model IDs,
+   e.g. `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`. At least 2 seats
+   are required. The free lineup changes often; see the current list at
+   [openrouter.ai/models?q=free](https://openrouter.ai/models?q=free).
+3. Optional: under **Model Studio & Providers**, add other OpenAI-compatible endpoints
+   (Ollama, LM Studio, vLLM, Groq, Gemini, DeepSeek, ...) and use them as seats.
+
+Free OpenRouter models are rate-limited, so expect occasional `429` errors on busy models;
+the council continues with whichever seats answered.
+
+### 3. Optional: bring the built-in boards online
+
+Each built-in seat type can be activated on your machine. Enable whichever you have;
+seats you don't enable simply fail and the council continues with the rest.
+
+#### Claude Code & Antigravity seats (`local/claude-code`, `local/antigravity`)
+
+Small host-side bridges in [`infra/local-models/`](infra/local-models/) turn a logged-in CLI
+into an OpenAI-compatible endpoint the backend container can call. They must run on the host
+(not in Docker) because they use your CLI login. Each request is a real CLI call on your
+account, and the CLIs run in restricted/sandboxed mode (no tools, no file writes).
+
+1. Install and log in to the CLI(s) you have:
+   [Claude Code](https://docs.claude.com/en/docs/claude-code) (`claude`, run it once to log in)
+   and/or Google Antigravity (`agy`).
+2. Run:
+   ```bash
+   ./setup.sh shims
+   ```
+   It detects which CLIs are installed, generates a per-shim secret in `.env`, and
+   - **Linux (systemd):** installs and starts user services
+     `llm-council-claude-code-shim` / `llm-council-antigravity-shim`, bound to the Docker
+     bridge address so only containers (not your LAN) can reach them. Logs:
+     `journalctl --user -u llm-council-claude-code-shim -f`.
+   - **macOS / no systemd:** prints the command to run each shim in a terminal.
+3. It restarts the backend so it picks up the secrets. The Claude seats should now answer.
+
+To remove them: `systemctl --user disable --now llm-council-claude-code-shim llm-council-antigravity-shim`
+and delete the unit files in `~/.config/systemd/user/`.
+
+#### Local model seat (`local/qwen3.6-27b`)
+
+Point it at any OpenAI-compatible server in `.env`, then re-run `./setup.sh`:
+
+```bash
+# vLLM (the author's setup)
 QWEN_BASE_URL=http://host.docker.internal:8002/v1
+QWEN_MODEL_ID=/models/qwen3.6-27b
+
+# or Ollama (on Linux start it with OLLAMA_HOST=0.0.0.0 so containers can reach it)
+QWEN_BASE_URL=http://host.docker.internal:11434/v1
+QWEN_MODEL_ID=qwen3:8b
 ```
 
-### 2. Run Full Stack via Docker Compose (Recommended)
+#### Gemini & Groq seats (`custom/gemini-3-6-flash`, `custom/groq`)
 
-```bash
-docker compose -f infra/docker-compose.yml up -d
-```
+Add them under **Configure Models → Model Studio & Providers** with your own API keys
+(both have free tiers). The seat ID is derived from the friendly name, so name them exactly
+**`Gemini 3.6 Flash`** (→ `custom/gemini-3-6-flash`) and **`Groq`** (→ `custom/groq`) for
+the built-in boards to pick them up.
 
-- **Web UI:** http://localhost:5173
-- **Backend API:** http://localhost:8001 (Health check: `curl http://localhost:8001/`)
+### Configuration reference
+
+All settings live in `.env` (see [`.env.example`](.env.example) for every option):
+
+| Variable | Purpose |
+| :--- | :--- |
+| `OPENROUTER_API_KEY` | Cloud models via OpenRouter |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Initial web UI login |
+| `JWT_SECRET` | Signs login tokens; required while `AUTH_ENABLED=true` |
+| `BACKEND_BIND_HOST` / `FRONTEND_BIND_HOST` | `127.0.0.1` (default, this machine only) or `0.0.0.0` to open the UI from your LAN |
+| `SKILLS_DIR` | Folder of skill prompts for `model@skill` seats (default `./skills`) |
+| `QWEN_*`, `*_SHIM_*` | Optional local model server and host CLI shims |
+
+After editing `.env`, run `./setup.sh` again to apply it.
+
+> Opening the UI to your LAN? Keep `AUTH_ENABLED=true`: the API spends your API credits.
 
 ### 3. Connect MCP to Your Agents
 

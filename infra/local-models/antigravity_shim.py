@@ -70,8 +70,14 @@ def run_agy(prompt):
         cmd += ["--model", MODEL]
     cmd.append(f"--print={prompt}")
 
+    # Determine execution directory: ANTIGRAVITY_SHIM_CWD > WORKSPACE_DIR > cwd
+    target_cwd = os.getenv("ANTIGRAVITY_SHIM_CWD") or os.getenv("WORKSPACE_DIR")
+    if not target_cwd or not os.path.isdir(target_cwd):
+        target_cwd = os.getcwd()
+
     result = subprocess.run(
         cmd, capture_output=True, text=True, timeout=AGY_TIMEOUT_S,
+        cwd=target_cwd,
         # A seat must never re-enter the council: the MCP server reads this guard.
         env={**os.environ, "LLM_COUNCIL_INVOCATION": "1"},
     )

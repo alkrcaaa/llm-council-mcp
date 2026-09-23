@@ -7,6 +7,7 @@ import LiveFeed from './LiveFeed';
 import DebateView from './DebateView';
 import TagEditor from './TagEditor';
 import CostDisplay from './CostDisplay';
+import RoundTableMessage from './RoundTableMessage';
 import { shortModelName, linkifyUserMentions, mentionMarkdownComponents } from './mentionUtils.jsx';
 import { exportToMarkdown, exportToJSON, exportToADR, copyADRToClipboard } from '../utils/export';
 import './ChatInterface.css';
@@ -14,6 +15,7 @@ import './ChatInterface.css';
 export default function ChatInterface({
   conversation,
   activeCouncil,
+  activeChatRoster,
   currentUser,
   onSendMessage,
   onNewConversation,
@@ -32,7 +34,11 @@ export default function ChatInterface({
   const [feedView, setFeedView] = useState(
     () => localStorage.getItem('feedView') !== 'false'
   );
+  const [activeMode, setActiveMode] = useState(
+    () => conversation?.conversation_type || 'roundtable'
+  );
   const [mentionQuery, setMentionQuery] = useState(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const prevMessageCountRef = useRef(0);
@@ -40,7 +46,18 @@ export default function ChatInterface({
   const tagButtonRef = useRef(null);
   const messageInputRef = useRef(null);
 
+  const isRoundTableConv = conversation?.conversation_type === 'roundtable';
   const activeDeliberating = Boolean(isLoading || isDeliberating || conversation?.status === 'deliberating');
+
+  const handleReplyToModel = (modelId) => {
+    const shortName = modelId === 'all' ? 'all' : shortModelName(modelId);
+    const tag = `@${shortName} `;
+    setInput((prev) => {
+      if (prev.includes(tag)) return prev;
+      return `${tag}${prev}`;
+    });
+    messageInputRef.current?.focus();
+  };
 
   const toggleFeedView = () => {
     setFeedView((prev) => {
@@ -50,11 +67,33 @@ export default function ChatInterface({
     });
   };
 
-  // @mention autocomplete: seats of the council this conversation will use
-  const mentionSeats = (activeCouncil?.council_models?.length ? activeCouncil.council_models : conversation?.council_models) || [];
+  // @mention autocomplete: seats of the council this conversation will use + @all
+  const isRoundTable = conversation
+    ? conversation.conversation_type === 'roundtable'
+    : activeMode === 'roundtable';
+
+  const mentionSeats = isRoundTable
+    ? (conversation?.council_models?.length
+        ? conversation.council_models
+        : (activeChatRoster?.models?.length ? activeChatRoster.models : []))
+    : ((activeCouncil?.council_models?.length ? activeCouncil.council_models : conversation?.council_models) || []);
+
+  const modelMatchesQuery = (model, query) => {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    const short = shortModelName(model).toLowerCase();
+    if (short.startsWith(q)) return true;
+    if (short.includes('antigravity') && ('antigravity'.startsWith(q) || 'agy'.startsWith(q))) return true;
+    if (short.includes('claude') && 'claude'.startsWith(q)) return true;
+    return false;
+  };
+
   const mentionMatches = mentionQuery == null
     ? []
-    : mentionSeats.filter((m) => shortModelName(m).toLowerCase().startsWith(mentionQuery.toLowerCase())).slice(0, 6);
+    : [
+        ...(mentionQuery === '' || 'all'.startsWith(mentionQuery.toLowerCase()) ? ['all'] : []),
+        ...mentionSeats.filter((m) => modelMatchesQuery(m, mentionQuery))
+      ].slice(0, 6);
 
   const handleInputChange = (e) => {
     const val = e.target.value;
@@ -63,6 +102,9 @@ export default function ChatInterface({
     const uptoCursor = val.slice(0, cursorPos);
     const match = uptoCursor.match(/(?:^|\s)@(\w*)$/);
     setMentionQuery(match ? match[1] : null);
+    if (match) {
+      setMentionIndex(0);
+    }
   };
 
   const insertMention = (model) => {
@@ -73,10 +115,11 @@ export default function ChatInterface({
     const match = uptoCursor.match(/(?:^|\s)@(\w*)$/);
     if (!match) return;
     const startIdx = cursorPos - match[0].length + (match[0].startsWith(' ') ? 1 : 0);
-    const name = shortModelName(model);
+    const name = model === 'all' ? 'all' : shortModelName(model);
     const newVal = `${input.slice(0, startIdx)}@${name} ${input.slice(cursorPos)}`;
     setInput(newVal);
     setMentionQuery(null);
+    setMentionIndex(0);
     requestAnimationFrame(() => el.focus());
   };
 
@@ -121,8 +164,13 @@ export default function ChatInterface({
   useEffect(() => {
     let interval = null;
     if (activeDeliberating) {
-      const startTime = Date.now();
-      setElapsedSeconds('0.0');
+      // Anchor deliberation start time to the latest user message timestamp if available (preserves elapsed time across page refresh)
+      const userMsgs = (conversation?.messages || []).filter((m) => m.role === 'user');
+      const lastUserMsg = userMsgs[userMsgs.length - 1];
+      const parsedTime = lastUserMsg?.created_at ? Date.parse(lastUserMsg.created_at) : NaN;
+      const startTime = !isNaN(parsedTime) && parsedTime <= Date.now() ? parsedTime : Date.now();
+
+      setElapsedSeconds(((Date.now() - startTime) / 1000).toFixed(1));
       interval = setInterval(() => {
         setElapsedSeconds(((Date.now() - startTime) / 1000).toFixed(1));
       }, 100);
@@ -132,7 +180,7 @@ export default function ChatInterface({
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [activeDeliberating]);
+  }, [activeDeliberating, conversation?.messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -167,9 +215,20 @@ export default function ChatInterface({
 
   const handleKeyDown = (e) => {
     if (mentionQuery != null && mentionMatches.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionIndex((prev) => (prev + 1) % mentionMatches.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionIndex((prev) => (prev - 1 + mentionMatches.length) % mentionMatches.length);
+        return;
+      }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        insertMention(mentionMatches[0]);
+        const selected = mentionMatches[mentionIndex] || mentionMatches[0];
+        insertMention(selected);
         return;
       }
       if (e.key === 'Escape') {
@@ -187,8 +246,12 @@ export default function ChatInterface({
 
   const handleLandingSubmit = (e) => {
     e.preventDefault();
-    if (!landingInput.trim() || !onNewConversation) return;
-    onNewConversation(null, landingInput);
+    if (!landingInput.trim()) return;
+    if (conversation && conversation.id) {
+      onSendMessage(landingInput);
+    } else if (onNewConversation) {
+      onNewConversation(null, landingInput, activeMode);
+    }
     setLandingInput('');
   };
 
@@ -199,26 +262,66 @@ export default function ChatInterface({
     }
   };
 
-  if (!conversation) {
+  const hasMessages = Boolean(conversation && conversation.messages && conversation.messages.length > 0);
+
+  if (!hasMessages) {
     const displayName = currentUser ? currentUser.charAt(0).toUpperCase() + currentUser.slice(1) : '';
+    const isRoundTable = activeMode === 'roundtable';
+    const rosterModels = isRoundTable
+      ? (activeChatRoster?.models?.length ? activeChatRoster.models : conversation?.council_models || [])
+      : ((activeCouncil?.council_models?.length ? activeCouncil.council_models : conversation?.council_models) || []);
+    const chairman = isRoundTable ? null : (activeCouncil?.chairman_model || conversation?.chairman_model);
+    const hasLocal = rosterModels.some((m) => m.startsWith('local/'));
+
     return (
       <div className="chat-interface">
         <div className="landing-state">
           <div className="landing-glow" />
-          <h1 className="landing-greeting">
-            {displayName ? `Merhaba ${displayName}, aklınızda ne var?` : 'Aklınızda ne var?'}
-          </h1>
-          <form className="landing-composer" onSubmit={handleLandingSubmit}>
-            <button type="button" className="landing-composer-council" title={`Active council: ${activeCouncil?.name || 'Default'}`}>
-              {activeCouncil?.name || 'LLM Council'}
+
+          {/* Mode Selector Pill: Round Table (Group Chat) vs Formal Council Deliberation */}
+          <div className="landing-mode-selector">
+            <button
+              type="button"
+              className={`landing-mode-btn ${activeMode === 'roundtable' ? 'active' : ''}`}
+              onClick={() => setActiveMode('roundtable')}
+            >
+              Round Table (Group Chat)
             </button>
-            <input
-              type="text"
+            <button
+              type="button"
+              className={`landing-mode-btn ${activeMode === 'deliberation' ? 'active' : ''}`}
+              onClick={() => setActiveMode('deliberation')}
+            >
+              Deliberation (3-Stage ADR)
+            </button>
+          </div>
+
+          <h1 className="landing-greeting">
+            {activeMode === 'roundtable'
+              ? (displayName ? `Hello ${displayName}, welcome to the table.` : 'Welcome to the round table.')
+              : (displayName ? `Hello ${displayName}, what's on your mind?` : "What's on your mind?")}
+          </h1>
+          <p className="landing-subtext">
+            {activeMode === 'roundtable'
+              ? 'Direct multi-agent conversation with unconstrained turn-taking. Mention @all to broadcast or @model to target.'
+              : 'Council models propose independent solutions, peer-review each other, and synthesize a final ADR verdict.'}
+          </p>
+
+          <form className="landing-composer" onSubmit={handleLandingSubmit}>
+            <button
+              type="button"
+              className="landing-composer-council"
+              title={isRoundTable ? `Active table: ${activeChatRoster?.name || 'Round Table'}` : `Active council: ${conversation?.council_name || activeCouncil?.name || 'Default'}`}
+            >
+              {isRoundTable ? (activeChatRoster?.name || 'Round Table') : (conversation?.council_name || activeCouncil?.name || 'LLM Council')}
+            </button>
+            <textarea
               className="landing-composer-input"
-              placeholder="Council'e sorun..."
+              placeholder={activeMode === 'roundtable' ? 'Write a message or mention a model (@all, @qwen)...' : "Ask the council..."}
               value={landingInput}
               onChange={(e) => setLandingInput(e.target.value)}
               onKeyDown={handleLandingKeyDown}
+              rows={1}
               autoFocus
             />
             <button
@@ -233,12 +336,71 @@ export default function ChatInterface({
               </svg>
             </button>
           </form>
+
+          {rosterModels.length > 0 && (
+            <div className="landing-roster">
+              <div className="landing-roster-group">
+                <span className="landing-roster-label">
+                  {isRoundTable ? 'ROUND TABLE SEATS' : 'PANEL SEATS'}
+                </span>
+                <div className="landing-roster-chips">
+                  {rosterModels.map((m, idx) => {
+                    const [modelName, skillId] = m.split('@');
+                    const isLocal = modelName.startsWith('local/');
+                    const isFree = modelName.includes(':free');
+                    return (
+                      <span key={idx} className="landing-roster-chip">
+                        <span className="landing-chip-name">{shortModelName(modelName)}</span>
+                        {isLocal && (
+                          <span className="roundtable-tier-badge local" style={{ fontSize: '10px', padding: '1px 5px', marginLeft: '4px' }} title="Runs locally via vLLM/Ollama">
+                            Local
+                          </span>
+                        )}
+                        {isFree && !isLocal && (
+                          <span className="roundtable-tier-badge free" style={{ fontSize: '10px', padding: '1px 5px', marginLeft: '4px' }} title="Zero cost free tier">
+                            Free
+                          </span>
+                        )}
+                        {skillId && (
+                          <button
+                            type="button"
+                            className="landing-chip-skill clickable"
+                            onClick={() => onInspectSkill?.(skillId)}
+                            title={`Inspect "${skillId}" guidelines & rules`}
+                          >
+                            @{skillId}
+                          </button>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              {chairman && (
+                <div className="landing-roster-group">
+                  <span className="landing-roster-label chairman">CHAIRMAN</span>
+                  <div className="landing-roster-chips">
+                    <span className="landing-roster-chip chairman">
+                      <span className="landing-chip-name">{shortModelName(chairman)}</span>
+                    </span>
+                  </div>
+                </div>
+              )}
+              {hasLocal && (
+                <div className="local-models-guidance-tip landing-tip">
+                  <span>
+                    {isRoundTable
+                      ? 'Local engineering models (Antigravity, Claude, Qwen) run locally without cloud API rate limits.'
+                      : 'This council includes local models. If local shims are offline, switch to Cloud Deliberation from the top menu.'}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
   }
-
-  const hasMessages = conversation.messages.length > 0;
 
   return (
     <div className="chat-interface">
@@ -248,7 +410,7 @@ export default function ChatInterface({
           <div className="chat-header-left">
             <h2 className="chat-title">{conversation.title || 'Conversation'}</h2>
             {(conversation.council_name || activeCouncil?.name) && (
-              <span className="chat-header-council-pill" title="Council assigned to this deliberation">
+              <span className="chat-header-council-pill" title={isRoundTableConv ? 'Round-table multi-agent group' : 'Council assigned to this deliberation'}>
                 {conversation.council_name || activeCouncil?.name}
               </span>
             )}
@@ -261,6 +423,16 @@ export default function ChatInterface({
             )}
           </div>
           <div className="chat-header-actions">
+            {!isRoundTableConv && (
+              <button
+                type="button"
+                className={`view-mode-toggle-btn ${feedView ? 'active' : ''}`}
+                onClick={toggleFeedView}
+                title={feedView ? 'Switch to classic stage tabs' : 'Switch to live deliberation feed'}
+              >
+                {feedView ? 'Live Feed' : 'Tabs'}
+              </button>
+            )}
             <button
               ref={tagButtonRef}
               className={`action-btn ${showTagEditor ? 'active' : ''}`}
@@ -270,33 +442,21 @@ export default function ChatInterface({
             >
               Tags
             </button>
-            <button
-              className={`action-btn action-btn-adr ${copiedADR ? 'copied' : ''}`}
-              onClick={handleCopyADR}
-              title="Copy decision as Architecture Decision Record (ADR) to clipboard"
-            >
-              {copiedADR ? '✓ Copied!' : 'Copy ADR'}
-            </button>
-            <button
-              className="action-btn"
-              onClick={() => exportToADR(conversation)}
-              title="Download Architecture Decision Record (ADR) file"
-            >
-              ADR (.md)
-            </button>
+            {!isRoundTableConv && (
+              <button
+                className={`action-btn action-btn-adr ${copiedADR ? 'copied' : ''}`}
+                onClick={handleCopyADR}
+                title="Copy decision as Architecture Decision Record (ADR) to clipboard"
+              >
+                {copiedADR ? 'Copied!' : 'Copy ADR'}
+              </button>
+            )}
             <button
               className="action-btn"
               onClick={() => exportToMarkdown(conversation)}
               title="Export to full Markdown"
             >
-              Export MD
-            </button>
-            <button
-              className="action-btn"
-              onClick={() => exportToJSON(conversation)}
-              title="Export to JSON"
-            >
-              Export JSON
+              Export
             </button>
           </div>
         </div>
@@ -314,91 +474,74 @@ export default function ChatInterface({
       )}
 
       <div className="messages-container" ref={messagesContainerRef}>
-        {conversation.messages.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-council-badge">
-              <span className="empty-council-name">{conversation.council_name || activeCouncil?.name || 'LLM Council'}</span>
-            </div>
-            <h2>Start a Deliberation</h2>
-            <p className="empty-council-desc">
-              {activeCouncil?.description || 'Ask a question to consult the expert council'}
-            </p>
-            {((activeCouncil?.council_models?.length ? activeCouncil.council_models : conversation?.council_models) || []).length > 0 && (
-              <div className="empty-council-roster">
-                <span className="empty-roster-label">PANEL SEATS</span>
-                <div className="empty-roster-list">
-                  {(activeCouncil?.council_models?.length ? activeCouncil.council_models : conversation?.council_models).map((m, idx) => {
-                    const [modelName, skillId] = m.split('@');
-                    return (
-                      <span key={idx} className="empty-roster-seat">
-                        <span className="empty-seat-model">{modelName}</span>
-                        {skillId && (
-                          <button
-                            type="button"
-                            className="empty-seat-skill clickable"
-                            onClick={() => onInspectSkill?.(skillId)}
-                            title={`Inspect "${skillId}" guidelines & rules`}
-                          >
-                            📖 @{skillId}
-                          </button>
-                        )}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            {(activeCouncil?.chairman_model || conversation?.chairman_model) && (
-              <div className="empty-council-roster empty-council-chairman">
-                <span className="empty-roster-label">CHAIRMAN</span>
-                <div className="empty-roster-list">
-                  <span className="empty-roster-seat chairman-seat">
-                    <span className="empty-seat-model">{activeCouncil?.chairman_model || conversation?.chairman_model}</span>
-                  </span>
-                </div>
-              </div>
-            )}
-            {((activeCouncil?.council_models?.length ? activeCouncil.council_models : conversation?.council_models) || []).some(m => m.startsWith('local/')) && (
-              <div className="local-models-guidance-tip">
-                <span className="tip-icon">💡</span>
-                <span>
-                  Bu konsey <strong>yerel model</strong> içerir. Eğer yerel shims veya vLLM kapalıysa, üst menüdeki <strong>Council</strong> seçiciden doğrudan <strong>Cloud Deliberation</strong> konseyini seçerek sıfır kurulumla ücretsiz bulut modelleriyle müzakere başlatabilirsiniz.
-                </span>
-              </div>
-            )}
-          </div>
-
-        ) : (
-          conversation.messages.map((msg, index) => (
+        {conversation.messages.map((msg, index) => (
             <div key={index} className="message-group">
               {msg.role === 'user' ? (
                 <div className="user-message">
-                  <div className="message-label">You</div>
                   <div className="message-content">
                     <div className="markdown-content">
                       <ReactMarkdown components={mentionMarkdownComponents}>
                         {linkifyUserMentions(
                           msg.content,
-                          (activeCouncil?.council_models?.length ? activeCouncil.council_models : conversation?.council_models) || []
+                          mentionSeats
                         )}
                       </ReactMarkdown>
                     </div>
                   </div>
                 </div>
+              ) : msg.isRoundTable ? (
+                <div className="roundtable-responses-feed">
+                  {(msg.roundtableResponses || []).map((r, rIdx) => (
+                    <RoundTableMessage
+                      key={rIdx}
+                      model={r.model}
+                      content={r.content}
+                      cost={r.cost}
+                      usage={r.usage}
+                      onReplyToModel={handleReplyToModel}
+                    />
+                  ))}
+                  {Object.entries(msg.roundtableStreaming || {}).map(([m, text]) => (
+                    <RoundTableMessage
+                      key={`stream-${m}`}
+                      model={m}
+                      content={text}
+                      isStreaming
+                      onReplyToModel={handleReplyToModel}
+                    />
+                  ))}
+                </div>
+              ) : msg.model && !msg.stage1 && !msg.stage3 ? (
+                <RoundTableMessage
+                  model={msg.model}
+                  content={msg.content}
+                  cost={msg.cost}
+                  usage={msg.usage}
+                  onReplyToModel={handleReplyToModel}
+                />
               ) : (
                 <div className="assistant-message">
-                  <div className="message-label">
-                    {msg.useDebate || msg.isDebating || msg.stage3?.debate_mode ? 'Council Debate' : 'LLM Council'}
+                  <div className="assistant-header">
+                    <div className="assistant-identity">
+                      <span className="assistant-sparkle">✦</span>
+                      <span className="assistant-name">
+                        {msg.useDebate || msg.isDebating || msg.stage3?.debate_mode ? 'Council Debate' : 'LLM Council'}
+                      </span>
+                      {(conversation?.council_name || activeCouncil?.name) && (
+                        <span className="assistant-council-tag">
+                          {conversation.council_name || activeCouncil?.name}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Automated Context Ingestion Banner */}
                   {(msg.metadata?.ingestion || msg.ingestMeta) && (
                     <div className="ingestion-badge-banner">
-                      <span className="ingestion-badge-icon">⚡</span>
                       <span className="ingestion-badge-label">Context Enriched:</span>
                       {(msg.metadata?.ingestion?.target_workspace || msg.ingestMeta?.target_workspace) && (
                         <span className="ingestion-chip workspace" title="Target local workspace dossier injected">
-                          📁 {msg.metadata?.ingestion?.target_workspace || msg.ingestMeta?.target_workspace}
+                          {msg.metadata?.ingestion?.target_workspace || msg.ingestMeta?.target_workspace}
                         </span>
                       )}
                       {(msg.metadata?.ingestion?.external_repos || msg.ingestMeta?.external_repos || []).map((repoUrl) => (
@@ -410,7 +553,7 @@ export default function ChatInterface({
                           className="ingestion-chip repo"
                           title="External repository metadata & README fetched"
                         >
-                          🐙 {repoUrl.replace('https://github.com/', '')}
+                          {repoUrl.replace('https://github.com/', '')}
                         </a>
                       ))}
                     </div>
@@ -430,11 +573,10 @@ export default function ChatInterface({
                             title="Click to toggle scouted technology candidates dossier"
                           >
                             <div className="research-banner-left">
-                              <span className="research-badge-icon">🔬</span>
                               <span className="research-badge-label">Research Scouting:</span>
                               {rMeta.search_terms && (
                                 <span className="research-terms-chip">
-                                  "{rMeta.search_terms}"
+                                   "{rMeta.search_terms}"
                                 </span>
                               )}
                               <span className="research-count-badge">
@@ -442,7 +584,7 @@ export default function ChatInterface({
                               </span>
                             </div>
                             <span className="research-accordion-toggle">
-                              {isExpanded ? '▲ Hide Dossier' : '▼ View Candidates'}
+                              {isExpanded ? 'Hide Dossier' : 'View Candidates'}
                             </span>
                           </div>
 
@@ -452,10 +594,10 @@ export default function ChatInterface({
                                 <div key={cIdx} className={`candidate-card source-${c.source || 'web'}`}>
                                   <div className="candidate-card-header">
                                     <span className={`candidate-source-tag source-tag-${c.source || 'web'}`}>
-                                      {c.source === 'github' && '🐙 GitHub'}
-                                      {c.source === 'local-skill' && '🧩 Skill'}
-                                      {c.source === 'package' && '📦 Package'}
-                                      {c.source === 'web' && '📰 Tech Article'}
+                                      {c.source === 'github' && 'GitHub'}
+                                      {c.source === 'local-skill' && 'Skill'}
+                                      {c.source === 'package' && 'Package'}
+                                      {c.source === 'web' && 'Tech Article'}
                                     </span>
                                     {c.url && !c.url.startsWith('local://') ? (
                                       <a
@@ -545,6 +687,7 @@ export default function ChatInterface({
                       currentRound={msg.debateRound || (msg.stage3?.response ? 4 : 1)}
                       judgmentStreaming={msg.debateJudgmentStreaming || ''}
                       isJudging={msg.isJudging || false}
+                      chairmanModel={msg.stage3?.model || msg.chairmanModel || ''}
                     />
                   ) : (
                     <>
@@ -683,8 +826,7 @@ export default function ChatInterface({
                 </div>
               )}
             </div>
-          ))
-        )}
+          ))}
 
         {/* Aborted deliberation status banner */}
         {conversation.status === 'aborted' &&
@@ -712,8 +854,9 @@ export default function ChatInterface({
             </div>
           )}
 
-        {/* Interrupted or pending deliberation after page reload */}
-        {!activeDeliberating &&
+        {/* Interrupted or pending deliberation after page reload (Deliberation mode only) */}
+        {!isRoundTableConv &&
+          !activeDeliberating &&
           conversation.status !== 'aborted' &&
           conversation.messages.length > 0 &&
           conversation.messages[conversation.messages.length - 1]?.role === 'user' && (
@@ -741,8 +884,8 @@ export default function ChatInterface({
             </div>
           )}
 
-        {/* Active Deliberation Banner with Live Status & Abort Control */}
-        {activeDeliberating && (
+        {/* Active Deliberation Banner with Live Status & Abort Control (Deliberation mode only) */}
+        {!isRoundTableConv && activeDeliberating && (
           <div className="deliberation-active-banner">
             <div className="deliberation-active-info">
               <div className="deliberation-spinner"></div>
@@ -774,66 +917,96 @@ export default function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {(!hasMessages ||
+      {(isRoundTableConv ||
         conversation.messages[conversation.messages.length - 1]?.role === 'assistant' ||
         activeDeliberating ||
         conversation.status === 'aborted') && (
-        <form className="input-form" onSubmit={handleSubmit}>
-          {mentionQuery != null && mentionMatches.length > 0 && (
-            <div className="mention-autocomplete">
-              {mentionMatches.map((model) => (
-                <button
-                  key={model}
-                  type="button"
-                  className="mention-autocomplete-item"
-                  onClick={() => insertMention(model)}
-                >
-                  @{shortModelName(model)}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="input-inner">
-            <textarea
-              ref={messageInputRef}
-              className="message-input"
-              placeholder={
-                activeDeliberating
-                  ? 'Council deliberation in progress...'
-                  : 'Ask your question... (@ to mention a panelist, Shift+Enter for new line, Enter to send)'
-              }
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              disabled={activeDeliberating}
-              rows={3}
-            />
-            {activeDeliberating ? (
-              <button
-                type="button"
-                className="input-icon-btn stop"
-                onClick={() => onAbortDeliberation && onAbortDeliberation(conversation.id)}
-                title="Stop deliberation"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="5" y="5" width="14" height="14" rx="2" />
-                </svg>
-              </button>
-            ) : (
-              <button
-                type="submit"
-                className="input-icon-btn send"
-                disabled={!input.trim()}
-                title="Send"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="19" x2="12" y2="5"></line>
-                  <polyline points="6 11 12 5 18 11"></polyline>
-                </svg>
-              </button>
+        <div className="input-form-wrapper">
+          <form className="input-form" onSubmit={handleSubmit}>
+            {mentionQuery != null && mentionMatches.length > 0 && (
+              <div className="mention-autocomplete">
+                {mentionMatches.map((model, idx) => (
+                  <button
+                    key={model}
+                    type="button"
+                    className={`mention-autocomplete-item ${idx === mentionIndex ? 'selected' : ''}`}
+                    onClick={() => insertMention(model)}
+                    onMouseEnter={() => setMentionIndex(idx)}
+                  >
+                    @{model === 'all' ? 'all' : shortModelName(model)}
+                  </button>
+                ))}
+              </div>
             )}
-          </div>
-        </form>
+            <div className="input-inner">
+              <textarea
+                ref={messageInputRef}
+                className="message-input"
+                placeholder={
+                  isRoundTableConv
+                    ? 'Write a message or mention a model (@all, @qwen)...'
+                    : activeDeliberating
+                    ? 'Council deliberation in progress...'
+                    : 'Reply or ask a follow-up... (@ to mention a panelist, Enter to send)'
+                }
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                disabled={!isRoundTableConv && activeDeliberating}
+                rows={2}
+              />
+              {isRoundTableConv ? (
+                isLoading ? (
+                  <button
+                    type="button"
+                    className="input-icon-btn stop"
+                    onClick={() => onAbortDeliberation && onAbortDeliberation(conversation.id)}
+                    title="Stop"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="5" y="5" width="14" height="14" rx="2" />
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className="input-icon-btn send"
+                    disabled={!input.trim()}
+                    title="Send"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="12" y1="19" x2="12" y2="5"></line>
+                      <polyline points="6 11 12 5 18 11"></polyline>
+                    </svg>
+                  </button>
+                )
+              ) : activeDeliberating ? (
+                <button
+                  type="button"
+                  className="input-icon-btn stop"
+                  onClick={() => onAbortDeliberation && onAbortDeliberation(conversation.id)}
+                  title="Stop deliberation"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="5" y="5" width="14" height="14" rx="2" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="input-icon-btn send"
+                  disabled={!input.trim()}
+                  title="Send"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="19" x2="12" y2="5"></line>
+                    <polyline points="6 11 12 5 18 11"></polyline>
+                  </svg>
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );

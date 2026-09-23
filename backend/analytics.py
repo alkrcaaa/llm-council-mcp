@@ -226,7 +226,10 @@ def get_model_statistics() -> Dict[str, Any]:
     # Sort models by win rate (descending)
     result_models = dict(sorted(
         result_models.items(),
-        key=lambda x: (x[1]["win_rate"], -x[1].get("average_rank", 999)),
+        key=lambda x: (
+            x[1]["win_rate"],
+            -(x[1].get("average_rank") if x[1].get("average_rank") is not None else 999)
+        ),
         reverse=True
     ))
 

@@ -60,6 +60,11 @@ export function linkifyUserMentions(text, councilModels) {
     const name = shortModelName(model);
     const pattern = new RegExp(`@${name.replace(REGEX_SPECIAL, '\\$&')}\\b`, 'gi');
     result = result.replace(pattern, `[@${name}](mention:${encodeURIComponent(model)})`);
+    if (name.toLowerCase().includes('antigravity')) {
+      result = result.replace(/@agy\b/gi, `[@antigravity](mention:${encodeURIComponent(model)})`);
+    } else if (name.toLowerCase().includes('claude')) {
+      result = result.replace(/@claude\b/gi, `[@claude-code](mention:${encodeURIComponent(model)})`);
+    }
   });
   return result;
 }
