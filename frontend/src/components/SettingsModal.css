@@ -466,3 +466,63 @@
 .settings-footer-done-btn:hover {
   background: #2ea043;
 }
+
+/* Presets */
+.settings-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid var(--border-medium);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.settings-preset:hover {
+  border-color: var(--border-strong);
+}
+
+.settings-preset.active {
+  border-color: var(--accent-primary);
+  background: var(--accent-subtle);
+}
+
+.settings-preset-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.settings-preset.active .settings-preset-label {
+  color: var(--accent-primary);
+}
+
+.settings-preset-desc {
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.settings-preset-custom {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .settings-presets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

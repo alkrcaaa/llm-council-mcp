@@ -1,6 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import './SettingsModal.css';
 
+const PRESETS = [
+  {
+    id: 'fast',
+    label: 'Fast',
+    desc: 'Skip synthesis when the council agrees; reuse cached answers.',
+    flags: { useWeightedConsensus: true, useEarlyConsensus: true, useCache: true },
+  },
+  {
+    id: 'balanced',
+    label: 'Balanced',
+    desc: 'Full 3-stage council with weighted votes. The default.',
+    flags: { useWeightedConsensus: true, useResearch: true },
+  },
+  {
+    id: 'deep',
+    label: 'Deep',
+    desc: 'Structured reasoning, critique-and-revise, then a devil’s advocate pass.',
+    flags: { useCot: true, useWeightedConsensus: true, useRefinement: true, useAdversary: true, useResearch: true },
+  },
+  {
+    id: 'debate',
+    label: 'Debate',
+    desc: 'Models argue positions, rebut critiques, and the chairman judges.',
+    flags: { useDebate: true, useWeightedConsensus: true, useResearch: true },
+  },
+];
+
 /**
  * SettingsModal - Deliberation & System Settings Modal
  * Replaces the buggy half-screen inline drawer with a dedicated, focused modal.
@@ -76,6 +103,45 @@ export default function SettingsModal({
     useResearch,
   ].filter(Boolean).length;
 
+  // Presets set every mode flag at once; the system prompt is left alone.
+  const setters = {
+    useCot: onCotChange,
+    useDecomposition: onDecompositionChange,
+    useMultiChairman: onMultiChairmanChange,
+    useWeightedConsensus: onWeightedConsensusChange,
+    useEarlyConsensus: onEarlyConsensusChange,
+    useDebate: onDebateChange,
+    useDynamicRouting: onDynamicRoutingChange,
+    useEscalation: onEscalationChange,
+    useRefinement: onRefinementChange,
+    useAdversary: onAdversaryChange,
+    useCache: onCacheChange,
+    useResearch: onResearchChange,
+  };
+  const current = {
+    useCot,
+    useDecomposition,
+    useMultiChairman,
+    useWeightedConsensus,
+    useEarlyConsensus,
+    useDebate,
+    useDynamicRouting,
+    useEscalation,
+    useRefinement,
+    useAdversary,
+    useCache,
+    useResearch,
+  };
+  const activePreset = PRESETS.find((p) =>
+    Object.keys(setters).every((key) => Boolean(p.flags[key]) === Boolean(current[key]))
+  );
+
+  const applyPreset = (preset) => {
+    Object.entries(setters).forEach(([key, set]) => set(Boolean(preset.flags[key])));
+    if (preset.flags.useDebate) onIncludeRebuttalChange(true);
+    if (preset.flags.useRefinement) onRefinementMaxIterationsChange(2);
+  };
+
   const handleResetDefaults = () => {
     onSystemPromptChange('');
     onCotChange(false);
@@ -122,6 +188,24 @@ export default function SettingsModal({
           >
             &times;
           </button>
+        </div>
+
+        {/* Presets: the common path. Tabs below are for fine-tuning. */}
+        <div className="settings-presets" role="radiogroup" aria-label="Deliberation preset">
+          {PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              role="radio"
+              aria-checked={activePreset?.id === preset.id}
+              className={`settings-preset ${activePreset?.id === preset.id ? 'active' : ''}`}
+              onClick={() => applyPreset(preset)}
+            >
+              <span className="settings-preset-label">{preset.label}</span>
+              <span className="settings-preset-desc">{preset.desc}</span>
+            </button>
+          ))}
+          {!activePreset && <div className="settings-preset-custom">Custom mix — fine-tune below</div>}
         </div>
 
         {/* Modal Tabs */}
