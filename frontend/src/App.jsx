@@ -17,7 +17,11 @@ function App() {
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [conversations, setConversations] = useState([]);
   // Do not force-open the last conversation on fresh load unless user clicks it
-  const [currentConversationId, setCurrentConversationId] = useState(null);
+  // The open conversation lives in the URL (?c=<id>) so a refresh, back/forward
+  // and a copied link all land on the same chat. The bare URL stays a clean landing.
+  const [currentConversationId, setCurrentConversationId] = useState(
+    () => new URLSearchParams(window.location.search).get('c')
+  );
   const [currentConversation, _setCurrentConversation] = useState(null);
   const setCurrentConversation = _setCurrentConversation;
   const [loadingConversationId, setLoadingConversationId] = useState(null);
@@ -289,9 +293,30 @@ function App() {
     loadConversations(selectedTag);
   }, [selectedTag]);
 
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if ((url.searchParams.get('c') || null) === (currentConversationId || null)) return;
+    if (currentConversationId) url.searchParams.set('c', currentConversationId);
+    else url.searchParams.delete('c');
+    window.history.pushState(null, '', url);
+  }, [currentConversationId]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const id = new URLSearchParams(window.location.search).get('c');
+      setCurrentConversationId(id);
+      if (!id) setCurrentConversation(null);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   // Load conversation details when selected
   useEffect(() => {
     if (!currentConversationId) return;
+    // A conversation restored from the URL must wait for the auth check;
+    // fetching before it would 401 and bounce the user to the landing screen.
+    if (!currentUser) return;
     // handleNewConversation already has the freshly-created conversation
     // object and sets it directly; refetching it here raced against the
     // SSE stream that starts right after (landing-composer flow sends the
@@ -303,7 +328,7 @@ function App() {
       return;
     }
     loadConversation(currentConversationId);
-  }, [currentConversationId]);
+  }, [currentConversationId, currentUser]);
 
   // Check auth session on startup
   useEffect(() => {
@@ -371,6 +396,9 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to load conversation:', error);
+      // Stale link (deleted conversation): fall back to the landing screen
+      // instead of an empty chat pane.
+      setCurrentConversationId((cur) => (cur === id ? null : cur));
     }
   };
 
@@ -496,7 +524,6 @@ function App() {
       skipNextLoadRef.current = newConv.id;
       setCurrentConversationId(newConv.id);
       setCurrentConversation(newConv);
-      localStorage.setItem('currentConversationId', newConv.id);
       if (initialMessage && initialMessage.trim()) {
         // Pass the id explicitly: currentConversationId in this closure is
         // still the pre-update value until the next render.
@@ -541,11 +568,9 @@ function App() {
       if (currentConversationId === id) {
         if (updated.length > 0) {
           setCurrentConversationId(updated[0].id);
-          localStorage.setItem('currentConversationId', updated[0].id);
         } else {
           setCurrentConversationId(null);
           setCurrentConversation(null);
-          localStorage.removeItem('currentConversationId');
         }
       }
       setConversationToDelete(null);
@@ -582,11 +607,6 @@ function App() {
   const handleSelectConversation = (id) => {
     setShowSettings(false);
     setCurrentConversationId(id);
-    if (id) {
-      localStorage.setItem('currentConversationId', id);
-    } else {
-      localStorage.removeItem('currentConversationId');
-    }
   };
 
   const handleSystemPromptChange = (value) => {
