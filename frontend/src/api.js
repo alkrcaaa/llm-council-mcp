@@ -4,7 +4,8 @@
 
 // Use the same host the frontend was loaded from so this also works when
 // viewed from another device on the LAN (e.g. http://192.168.x.x:5173).
-const API_BASE = `http://${window.location.hostname}:8001`;
+// VITE_API_PORT lets a second stack (infra/docker-compose.qa.yml) point at its own backend.
+const API_BASE = `http://${window.location.hostname}:${import.meta.env.VITE_API_PORT || 8001}`;
 
 const TOKEN_KEY = 'council_auth_token';
 

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
+import os
 import uuid
 import json
 import asyncio
@@ -79,7 +80,8 @@ app = FastAPI(title="LLM Council API", dependencies=[Depends(require_auth)])
 # viewed from a machine other than the one running the containers.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://localhost:3000"]
+    + [o for o in os.getenv("EXTRA_CORS_ORIGINS", "").split(",") if o],
     allow_origin_regex=r"http://(localhost|127\.0\.0\.1|(\d{1,3}\.){3}\d{1,3}):(5173|3000)",
     allow_credentials=True,
     allow_methods=["*"],
