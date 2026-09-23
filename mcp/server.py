@@ -363,7 +363,7 @@ async def list_councils() -> str:
     """List available LLM Council boards, their focus domains, and models."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{COUNCIL_API_BASE}/api/councils")
+            resp = await client.get(f"{COUNCIL_API_BASE}/api/councils", headers=_get_mcp_auth_headers())
             if resp.status_code == 200:
                 data = resp.json()
                 councils = data.get("councils", [])
@@ -395,7 +395,8 @@ async def scout_candidates(
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
                 f"{COUNCIL_API_BASE}/api/research/scout",
-                json={"query": query, "max_candidates": max_candidates}
+                json={"query": query, "max_candidates": max_candidates},
+                headers=_get_mcp_auth_headers(),
             )
             if resp.status_code == 200:
                 data = resp.json()

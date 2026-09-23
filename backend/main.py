@@ -1,6 +1,6 @@
 """FastAPI backend for LLM Council."""
 
-from fastapi import FastAPI, HTTPException, Query, Body, Header, Depends
+from fastapi import FastAPI, HTTPException, Query, Body, Header, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -48,7 +48,31 @@ from . import research
 from . import roundtable
 from . import agent_profiles
 
-app = FastAPI(title="LLM Council API")
+# Routes reachable without a token. Everything else is authenticated by default,
+# so a newly added endpoint cannot be left open by forgetting a dependency.
+PUBLIC_PATHS = {
+    "/",
+    "/api/auth/login",
+    "/api/auth/status",
+    "/api/auth/verify",
+    "/docs",
+    "/openapi.json",
+}
+
+
+async def require_auth(request: Request, authorization: Optional[str] = Header(None)):
+    """Global dependency: reject unauthenticated requests when AUTH_ENABLED=true."""
+    if request.method == "OPTIONS" or request.url.path in PUBLIC_PATHS:
+        return
+    if not auth.check_auth_header(authorization):
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required. Please sign in via /api/auth/login.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+app = FastAPI(title="LLM Council API", dependencies=[Depends(require_auth)])
 
 # Enable CORS for local development, including access from other devices
 # on the LAN (e.g. http://192.168.x.x:5173) since the frontend is often
@@ -83,16 +107,6 @@ async def sync_active_council_on_startup():
             print(f"[Startup] Synchronized active council '{active.get('id')}' ({len(active['council_models'])} models) to global config.")
     except Exception as e:
         print(f"[Startup] Warning: could not sync active council to config: {e}")
-
-
-async def require_auth(authorization: Optional[str] = Header(None)):
-    """FastAPI dependency to protect endpoints when AUTH_ENABLED=true."""
-    if not auth.check_auth_header(authorization):
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication required. Please sign in via /api/auth/login.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
 
 
 
@@ -357,7 +371,7 @@ async def auth_status():
     }
 
 
-@app.post("/api/auth/change-password", dependencies=[Depends(require_auth)])
+@app.post("/api/auth/change-password")
 async def change_password(
     request: ChangePasswordRequest,
     authorization: Optional[str] = Header(None),
@@ -388,7 +402,7 @@ async def list_conversations(tag: Optional[str] = Query(None, description="Filte
     return storage.list_conversations()
 
 
-@app.post("/api/conversations", response_model=Conversation, dependencies=[Depends(require_auth)])
+@app.post("/api/conversations", response_model=Conversation)
 async def create_conversation(request: CreateConversationRequest):
     """Create a new conversation bound to an active or requested council profile or chat roster."""
     conversation_id = str(uuid.uuid4())
@@ -453,7 +467,7 @@ async def get_conversation(conversation_id: str):
     return conversation
 
 
-@app.delete("/api/conversations/{conversation_id}", dependencies=[Depends(require_auth)])
+@app.delete("/api/conversations/{conversation_id}")
 async def delete_conversation(conversation_id: str):
     """Delete a conversation and its messages."""
     success = storage.delete_conversation(conversation_id)
@@ -462,7 +476,7 @@ async def delete_conversation(conversation_id: str):
     return {"status": "ok", "message": "Conversation deleted"}
 
 
-@app.put("/api/conversations/{conversation_id}/council", dependencies=[Depends(require_auth)])
+@app.put("/api/conversations/{conversation_id}/council")
 async def update_conversation_council(conversation_id: str, council_id: str = Body(..., embed=True)):
     """Switch the council profile for an existing conversation."""
     conversation = storage.get_conversation(conversation_id)
@@ -489,7 +503,7 @@ async def update_conversation_council(conversation_id: str, council_id: str = Bo
     return conversation
 
 
-@app.post("/api/conversations/{conversation_id}/abort", dependencies=[Depends(require_auth)])
+@app.post("/api/conversations/{conversation_id}/abort")
 async def abort_deliberation(conversation_id: str):
     """
     Abort an actively running deliberation for a conversation.
@@ -684,7 +698,7 @@ async def update_single_agent_profile(model_id: str, request: UpdateAgentProfile
 
 
 
-@app.put("/api/conversations/{conversation_id}/tags", dependencies=[Depends(require_auth)])
+@app.put("/api/conversations/{conversation_id}/tags")
 async def update_tags(conversation_id: str, request: UpdateTagsRequest):
     """Update tags for a conversation."""
     conversation = storage.update_conversation_tags(conversation_id, request.tags)
@@ -705,7 +719,7 @@ async def get_config():
     return config_api.load_config()
 
 
-@app.put("/api/config", response_model=ConfigResponse, dependencies=[Depends(require_auth)])
+@app.put("/api/config", response_model=ConfigResponse)
 async def update_config(request: UpdateConfigRequest):
     """
     Update model configuration.
@@ -723,7 +737,7 @@ async def update_config(request: UpdateConfigRequest):
         raise HTTPException(status_code=422, detail=str(e))
 
 
-@app.post("/api/config/reset", response_model=ConfigResponse, dependencies=[Depends(require_auth)])
+@app.post("/api/config/reset", response_model=ConfigResponse)
 async def reset_config():
     """Reset configuration to defaults."""
     return config_api.reset_to_defaults()
@@ -764,7 +778,7 @@ async def ping_single_provider_endpoint(provider_id: str):
     return result
 
 
-@app.post("/api/providers", dependencies=[Depends(require_auth)])
+@app.post("/api/providers")
 async def create_or_update_provider(request: ProviderRequest):
     """Register or update a custom OpenAI-compatible provider."""
     from backend import providers
@@ -796,7 +810,7 @@ async def fetch_provider_models_endpoint(request: FetchModelsRequest):
     return result
 
 
-@app.delete("/api/providers/{provider_id:path}", dependencies=[Depends(require_auth)])
+@app.delete("/api/providers/{provider_id:path}")
 async def delete_provider(provider_id: str):
     """Delete a custom provider."""
     from backend import providers
@@ -1096,7 +1110,7 @@ async def get_decomposition_config():
 # ============================================================================
 
 
-@app.post("/api/conversations/{conversation_id}/message", dependencies=[Depends(require_auth)])
+@app.post("/api/conversations/{conversation_id}/message")
 async def send_message(conversation_id: str, request: SendMessageRequest):
     """
     Send a message and run the 3-stage council process.
@@ -1217,7 +1231,7 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
             storage.set_conversation_status(conversation_id, "idle")
 
 
-@app.post("/api/conversations/{conversation_id}/message/stream", dependencies=[Depends(require_auth)])
+@app.post("/api/conversations/{conversation_id}/message/stream")
 async def send_message_stream(conversation_id: str, request: SendMessageRequest):
     """
     Send a message and stream the 3-stage council process.

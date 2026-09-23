@@ -132,14 +132,16 @@ function App() {
   const [workspaces, setWorkspaces] = useState([]);
   const [selectedWorkspace, setSelectedWorkspace] = useState('');
 
-  // Load conversations, tags, councils, chat rosters, and workspaces on mount
+  // Load conversations, tags, councils, chat rosters, and workspaces once signed in
+  // (every endpoint is authenticated, so loading before login only yields 401s).
   useEffect(() => {
+    if (!currentUser) return;
     loadConversations();
     loadAllTags();
     loadCouncils();
     loadChatRosters();
     loadWorkspaces();
-  }, []);
+  }, [currentUser]);
 
   // Persist modal open/tab state for this tab session so a page refresh (F5)
   // while inside Configure Models or Settings doesn't drop the user back to

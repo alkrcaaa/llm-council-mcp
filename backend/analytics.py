@@ -7,8 +7,10 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 from collections import defaultdict
 
+from .config import DATA_ROOT
+
 # Analytics data directory
-ANALYTICS_DIR = "data/analytics"
+ANALYTICS_DIR = os.path.join(DATA_ROOT, "analytics")
 ANALYTICS_FILE = os.path.join(ANALYTICS_DIR, "model_stats.json")
 
 

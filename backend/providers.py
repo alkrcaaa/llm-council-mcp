@@ -14,9 +14,11 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 
+from .config import DATA_ROOT
+
 load_dotenv(override=True)
 
-PROVIDERS_FILE = "data/custom_providers.json"
+PROVIDERS_FILE = os.path.join(DATA_ROOT, "custom_providers.json")
 
 PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
     "google": {

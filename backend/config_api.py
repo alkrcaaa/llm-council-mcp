@@ -9,8 +9,10 @@ import os
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
+from .config import DATA_ROOT
+
 # Configuration file path (relative to project root)
-CONFIG_FILE = "data/council_config.json"
+CONFIG_FILE = os.path.join(DATA_ROOT, "council_config.json")
 
 # Default configuration (used when no config file exists)
 DEFAULT_CONFIG = {

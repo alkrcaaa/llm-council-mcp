@@ -99,8 +99,12 @@ def save_conversation(conversation: Dict[str, Any]):
     ensure_data_dir()
 
     path = get_conversation_path(conversation['id'])
-    with open(path, 'w', encoding='utf-8') as f:
+    # Write-then-rename: a crash or concurrent read never sees a truncated file,
+    # which get_conversation() would otherwise report as "not found".
+    temp_path = f"{path}.tmp.{os.getpid()}"
+    with open(temp_path, 'w', encoding='utf-8') as f:
         json.dump(conversation, f, indent=2, ensure_ascii=False)
+    os.replace(temp_path, path)
 
 
 def list_conversations() -> List[Dict[str, Any]]:

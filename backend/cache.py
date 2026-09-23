@@ -17,6 +17,8 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 
+from .config import DATA_ROOT
+
 from .embeddings import (
     get_embedding_with_fallback,
     cosine_similarity,
@@ -25,7 +27,7 @@ from .embeddings import (
 )
 
 # Cache storage directory
-CACHE_DIR = "data/cache"
+CACHE_DIR = os.path.join(DATA_ROOT, "cache")
 CACHE_FILE = os.path.join(CACHE_DIR, "semantic_cache.json")
 CACHE_STATS_FILE = os.path.join(CACHE_DIR, "cache_stats.json")
 
