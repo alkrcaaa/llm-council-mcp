@@ -40,3 +40,4 @@ test-results/
 test-results-v2/
 # Local skill prompts mounted into the backend (SKILLS_DIR)
 /skills/
+/skills-imported/

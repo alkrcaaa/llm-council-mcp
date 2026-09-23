@@ -2118,3 +2118,493 @@
   background: rgba(99, 102, 241, 0.2);
   color: #ffffff;
 }
+
+/* ===========================================================================
+   SKILL IMPORT — Add Skill button, imported-skill markers, import modal
+   =========================================================================== */
+
+.skills-sidebar-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.add-skill-btn {
+  width: 100%;
+  background: rgba(88, 166, 255, 0.12);
+  border: 1px solid rgba(88, 166, 255, 0.4);
+  color: #58a6ff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.add-skill-btn:hover {
+  background: rgba(88, 166, 255, 0.22);
+  border-color: #58a6ff;
+}
+
+.skill-source-tag {
+  font-size: 0.6rem;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  color: #d29922;
+  background: rgba(210, 153, 34, 0.15);
+  border: 1px solid rgba(210, 153, 34, 0.35);
+  padding: 1px 4px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
+.delete-skill-btn {
+  background: transparent;
+  border: 1px solid #6e2f2f;
+  color: #f85149;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.5rem 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.delete-skill-btn:hover,
+.delete-skill-btn.confirm {
+  background: #da3633;
+  border-color: #f85149;
+  color: #ffffff;
+}
+
+.doc-origin-link {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-family: var(--font-mono, monospace);
+  color: #58a6ff;
+  text-decoration: none;
+  margin-top: 0.25rem;
+  word-break: break-all;
+}
+
+.doc-origin-link:hover {
+  text-decoration: underline;
+}
+
+.skill-import-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(1, 4, 9, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  z-index: 60;
+}
+
+.skill-import-modal {
+  width: min(720px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 16px 48px rgba(1, 4, 9, 0.6);
+}
+
+.skill-import-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.skill-import-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #f0f6fc;
+}
+
+.skill-import-close {
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+}
+
+.skill-import-close:hover {
+  color: #f0f6fc;
+}
+
+.skill-import-modes {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.skill-import-modes button {
+  flex: 1;
+  background: #161b22;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.45rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.skill-import-modes button.active {
+  background: rgba(88, 166, 255, 0.15);
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+.skill-import-input,
+.skill-import-textarea,
+.skill-import-editor,
+.import-preview-meta input {
+  width: 100%;
+  background: #090d13;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 0.55rem 0.75rem;
+  color: #f0f6fc;
+  font-size: 0.82rem;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.skill-import-textarea,
+.skill-import-editor {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.skill-import-input:focus,
+.skill-import-textarea:focus,
+.skill-import-editor:focus,
+.import-preview-meta input:focus {
+  border-color: #58a6ff;
+}
+
+.skill-import-hint {
+  margin: 0;
+  font-size: 0.74rem;
+  color: #8b949e;
+  line-height: 1.5;
+}
+
+.skill-import-error {
+  background: rgba(248, 81, 73, 0.12);
+  border: 1px solid rgba(248, 81, 73, 0.4);
+  color: #f85149;
+  font-size: 0.78rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+}
+
+.skill-import-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.skill-import-fetch,
+.skill-import-save,
+.skill-import-replace {
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.skill-import-fetch {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #f0f6fc;
+}
+
+.skill-import-fetch:hover:not(:disabled) {
+  border-color: #58a6ff;
+}
+
+.skill-import-save {
+  background: #238636;
+  border: 1px solid #2ea043;
+  color: #ffffff;
+}
+
+.skill-import-save:hover:not(:disabled) {
+  background: #2ea043;
+}
+
+.skill-import-replace {
+  background: transparent;
+  border: 1px solid #9e6a03;
+  color: #d29922;
+}
+
+.skill-import-replace:hover:not(:disabled) {
+  background: rgba(210, 153, 34, 0.15);
+}
+
+.skill-import-fetch:disabled,
+.skill-import-save:disabled,
+.skill-import-replace:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.skill-import-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  border-top: 1px solid #30363d;
+  padding-top: 0.85rem;
+}
+
+.import-preview-meta {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.import-preview-meta label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.import-method-tag {
+  font-size: 0.66rem;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  padding: 4px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.import-method-tag.method-passthrough {
+  color: #3fb950;
+  background: rgba(63, 185, 80, 0.15);
+  border: 1px solid rgba(63, 185, 80, 0.35);
+}
+
+.import-method-tag.method-llm {
+  color: #58a6ff;
+  background: rgba(88, 166, 255, 0.15);
+  border: 1px solid rgba(88, 166, 255, 0.35);
+}
+
+.import-method-tag.method-fallback {
+  color: #d29922;
+  background: rgba(210, 153, 34, 0.15);
+  border: 1px solid rgba(210, 153, 34, 0.35);
+}
+
+.import-source-url {
+  margin: 0;
+  font-size: 0.7rem;
+  font-family: var(--font-mono, monospace);
+  color: #8b949e;
+  word-break: break-all;
+}
+
+/* --- repository picker & bulk import job --- */
+
+.repo-install-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.74rem;
+  color: #8b949e;
+}
+
+.repo-install-hint code {
+  font-family: var(--font-mono, monospace);
+  color: #d29922;
+  background: rgba(210, 153, 34, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.repo-install-hint button {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #58a6ff;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.repo-skill-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  border-top: 1px solid #30363d;
+  padding-top: 0.85rem;
+}
+
+.repo-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.78rem;
+  color: #8b949e;
+}
+
+.repo-picker-header strong {
+  color: #f0f6fc;
+  font-family: var(--font-mono, monospace);
+}
+
+.repo-picker-bulk {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.repo-picker-bulk button {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #58a6ff;
+  font-size: 0.72rem;
+  padding: 3px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.repo-picker-bulk button:hover {
+  border-color: #58a6ff;
+}
+
+.repo-skill-list {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #090d13;
+}
+
+.repo-skill-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid rgba(48, 54, 61, 0.6);
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.repo-skill-row:last-child {
+  border-bottom: none;
+}
+
+.repo-skill-row:hover {
+  background: rgba(88, 166, 255, 0.07);
+}
+
+.repo-skill-id {
+  color: #f0f6fc;
+  font-weight: 600;
+}
+
+.repo-skill-path {
+  margin-left: auto;
+  color: #6e7681;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+}
+
+.bulk-job-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.76rem;
+  color: #8b949e;
+}
+
+.bulk-job-bar {
+  height: 6px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bulk-job-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #238636, #3fb950);
+  transition: width 0.3s ease;
+}
+
+/* --- provider display label editor --- */
+
+.provider-label-editor {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.provider-label-editor input {
+  flex: 1;
+  min-width: 140px;
+  background: #090d13;
+  border: 1px solid #30363d;
+  border-radius: 5px;
+  padding: 3px 7px;
+  color: #f0f6fc;
+  font-size: 0.74rem;
+  outline: none;
+}
+
+.provider-label-editor input:focus {
+  border-color: #58a6ff;
+}
+
+.provider-label-editor button {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #58a6ff;
+  font-size: 0.7rem;
+  padding: 3px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.provider-label-editor button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.provider-label-error {
+  width: 100%;
+  color: #f85149;
+  font-size: 0.68rem;
+}

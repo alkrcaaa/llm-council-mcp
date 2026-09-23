@@ -185,12 +185,21 @@ def load_councils_data() -> Dict[str, Any]:
             with open(COUNCILS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-                # Keep custom councils, prune stale built-ins, and ensure active built-ins are updated
+                # Keep custom councils, prune stale built-ins, and ensure active built-ins are
+                # updated -- except the ones the user edited, whose version wins so their
+                # seat changes survive a reload.
+                saved_by_id = {c.get("id"): c for c in data.get("councils", [])}
                 custom_councils = [
                     c for c in data.get("councils", [])
                     if not c.get("is_builtin") and c.get("id") not in builtin_ids
                 ]
-                councils_list = [dict(c) for c in BUILTIN_COUNCILS] + custom_councils
+                councils_list = []
+                for builtin in BUILTIN_COUNCILS:
+                    saved = saved_by_id.get(builtin["id"])
+                    councils_list.append(
+                        dict(saved) if saved and saved.get("is_customized") else dict(builtin)
+                    )
+                councils_list += custom_councils
                 data["councils"] = councils_list
 
                 valid_ids = {c["id"] for c in councils_list}
@@ -198,11 +207,18 @@ def load_councils_data() -> Dict[str, Any]:
                     data["active_council_id"] = BUILTIN_COUNCILS[0]["id"]
 
                 # Handle chat rosters
+                saved_rosters_by_id = {r.get("id"): r for r in data.get("chat_rosters", [])}
                 custom_rosters = [
                     r for r in data.get("chat_rosters", [])
                     if not r.get("is_builtin") and r.get("id") not in builtin_roster_ids
                 ]
-                rosters_list = [dict(r) for r in BUILTIN_CHAT_ROSTERS] + custom_rosters
+                rosters_list = []
+                for builtin_roster in BUILTIN_CHAT_ROSTERS:
+                    saved = saved_rosters_by_id.get(builtin_roster["id"])
+                    rosters_list.append(
+                        dict(saved) if saved and saved.get("is_customized") else dict(builtin_roster)
+                    )
+                rosters_list += custom_rosters
                 data["chat_rosters"] = rosters_list
 
                 valid_roster_ids = {r["id"] for r in rosters_list}
@@ -319,6 +335,8 @@ def update_council(
             c.update(updates)
             c["id"] = council_id
             c["is_builtin"] = is_builtin
+            # Marks this built-in as user-owned so the loader stops overwriting it.
+            c["is_customized"] = True
             data["councils"][i] = c
             save_councils_data(data)
             return c
@@ -437,6 +455,8 @@ def update_chat_roster(
             r.update(updates)
             r["id"] = roster_id
             r["is_builtin"] = is_builtin
+            # Marks this built-in as user-owned so the loader stops overwriting it.
+            r["is_customized"] = True
             data["chat_rosters"][i] = r
             save_councils_data(data)
             return r

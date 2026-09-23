@@ -29,6 +29,8 @@ services:
       - ../backend:/app/backend
       - ../.env:/app/.env:ro
       - ${SKILLS_DIR:-../skills}:/app/skills:ro
+      # Writable: skills imported from the UI (GitHub URL / pasted markdown) land here.
+      - ../skills-imported:/app/skills-imported
       - ${WORKSPACE_DIR:-..}:/app/workspace:ro
     extra_hosts:
       # Lets the container reach the claude-code-shim running on the host

@@ -121,6 +121,7 @@ function App() {
 
   // Council profiles state
   const [councilsList, setCouncilsList] = useState([]);
+  const [providerLabels, setProviderLabels] = useState({});
   const [activeCouncil, setActiveCouncil] = useState(null);
   const [showCouncilDropdown, setShowCouncilDropdown] = useState(false);
 
@@ -139,6 +140,7 @@ function App() {
     loadCouncils();
     loadChatRosters();
     loadWorkspaces();
+    loadProviderLabels();
   }, []);
 
   // Persist modal open/tab state for this tab session so a page refresh (F5)
@@ -175,6 +177,21 @@ function App() {
 
     } catch (e) {
       console.warn('Failed to load workspaces:', e);
+    }
+  };
+
+  // Provider display labels (e.g. "Sonnet 4.5 · high effort"), shown next to the
+  // seat models in the chat header. Only the provider settings know the variant.
+  const loadProviderLabels = async () => {
+    try {
+      const res = await api.getProviders();
+      const labels = {};
+      for (const provider of res.providers || []) {
+        if (provider.label) labels[provider.id] = provider.label;
+      }
+      setProviderLabels(labels);
+    } catch (e) {
+      console.warn('Failed to load provider labels:', e);
     }
   };
 
@@ -1047,6 +1064,7 @@ function App() {
           isDeliberating={loadingConversationId === currentConversationId || currentConversation?.status === 'deliberating'}
           onAbortDeliberation={handleAbortDeliberation}
           onTagsChange={handleTagsChange}
+          providerLabels={providerLabels}
           onInspectSkill={(skillId) => {
             setSelectedSkillIdForModal(skillId);
             setConfigPanelTab('skills');
@@ -1062,6 +1080,7 @@ function App() {
           onCouncilsUpdated={() => {
             loadCouncils();
             loadChatRosters();
+            loadProviderLabels();
           }}
           initialTab={configPanelTab}
           initialSkillId={selectedSkillIdForModal}

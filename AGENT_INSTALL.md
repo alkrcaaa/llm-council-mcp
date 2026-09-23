@@ -227,7 +227,7 @@ git switch -c <type>/<short-topic> upstream/main    # e.g. fix/shim-timeout, fea
   ```
   Add or update a test under `backend/tests/` when you change backend behaviour.
 - **Check what you're committing**: `git status` and `git diff --cached`. `.env`, `data/`,
-  `skills/` and `test-results*/` are gitignored; never force-add them. Grep the staged diff
+  `skills/`, `skills-imported/` and `test-results*/` are gitignored; never force-add them. Grep the staged diff
   for secrets and personal paths before every commit.
 - Commit messages: imperative subject ≤ 72 chars (`Fix shim bind address on macOS`), body
   explaining *why*.

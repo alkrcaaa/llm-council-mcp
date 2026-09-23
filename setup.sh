@@ -125,6 +125,8 @@ fi
 
 skills_dir="$(get_env SKILLS_DIR)"
 [[ "$skills_dir" == ../skills || -z "$skills_dir" ]] && mkdir -p skills
+# Imported skills are always written here, whatever SKILLS_DIR points at.
+mkdir -p skills-imported
 
 echo "Building and starting containers (the first build takes a few minutes)..."
 "${COMPOSE[@]}" up -d --build
