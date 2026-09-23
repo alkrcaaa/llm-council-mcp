@@ -6,6 +6,7 @@ providing specialized persona prompts and validation checklists for council seat
 
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -18,6 +19,19 @@ else:
         fallback = os.path.expanduser("~/.gemini/config/skills")
         if os.path.exists(fallback):
             SKILLS_DIR = fallback
+
+# Writable directory for skills imported at runtime (GitHub URL / pasted markdown).
+# The curated library above stays read-only; everything the UI creates lands here.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if os.path.exists("/app/skills-imported"):
+    IMPORTED_SKILLS_DIR = "/app/skills-imported"
+else:
+    IMPORTED_SKILLS_DIR = os.getenv(
+        "IMPORTED_SKILLS_DIR", str(_REPO_ROOT / "skills-imported")
+    )
+
+SOURCE_CURATED = "curated"
+SOURCE_IMPORTED = "imported"
 
 # Curated metadata & display titles for core dev-agent-kit skills
 SKILL_METADATA: Dict[str, Dict[str, str]] = {
@@ -138,36 +152,79 @@ def extract_gate_or_summary(body: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _skill_dirs() -> List[Tuple[str, str]]:
+    """Directories scanned for skills, curated library first."""
+    return [(SKILLS_DIR, SOURCE_CURATED), (IMPORTED_SKILLS_DIR, SOURCE_IMPORTED)]
+
+
+_NEW_SKILL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+
+
+def is_path_safe_skill_id(skill_id: Any) -> bool:
+    """Reject ids that could escape the skills directories."""
+    if not skill_id or not isinstance(skill_id, str):
+        return False
+    if os.path.isabs(skill_id):
+        return False
+    return not any(part in skill_id for part in ("..", "/", "\\", "\0"))
+
+
+def require_new_skill_id(skill_id: Any) -> str:
+    """Validate an id supplied by a user before it becomes a directory name."""
+    if not is_path_safe_skill_id(skill_id) or not _NEW_SKILL_ID_RE.match(skill_id):
+        raise ValueError(
+            f"Invalid skill id: {skill_id!r}. Use lowercase letters, digits, '-', '_' or '.'"
+        )
+    return skill_id
+
+
+def resolve_skill_file(skill_id: str) -> Tuple[Optional[str], Optional[str]]:
+    """Locate a skill's SKILL.md, returning (path, source). Curated wins on conflict."""
+    if not is_path_safe_skill_id(skill_id):
+        return None, None
+    for root, source in _skill_dirs():
+        candidate = os.path.join(root, skill_id, "SKILL.md")
+        if os.path.isfile(candidate):
+            return candidate, source
+    return None, None
+
+
+def _summarize_skill(skill_id: str, meta: Dict[str, str], source: str) -> Dict[str, Any]:
+    """Merge frontmatter with curated display metadata."""
+    curated = SKILL_METADATA.get(skill_id, {})
+    return {
+        "id": skill_id,
+        "title": curated.get("title", skill_id.replace("-", " ").title()),
+        "description": meta.get("description", ""),
+        "category": curated.get("category", meta.get("category", "General")),
+        "badge": curated.get("badge", "SKILL"),
+        "source": source,
+        "origin": meta.get("origin", ""),
+    }
+
+
 def get_available_skills() -> List[Dict[str, Any]]:
     """Discover all available skills on the system."""
     skills = []
-    if not os.path.isdir(SKILLS_DIR):
-        return skills
+    seen = set()
 
-    for item in sorted(os.listdir(SKILLS_DIR)):
-        skill_dir = os.path.join(SKILLS_DIR, item)
-        skill_file = os.path.join(skill_dir, "SKILL.md")
-        if os.path.isdir(skill_dir) and os.path.isfile(skill_file):
+    for root, source in _skill_dirs():
+        if not os.path.isdir(root):
+            continue
+        for item in sorted(os.listdir(root)):
+            skill_file = os.path.join(root, item, "SKILL.md")
+            if not os.path.isfile(skill_file):
+                continue
             try:
                 with open(skill_file, "r", encoding="utf-8") as f:
                     content = f.read()
-                meta, body = parse_frontmatter(content)
+                meta, _ = parse_frontmatter(content)
                 skill_id = meta.get("name", item)
-                description = meta.get("description", "")
-                
-                curated = SKILL_METADATA.get(skill_id, {})
-                title = curated.get("title", skill_id.replace("-", " ").title())
-                category = curated.get("category", "General")
-                badge = curated.get("badge", "SKILL")
-
-                skills.append({
-                    "id": skill_id,
-                    "title": title,
-                    "description": description,
-                    "category": category,
-                    "badge": badge,
-                })
-            except Exception as e:
+                if skill_id in seen:
+                    continue
+                seen.add(skill_id)
+                skills.append(_summarize_skill(skill_id, meta, source))
+            except Exception:
                 continue
 
     return skills
@@ -175,11 +232,8 @@ def get_available_skills() -> List[Dict[str, Any]]:
 
 def get_skill_instructions(skill_id: str) -> Optional[str]:
     """Retrieve full operative instructions for a skill to inject into prompts."""
-    if not skill_id:
-        return None
-
-    skill_file = os.path.join(SKILLS_DIR, skill_id, "SKILL.md")
-    if not os.path.isfile(skill_file):
+    skill_file, _ = resolve_skill_file(skill_id)
+    if not skill_file:
         return None
 
     try:
@@ -187,7 +241,7 @@ def get_skill_instructions(skill_id: str) -> Optional[str]:
             content = f.read()
         meta, body = parse_frontmatter(content)
         guidelines = extract_gate_or_summary(body)
-        
+
         curated = SKILL_METADATA.get(skill_id, {})
         title = curated.get("title", skill_id.replace("-", " ").title())
 
@@ -206,11 +260,8 @@ def get_skill_instructions(skill_id: str) -> Optional[str]:
 
 def get_skill_details(skill_id: str) -> Optional[Dict[str, Any]]:
     """Retrieve full skill documentation, metadata, and guidelines."""
-    if not skill_id:
-        return None
-
-    skill_file = os.path.join(SKILLS_DIR, skill_id, "SKILL.md")
-    if not os.path.isfile(skill_file):
+    skill_file, source = resolve_skill_file(skill_id)
+    if not skill_file:
         return None
 
     try:
@@ -218,26 +269,69 @@ def get_skill_details(skill_id: str) -> Optional[Dict[str, Any]]:
             content = f.read()
         meta, body = parse_frontmatter(content)
         guidelines = extract_gate_or_summary(body)
-        
-        curated = SKILL_METADATA.get(skill_id, {})
-        title = curated.get("title", skill_id.replace("-", " ").title())
-        category = curated.get("category", "General")
-        badge = curated.get("badge", "SKILL")
 
-        return {
-            "id": skill_id,
-            "title": title,
-            "category": category,
-            "badge": badge,
-            "description": meta.get("description", ""),
+        details = _summarize_skill(skill_id, meta, source)
+        details.update({
             "guidelines": guidelines,
             "checklist": guidelines,
             "content": content,
             "markdown": body,
-        }
+        })
+        return details
     except Exception:
         return None
 
+
+def _apply_origin(skill_md: str, origin: Optional[str]) -> str:
+    """Record where an imported skill came from, inside its frontmatter."""
+    if not origin:
+        return skill_md
+    meta, body = parse_frontmatter(skill_md)
+    if not meta or meta.get("origin"):
+        return skill_md
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", skill_md, re.DOTALL)
+    if not match:
+        return skill_md
+    yaml_text = match.group(1)
+    return f"---\n{yaml_text}\norigin: \"{origin}\"\n---\n{skill_md[match.end():]}"
+
+
+def save_imported_skill(
+    skill_id: str,
+    skill_md: str,
+    origin: Optional[str] = None,
+    overwrite: bool = False,
+) -> Dict[str, Any]:
+    """Write an imported skill into the writable skills directory."""
+    require_new_skill_id(skill_id)
+    if not skill_md or not skill_md.strip():
+        raise ValueError("Skill content is empty")
+
+    existing_file, existing_source = resolve_skill_file(skill_id)
+    if existing_file:
+        if existing_source == SOURCE_CURATED:
+            raise ValueError(
+                f"'{skill_id}' already exists in the curated skill library; choose another id"
+            )
+        if not overwrite:
+            raise ValueError(f"Skill '{skill_id}' already exists; enable overwrite to replace it")
+
+    skill_dir = os.path.join(IMPORTED_SKILLS_DIR, skill_id)
+    os.makedirs(skill_dir, exist_ok=True)
+    with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write(_apply_origin(skill_md, origin))
+
+    return get_skill_details(skill_id)
+
+
+def delete_imported_skill(skill_id: str) -> None:
+    """Remove an imported skill. Curated skills are read-only and never deleted."""
+    skill_file, source = resolve_skill_file(skill_id)
+    if not skill_file:
+        raise ValueError(f"Skill '{skill_id}' not found")
+    if source != SOURCE_IMPORTED:
+        raise ValueError(f"'{skill_id}' belongs to the read-only skill library and cannot be deleted")
+    shutil.rmtree(os.path.dirname(skill_file))
 
 
 def parse_model_identifier(identifier: str) -> Tuple[str, Optional[str]]:

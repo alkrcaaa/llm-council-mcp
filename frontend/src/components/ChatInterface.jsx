@@ -9,6 +9,7 @@ import TagEditor from './TagEditor';
 import CostDisplay from './CostDisplay';
 import RoundTableMessage from './RoundTableMessage';
 import { shortModelName, linkifyUserMentions, mentionMarkdownComponents } from './mentionUtils.jsx';
+import { formatSeatLabel } from '../modelLabel.js';
 import { exportToMarkdown, exportToJSON, exportToADR, copyADRToClipboard } from '../utils/export';
 import './ChatInterface.css';
 
@@ -24,6 +25,7 @@ export default function ChatInterface({
   onAbortDeliberation,
   onTagsChange,
   onInspectSkill,
+  providerLabels = {},
 }) {
   const [input, setInput] = useState('');
   const [landingInput, setLandingInput] = useState('');
@@ -80,6 +82,19 @@ export default function ChatInterface({
         ? conversation.council_models
         : (activeChatRoster?.models?.length ? activeChatRoster.models : []))
     : ((activeCouncil?.council_models?.length ? activeCouncil.council_models : conversation?.council_models) || []);
+
+  // Models actually answering in this conversation, shown in the header.
+  const activeSeats = isRoundTable
+    ? (conversation?.council_models?.length
+        ? conversation.council_models
+        : (activeChatRoster?.models || []))
+    : ((conversation?.council_models?.length
+        ? conversation.council_models
+        : activeCouncil?.council_models) || []);
+
+  const chairmanSeat = isRoundTable
+    ? null
+    : (conversation?.chairman_model || activeCouncil?.chairman_model || null);
 
   const modelMatchesQuery = (model, query) => {
     if (!query) return true;
@@ -432,6 +447,40 @@ export default function ChatInterface({
               <span className="chat-header-council-pill" title={isRoundTableConv ? 'Round-table multi-agent group' : 'Council assigned to this deliberation'}>
                 {conversation.council_name || activeCouncil?.name}
               </span>
+            )}
+            {activeSeats.length > 0 && (
+              <div className="chat-header-seats" title="Models answering in this conversation">
+                {activeSeats.map((seat) => {
+                  const { name, label, skill, full } = formatSeatLabel(seat, providerLabels);
+                  return (
+                    <span key={full} className="seat-chip" title={full}>
+                      <span className="seat-chip-name">{name}</span>
+                      {label && <span className="seat-chip-label">{label}</span>}
+                      {skill && (
+                        <button
+                          type="button"
+                          className="seat-chip-skill"
+                          onClick={() => onInspectSkill?.(skill)}
+                          title={`Skill: ${skill}`}
+                        >
+                          {skill}
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
+                {chairmanSeat && (
+                  <span className="seat-chip chairman" title={`Chairman: ${chairmanSeat}`}>
+                    <span className="seat-chip-role">Chair</span>
+                    <span className="seat-chip-name">{formatSeatLabel(chairmanSeat, providerLabels).name}</span>
+                    {formatSeatLabel(chairmanSeat, providerLabels).label && (
+                      <span className="seat-chip-label">
+                        {formatSeatLabel(chairmanSeat, providerLabels).label}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </div>
             )}
             {conversation.tags && conversation.tags.length > 0 && !showTagEditor && (
               <div className="header-tags">

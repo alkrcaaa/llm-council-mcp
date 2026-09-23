@@ -585,6 +585,129 @@ export const api = {
   },
 
   /**
+   * Set (or clear, with an empty string) a provider's display label,
+   * e.g. "Sonnet 4.5 · high effort" for the Claude Code shim.
+   * @param {string} providerId
+   * @param {string} label
+   */
+  async setProviderLabel(providerId, label) {
+    const response = await fetch(`${API_BASE}/api/providers/${providerId}/label`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
+      body: JSON.stringify({ label }),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.detail || 'Failed to save the provider label');
+    }
+    return response.json();
+  },
+
+  /**
+   * Preview a skill imported from a GitHub URL or pasted markdown. Writes nothing.
+   * @param {{url?: string, markdown?: string, skillId?: string, useLlm?: boolean}} input
+   * @returns {Promise<{id: string, title: string, description: string, checklist: string, skill_md: string, origin: string|null, source_url: string|null, method: 'passthrough'|'llm'|'fallback'}>}
+   */
+  async previewSkillImport({ url, markdown, skillId, useLlm = true }) {
+    const response = await fetch(`${API_BASE}/api/skills/import/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
+      body: JSON.stringify({ url, markdown, skill_id: skillId, use_llm: useLlm }),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.detail || 'Failed to read the skill');
+    }
+    return response.json();
+  },
+
+  /**
+   * List every SKILL.md a GitHub repository holds (multi-skill collections).
+   * @param {string} url
+   * @returns {Promise<{repo: string, ref: string, count: number, install_command: string|null, skills: Array<{id: string, path: string, raw_url: string, origin: string}>}>}
+   */
+  async discoverRepoSkills(url) {
+    const response = await fetch(`${API_BASE}/api/skills/import/discover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
+      body: JSON.stringify({ url }),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.detail || 'Failed to list the repository skills');
+    }
+    return response.json();
+  },
+
+  /**
+   * Import several discovered skills in the background.
+   * @param {Array<{id: string, raw_url: string, origin: string}>} entries
+   * @param {boolean} overwrite
+   * @returns {Promise<{status: string, job: {id: string, total: number}}>}
+   */
+  async bulkImportSkills(entries, overwrite = false) {
+    const response = await fetch(`${API_BASE}/api/skills/import/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
+      body: JSON.stringify({ entries, overwrite }),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.detail || 'Failed to start the import');
+    }
+    return response.json();
+  },
+
+  /**
+   * Progress and result of a bulk skill import job.
+   * @param {string} jobId
+   */
+  async getSkillImportJob(jobId) {
+    const response = await fetch(`${API_BASE}/api/skills/import/jobs/${encodeURIComponent(jobId)}`, {
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to read the import job');
+    }
+    return response.json();
+  },
+
+  /**
+   * Store a previewed skill so council seats can wear it.
+   * @param {{skillId: string, skillMd: string, origin?: string|null, overwrite?: boolean}} input
+   */
+  async importSkill({ skillId, skillMd, origin = null, overwrite = false }) {
+    const response = await fetch(`${API_BASE}/api/skills/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
+      body: JSON.stringify({ skill_id: skillId, skill_md: skillMd, origin, overwrite }),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      const error = new Error(detail.detail || 'Failed to save the skill');
+      error.status = response.status;
+      throw error;
+    }
+    return response.json();
+  },
+
+  /**
+   * Delete an imported skill (skills from the read-only library cannot be deleted).
+   * @param {string} skillId
+   */
+  async deleteSkill(skillId) {
+    const response = await fetch(`${API_BASE}/api/skills/${encodeURIComponent(skillId)}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.detail || 'Failed to delete the skill');
+    }
+    return response.json();
+  },
+
+  /**
    * Get list of discoverable local workspace projects for context evaluation.
    */
   async getWorkspaces() {

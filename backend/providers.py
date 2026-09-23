@@ -19,6 +19,10 @@ from .config import DATA_ROOT
 load_dotenv(override=True)
 
 PROVIDERS_FILE = os.path.join(DATA_ROOT, "custom_providers.json")
+# Display labels (e.g. "Sonnet 4.5 - high effort") kept apart from the providers
+# themselves, so system providers built from .env can carry one too.
+PROVIDER_LABELS_FILE = os.path.join(DATA_ROOT, "provider_labels.json")
+MAX_LABEL_LENGTH = 80
 
 PROVIDER_PRESETS: Dict[str, Dict[str, Any]] = {
     "google": {
@@ -108,6 +112,49 @@ def _mask_key(key: Optional[str]) -> str:
     return f"{key[:4]}••••{key[-4:]}"
 
 
+def load_provider_labels() -> Dict[str, str]:
+    """All stored display labels, keyed by provider id."""
+    try:
+        with open(PROVIDER_LABELS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def get_provider_label(provider_id: str) -> str:
+    """Display label for a provider, or an empty string when none is set."""
+    return load_provider_labels().get(provider_id, "")
+
+
+def set_provider_label(provider_id: str, label: str) -> str:
+    """Store (or, with an empty label, clear) a provider's display label."""
+    if not provider_id:
+        raise ValueError("Provider id is required")
+    label = (label or "").strip()
+    if len(label) > MAX_LABEL_LENGTH:
+        raise ValueError(f"Label must be at most {MAX_LABEL_LENGTH} characters")
+
+    labels = load_provider_labels()
+    if label:
+        labels[provider_id] = label
+    else:
+        labels.pop(provider_id, None)
+
+    _ensure_data_dir()
+    with open(PROVIDER_LABELS_FILE, "w", encoding="utf-8") as f:
+        json.dump(labels, f, indent=2, ensure_ascii=False)
+    return label
+
+
+def _with_labels(provider_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Attach the stored label to each provider."""
+    labels = load_provider_labels()
+    for provider in provider_list:
+        provider["label"] = labels.get(provider.get("id", ""), "")
+    return provider_list
+
+
 def get_system_providers() -> List[Dict[str, Any]]:
     """Retrieve endpoints declared via .env and backend/config.py."""
     system_list = []
@@ -195,7 +242,7 @@ def get_system_providers() -> List[Dict[str, Any]]:
             "source": ".env (OLLAMA_BASE_URL)",
         })
 
-    return system_list
+    return _with_labels(system_list)
 
 
 def load_providers() -> List[Dict[str, Any]]:
@@ -205,7 +252,7 @@ def load_providers() -> List[Dict[str, Any]]:
     try:
         with open(PROVIDERS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-            return data if isinstance(data, list) else []
+            return _with_labels(data) if isinstance(data, list) else []
     except Exception as e:
         print(f"[Providers] Error loading {PROVIDERS_FILE}: {e}")
         return []

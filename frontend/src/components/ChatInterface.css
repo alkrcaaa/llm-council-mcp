@@ -1463,3 +1463,69 @@
 .queued-cancel:hover {
   color: var(--text-primary);
 }
+
+/* --- seat chips: which models are answering in this conversation --- */
+
+.chat-header-seats {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.seat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-color, #30363d);
+  border-radius: 999px;
+  background: var(--bg-subtle, rgba(255, 255, 255, 0.03));
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  line-height: 1.6;
+  max-width: 100%;
+}
+
+.seat-chip.chairman {
+  border-color: var(--border-active, #58a6ff);
+}
+
+.seat-chip-name {
+  font-weight: 600;
+  color: var(--text-primary, #f0f6fc);
+}
+
+.seat-chip-label {
+  color: var(--text-secondary, #8b949e);
+}
+
+.seat-chip-label::before {
+  content: '·';
+  margin-right: 5px;
+}
+
+.seat-chip-role {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent-primary, #58a6ff);
+}
+
+.seat-chip-skill {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-primary, #58a6ff);
+  cursor: pointer;
+}
+
+.seat-chip-skill::before {
+  content: '@';
+}
+
+.seat-chip-skill:hover {
+  text-decoration: underline;
+}

@@ -135,6 +135,53 @@ const getLatencyClass = (latencyMs) => {
 };
 
 /**
+ * Editor for a provider's display label — the variant/effort ("Sonnet 4.5 · high
+ * effort") that only the operator knows, shown next to the model in the chat header.
+ */
+function ProviderLabelEditor({ provider, onSaved }) {
+  const [value, setValue] = useState(provider.label || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setValue(provider.label || '');
+  }, [provider.id, provider.label]);
+
+  const save = async () => {
+    try {
+      setIsSaving(true);
+      setError(null);
+      await api.setProviderLabel(provider.id, value.trim());
+      onSaved?.();
+    } catch (err) {
+      setError(err.message || 'Failed to save the label');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const dirty = (value.trim() || '') !== (provider.label || '');
+
+  return (
+    <div className="provider-label-editor">
+      <span className="detail-label">Label:</span>
+      <input
+        type="text"
+        value={value}
+        placeholder="e.g. Sonnet 4.5 · high effort"
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && dirty) save(); }}
+        maxLength={80}
+      />
+      <button type="button" onClick={save} disabled={!dirty || isSaving}>
+        {isSaving ? 'Saving…' : 'Save'}
+      </button>
+      {error && <span className="provider-label-error">{error}</span>}
+    </div>
+  );
+}
+
+/**
  * ConfigPanel - Comprehensive Model Studio, Custom Providers Hub & Skills Library
  */
 export default function ConfigPanel({
@@ -207,6 +254,25 @@ export default function ConfigPanel({
   const [skillDetails, setSkillDetails] = useState(null);
   const [isLoadingSkillDetails, setIsLoadingSkillDetails] = useState(false);
   const [skillSearchQuery, setSkillSearchQuery] = useState('');
+  const [deletingSkillId, setDeletingSkillId] = useState(null);
+
+  // Add Skill (import from GitHub URL or pasted markdown)
+  const [showAddSkill, setShowAddSkill] = useState(false);
+  const [importMode, setImportMode] = useState('url'); // 'url' | 'paste'
+  const [importUrl, setImportUrl] = useState('');
+  const [importMarkdown, setImportMarkdown] = useState('');
+  const [importPreview, setImportPreview] = useState(null);
+  const [importDraftId, setImportDraftId] = useState('');
+  const [importDraftMd, setImportDraftMd] = useState('');
+  const [importConflict, setImportConflict] = useState(false);
+  const [repoDiscovery, setRepoDiscovery] = useState(null);
+  const [selectedRepoSkills, setSelectedRepoSkills] = useState([]);
+  const [repoSkillFilter, setRepoSkillFilter] = useState('');
+  const [bulkJob, setBulkJob] = useState(null);
+  const [isDiscoveringRepo, setIsDiscoveringRepo] = useState(false);
+  const [isPreviewingImport, setIsPreviewingImport] = useState(false);
+  const [isSavingImport, setIsSavingImport] = useState(false);
+  const [importError, setImportError] = useState(null);
 
   // -------------------------------------------------------------------------
   // 4. Agent Personas & Visual Profiles State
@@ -257,11 +323,13 @@ export default function ConfigPanel({
   // Handle ESC key to close
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      if (showAddSkill) setShowAddSkill(false);
+      else onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [onClose, showAddSkill]);
 
   const loadAllData = async () => {
     try {
@@ -603,10 +671,7 @@ export default function ConfigPanel({
           chairman_model: chairmanModel,
         });
       }
-      await api.saveConfig({
-        council_models: councilModels,
-        chairman_model: chairmanModel,
-      });
+      await api.updateConfig(councilModels, chairmanModel);
 
       showNotification('Configuration saved successfully');
       onCouncilsUpdated?.();
@@ -883,6 +948,169 @@ export default function ConfigPanel({
       s.badge?.toLowerCase().includes(q)
     );
   });
+
+  const resetSkillImport = () => {
+    setRepoDiscovery(null);
+    setSelectedRepoSkills([]);
+    setRepoSkillFilter('');
+    setBulkJob(null);
+    setImportUrl('');
+    setImportMarkdown('');
+    setImportPreview(null);
+    setImportDraftId('');
+    setImportDraftMd('');
+    setImportConflict(false);
+    setImportError(null);
+  };
+
+  const openSkillImport = () => {
+    resetSkillImport();
+    setImportMode('url');
+    setShowAddSkill(true);
+  };
+
+  const handlePreviewSkillImport = async () => {
+    const isUrlMode = importMode === 'url';
+    const value = isUrlMode ? importUrl.trim() : importMarkdown.trim();
+    if (!value) {
+      setImportError(isUrlMode ? 'Paste a GitHub URL first.' : 'Paste the skill markdown first.');
+      return;
+    }
+    setImportError(null);
+    setImportConflict(false);
+    setRepoDiscovery(null);
+    setBulkJob(null);
+
+    // A collection repository holds many SKILL.md files: let the user pick instead
+    // of normalizing its README into one meta-skill.
+    if (isUrlMode && /github\.com\//i.test(value)) {
+      try {
+        setIsDiscoveringRepo(true);
+        const discovery = await api.discoverRepoSkills(value);
+        if (discovery.count > 1) {
+          setImportPreview(null);
+          setRepoDiscovery(discovery);
+          setSelectedRepoSkills(discovery.skills.map((s) => s.id));
+          return;
+        }
+        if (discovery.install_command) {
+          setRepoDiscovery({ ...discovery, skills: [] });
+        }
+      } catch (err) {
+        // Rate limited or not a repository: fall through to the single-skill path.
+      } finally {
+        setIsDiscoveringRepo(false);
+      }
+    }
+
+    try {
+      setIsPreviewingImport(true);
+      const preview = await api.previewSkillImport(
+        isUrlMode ? { url: value } : { markdown: importMarkdown }
+      );
+      setImportPreview(preview);
+      setImportDraftId(preview.id || '');
+      setImportDraftMd(preview.skill_md || '');
+    } catch (err) {
+      setImportPreview(null);
+      setImportError(err.message || 'Failed to read the skill');
+    } finally {
+      setIsPreviewingImport(false);
+    }
+  };
+
+  const toggleRepoSkill = (skillId) => {
+    setSelectedRepoSkills((current) =>
+      current.includes(skillId) ? current.filter((id) => id !== skillId) : [...current, skillId]
+    );
+  };
+
+  const handleBulkImport = async (overwrite = false) => {
+    const entries = (repoDiscovery?.skills || []).filter((s) => selectedRepoSkills.includes(s.id));
+    if (entries.length === 0) {
+      setImportError('Select at least one skill.');
+      return;
+    }
+    try {
+      setImportError(null);
+      const { job } = await api.bulkImportSkills(entries, overwrite);
+      setBulkJob({ ...job, total: entries.length });
+      pollBulkJob(job.id);
+    } catch (err) {
+      setImportError(err.message || 'Failed to start the import');
+    }
+  };
+
+  const pollBulkJob = (jobId) => {
+    const tick = async () => {
+      try {
+        const job = await api.getSkillImportJob(jobId);
+        setBulkJob(job);
+        if (job.status === 'done' || job.status === 'error') {
+          await loadSkills();
+          const failed = job.errors?.length || 0;
+          const skipped = job.skipped?.length || 0;
+          showNotification(
+            `Imported ${job.imported.length} skill(s)` +
+            (skipped ? `, ${skipped} already present` : '') +
+            (failed ? `, ${failed} failed` : '')
+          );
+          return;
+        }
+        setTimeout(tick, 800);
+      } catch (err) {
+        setImportError(err.message || 'Lost track of the import job');
+      }
+    };
+    setTimeout(tick, 500);
+  };
+
+  const handleSaveSkillImport = async (overwrite = false) => {
+    const skillId = importDraftId.trim();
+    if (!skillId || !importDraftMd.trim()) {
+      setImportError('A skill id and content are required.');
+      return;
+    }
+    try {
+      setIsSavingImport(true);
+      setImportError(null);
+      const result = await api.importSkill({
+        skillId,
+        skillMd: importDraftMd,
+        origin: importPreview?.origin || null,
+        overwrite,
+      });
+      await loadSkills();
+      setSelectedSkillId(result.skill.id);
+      setShowAddSkill(false);
+      resetSkillImport();
+      showNotification(`Skill "${result.skill.id}" added.`);
+    } catch (err) {
+      setImportConflict(err.status === 409);
+      setImportError(err.message || 'Failed to save the skill');
+    } finally {
+      setIsSavingImport(false);
+    }
+  };
+
+  const handleDeleteSkill = async (skillId) => {
+    if (deletingSkillId !== skillId) {
+      setDeletingSkillId(skillId);
+      setTimeout(() => setDeletingSkillId((current) => (current === skillId ? null : current)), 4000);
+      return;
+    }
+    try {
+      await api.deleteSkill(skillId);
+      setDeletingSkillId(null);
+      setSkillDetails(null);
+      setSelectedSkillId(null);
+      await loadSkills();
+      showNotification(`Skill "${skillId}" deleted.`);
+    } catch (err) {
+      setDeletingSkillId(null);
+      setError(err.message || 'Failed to delete the skill');
+    }
+  };
 
   const handleAssignSkillToActiveCouncil = (skillId) => {
     // Pick the first seat without a skill, or append a seat
@@ -1880,6 +2108,7 @@ export default function ConfigPanel({
                                   {status.error}
                                 </div>
                               )}
+                              <ProviderLabelEditor provider={sp} onSaved={loadProviders} />
                             </div>
 
                             <div className="provider-card-actions">
@@ -2014,6 +2243,7 @@ export default function ConfigPanel({
                                     {status.error}
                                   </div>
                                 )}
+                                <ProviderLabelEditor provider={cp} onSaved={loadProviders} />
                               </div>
 
                               <div className="provider-card-actions">
@@ -2062,6 +2292,14 @@ export default function ConfigPanel({
                           value={skillSearchQuery}
                           onChange={(e) => setSkillSearchQuery(e.target.value)}
                         />
+                        <button
+                          type="button"
+                          className="add-skill-btn"
+                          onClick={openSkillImport}
+                          title="Import a skill from a GitHub URL or pasted markdown"
+                        >
+                          + Add Skill
+                        </button>
                       </div>
 
                       <div className="skills-studio-list">
@@ -2077,6 +2315,9 @@ export default function ConfigPanel({
                               <div className="skill-item-header">
                                 <span className="skill-badge-tag">{s.badge || 'SKILL'}</span>
                                 <span className="skill-item-title">{s.title}</span>
+                                {s.source === 'imported' && (
+                                  <span className="skill-source-tag" title={s.origin || 'Imported skill'}>IMPORTED</span>
+                                )}
                               </div>
                               <p className="skill-item-desc">{s.description}</p>
                             </button>
@@ -2099,6 +2340,16 @@ export default function ConfigPanel({
                               </div>
                               <h2>{skillDetails.title}</h2>
                               <p className="doc-description">{skillDetails.description}</p>
+                              {skillDetails.origin && (
+                                <a
+                                  className="doc-origin-link"
+                                  href={skillDetails.origin}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {skillDetails.origin}
+                                </a>
+                              )}
                             </div>
 
                             <div className="doc-actions-wrap">
@@ -2110,6 +2361,16 @@ export default function ConfigPanel({
                               >
                                 + Assign to Council
                               </button>
+                              {skillDetails.source === 'imported' && (
+                                <button
+                                  type="button"
+                                  className={`delete-skill-btn ${deletingSkillId === skillDetails.id ? 'confirm' : ''}`}
+                                  onClick={() => handleDeleteSkill(skillDetails.id)}
+                                  title="Delete this imported skill"
+                                >
+                                  {deletingSkillId === skillDetails.id ? 'Click again to delete' : 'Delete'}
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -2133,6 +2394,230 @@ export default function ConfigPanel({
                       )}
                     </main>
                   </div>
+
+                  {showAddSkill && (
+                    <div className="skill-import-overlay" onClick={() => setShowAddSkill(false)}>
+                      <div className="skill-import-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="skill-import-header">
+                          <h3>Add Skill</h3>
+                          <button
+                            type="button"
+                            className="skill-import-close"
+                            onClick={() => setShowAddSkill(false)}
+                          >
+                            ×
+                          </button>
+                        </div>
+
+                        <div className="skill-import-modes">
+                          <button
+                            type="button"
+                            className={importMode === 'url' ? 'active' : ''}
+                            onClick={() => setImportMode('url')}
+                          >
+                            GitHub URL
+                          </button>
+                          <button
+                            type="button"
+                            className={importMode === 'paste' ? 'active' : ''}
+                            onClick={() => setImportMode('paste')}
+                          >
+                            Paste markdown
+                          </button>
+                        </div>
+
+                        {importMode === 'url' ? (
+                          <input
+                            type="text"
+                            className="skill-import-input"
+                            placeholder="https://github.com/owner/repo or .../tree/main/skills/my-skill"
+                            value={importUrl}
+                            onChange={(e) => setImportUrl(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') handlePreviewSkillImport(); }}
+                          />
+                        ) : (
+                          <textarea
+                            className="skill-import-textarea"
+                            rows={8}
+                            placeholder="Paste a README or a complete SKILL.md..."
+                            value={importMarkdown}
+                            onChange={(e) => setImportMarkdown(e.target.value)}
+                            spellCheck={false}
+                          />
+                        )}
+
+                        <p className="skill-import-hint">
+                          A real SKILL.md is imported as-is. Anything else (a README, docs) is
+                          rewritten into a SKILL.md with an operative checklist before it is saved.
+                        </p>
+
+                        {importError && <div className="skill-import-error">{importError}</div>}
+
+                        <div className="skill-import-actions">
+                          <button
+                            type="button"
+                            className="skill-import-fetch"
+                            onClick={handlePreviewSkillImport}
+                            disabled={isPreviewingImport || isDiscoveringRepo}
+                          >
+                            {isDiscoveringRepo ? 'Scanning repo…' : isPreviewingImport ? 'Reading…' : 'Fetch & preview'}
+                          </button>
+                        </div>
+
+                        {repoDiscovery?.install_command && (
+                          <div className="repo-install-hint">
+                            <span>Official installer (run it on your own machine):</span>
+                            <code>{repoDiscovery.install_command}</code>
+                            <button
+                              type="button"
+                              onClick={() => navigator.clipboard?.writeText(repoDiscovery.install_command)}
+                            >
+                              Copy
+                            </button>
+                          </div>
+                        )}
+
+                        {repoDiscovery?.skills?.length > 0 && (
+                          <div className="repo-skill-picker">
+                            <div className="repo-picker-header">
+                              <span>
+                                <strong>{repoDiscovery.repo}</strong> holds {repoDiscovery.count} skills
+                              </span>
+                              <div className="repo-picker-bulk">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedRepoSkills(repoDiscovery.skills.map((s) => s.id))}
+                                >
+                                  Select all
+                                </button>
+                                <button type="button" onClick={() => setSelectedRepoSkills([])}>
+                                  Clear
+                                </button>
+                              </div>
+                            </div>
+
+                            <input
+                              type="text"
+                              className="skill-import-input"
+                              placeholder="Filter skills..."
+                              value={repoSkillFilter}
+                              onChange={(e) => setRepoSkillFilter(e.target.value)}
+                            />
+
+                            <div className="repo-skill-list">
+                              {repoDiscovery.skills
+                                .filter((s) => s.id.includes(repoSkillFilter.trim().toLowerCase()))
+                                .map((s) => (
+                                  <label key={s.id} className="repo-skill-row">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedRepoSkills.includes(s.id)}
+                                      onChange={() => toggleRepoSkill(s.id)}
+                                    />
+                                    <span className="repo-skill-id">{s.id}</span>
+                                    <span className="repo-skill-path">{s.path}</span>
+                                  </label>
+                                ))}
+                            </div>
+
+                            {bulkJob ? (
+                              <div className="bulk-job-status">
+                                <div className="bulk-job-bar">
+                                  <div
+                                    className="bulk-job-fill"
+                                    style={{ width: `${Math.round((bulkJob.completed / Math.max(bulkJob.total, 1)) * 100)}%` }}
+                                  />
+                                </div>
+                                <span>
+                                  {bulkJob.status === 'done' || bulkJob.status === 'error'
+                                    ? `Finished — ${bulkJob.imported?.length || 0} imported` +
+                                      (bulkJob.skipped?.length ? `, ${bulkJob.skipped.length} already present` : '') +
+                                      (bulkJob.errors?.length ? `, ${bulkJob.errors.length} failed` : '')
+                                    : `Importing ${bulkJob.completed}/${bulkJob.total}…`}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="skill-import-actions">
+                                <button
+                                  type="button"
+                                  className="skill-import-save"
+                                  onClick={() => handleBulkImport(false)}
+                                  disabled={selectedRepoSkills.length === 0}
+                                >
+                                  Import selected ({selectedRepoSkills.length})
+                                </button>
+                                <button
+                                  type="button"
+                                  className="skill-import-replace"
+                                  onClick={() => handleBulkImport(true)}
+                                  disabled={selectedRepoSkills.length === 0}
+                                  title="Replace skills that are already imported"
+                                >
+                                  Import &amp; replace
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {importPreview && (
+                          <div className="skill-import-preview">
+                            <div className="import-preview-meta">
+                              <label>
+                                Skill id
+                                <input
+                                  type="text"
+                                  value={importDraftId}
+                                  onChange={(e) => setImportDraftId(e.target.value)}
+                                  spellCheck={false}
+                                />
+                              </label>
+                              <span className={`import-method-tag method-${importPreview.method}`}>
+                                {importPreview.method === 'passthrough'
+                                  ? 'SKILL.md found'
+                                  : importPreview.method === 'llm'
+                                    ? 'normalized by model'
+                                    : 'basic conversion'}
+                              </span>
+                            </div>
+
+                            {importPreview.source_url && (
+                              <p className="import-source-url">{importPreview.source_url}</p>
+                            )}
+
+                            <textarea
+                              className="skill-import-editor"
+                              rows={14}
+                              value={importDraftMd}
+                              onChange={(e) => setImportDraftMd(e.target.value)}
+                              spellCheck={false}
+                            />
+
+                            <div className="skill-import-actions">
+                              <button
+                                type="button"
+                                className="skill-import-save"
+                                onClick={() => handleSaveSkillImport(false)}
+                                disabled={isSavingImport || !importDraftId.trim()}
+                              >
+                                {isSavingImport ? 'Saving…' : 'Save skill'}
+                              </button>
+                              {importConflict && (
+                                <button
+                                  type="button"
+                                  className="skill-import-replace"
+                                  onClick={() => handleSaveSkillImport(true)}
+                                  disabled={isSavingImport}
+                                >
+                                  Replace existing
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

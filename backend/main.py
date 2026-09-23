@@ -1,6 +1,6 @@
 """FastAPI backend for LLM Council."""
 
-from fastapi import FastAPI, HTTPException, Query, Body, Header, Depends, Request
+from fastapi import FastAPI, HTTPException, Query, Body, Header, Depends, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -231,6 +231,33 @@ class ScoutRequest(BaseModel):
     include_local_skills: bool = True
 
 
+class SkillPreviewRequest(BaseModel):
+    """Request to preview a skill imported from a GitHub URL or pasted markdown."""
+    url: Optional[str] = None
+    markdown: Optional[str] = None
+    skill_id: Optional[str] = None
+    use_llm: bool = True
+
+
+class SkillDiscoverRequest(BaseModel):
+    """Request to list every skill a GitHub repository holds."""
+    url: str
+
+
+class SkillBulkImportRequest(BaseModel):
+    """Request to import several discovered skills in the background."""
+    entries: List[Dict[str, str]]
+    overwrite: bool = False
+
+
+class SkillImportRequest(BaseModel):
+    """Request to store a previewed skill in the writable skills directory."""
+    skill_id: str
+    skill_md: str
+    origin: Optional[str] = None
+    overwrite: bool = False
+
+
 class UpdateTagsRequest(BaseModel):
     """Request to update tags for a conversation."""
     tags: List[str]
@@ -282,6 +309,11 @@ class ProviderRequest(BaseModel):
     model_id: str
     api_key: Optional[str] = ""
     default_skill: Optional[str] = None
+
+
+class ProviderLabelRequest(BaseModel):
+    """Request to set a provider's display label (e.g. "Sonnet 4.5 - high effort")."""
+    label: str = ""
 
 
 class TestProviderRequest(BaseModel):
@@ -793,6 +825,17 @@ async def create_or_update_provider(request: ProviderRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.put("/api/providers/{provider_id:path}/label", dependencies=[Depends(require_auth)])
+async def set_provider_label_endpoint(provider_id: str, request: ProviderLabelRequest):
+    """Set or clear the display label shown next to this provider's model."""
+    from backend import providers
+    try:
+        label = providers.set_provider_label(provider_id, request.label)
+        return {"status": "ok", "id": provider_id, "label": label}
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @app.get("/api/providers/presets")
 async def get_provider_presets():
     """Get list of standard provider presets with default configs."""
@@ -850,6 +893,103 @@ async def get_skill_by_id(skill_id: str):
     if not details:
         raise HTTPException(status_code=404, detail="Skill not found")
     return details
+
+
+@app.post("/api/skills/import/preview", dependencies=[Depends(require_auth)])
+async def preview_skill_import(request: SkillPreviewRequest):
+    """Fetch and normalize a skill for review, without writing anything to disk."""
+    from backend import skill_import
+    try:
+        return await skill_import.prepare_skill(
+            url=request.url,
+            markdown=request.markdown,
+            skill_id=request.skill_id,
+            use_llm=request.use_llm,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/skills/import/discover", dependencies=[Depends(require_auth)])
+async def discover_repo_skills(request: SkillDiscoverRequest):
+    """List the SKILL.md files a repository holds, for multi-skill collections."""
+    from backend import skill_import
+    try:
+        result = await skill_import.list_repo_skills(request.url)
+        readme = await skill_import.fetch_url(
+            f"{skill_import.RAW_HOST}/{result['repo']}/{result['ref']}/README.md"
+        )
+        result["install_command"] = skill_import.find_install_command(readme or "")
+        result["count"] = len(result["skills"])
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/skills/import/bulk", dependencies=[Depends(require_auth)])
+async def bulk_import_skills(request: SkillBulkImportRequest, background_tasks: BackgroundTasks):
+    """Import several discovered skills in the background, tracked as a job."""
+    from backend import skill_import, skill_jobs
+    from backend.skills import require_new_skill_id
+
+    try:
+        for entry in request.entries:
+            require_new_skill_id(entry.get("id", ""))
+            if not (entry.get("raw_url") or "").startswith(f"{skill_import.RAW_HOST}/"):
+                raise ValueError("Skills can only be imported from raw.githubusercontent.com")
+        job = skill_jobs.create_job(request.entries, overwrite=request.overwrite)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    background_tasks.add_task(skill_jobs.run_job, job["id"])
+    return {"status": "ok", "job": job}
+
+
+@app.get("/api/skills/import/jobs/{job_id}", dependencies=[Depends(require_auth)])
+async def get_skill_import_job(job_id: str):
+    """Progress and result of a bulk import job."""
+    from backend import skill_jobs
+    job = skill_jobs.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Import job '{job_id}' not found")
+    return job
+
+
+@app.post("/api/skills/import", dependencies=[Depends(require_auth)])
+async def import_skill(request: SkillImportRequest):
+    """Store a previewed skill so council seats can wear it."""
+    from backend.skills import save_imported_skill
+    try:
+        saved = save_imported_skill(
+            request.skill_id,
+            request.skill_md,
+            origin=request.origin,
+            overwrite=request.overwrite,
+        )
+        return {"status": "ok", "skill": saved}
+    except ValueError as e:
+        status = 409 if "already exists" in str(e) else 422
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/skills/{skill_id}", dependencies=[Depends(require_auth)])
+async def delete_skill(skill_id: str):
+    """Delete an imported skill. Skills from the read-only library are kept."""
+    from backend.skills import delete_imported_skill
+    try:
+        delete_imported_skill(skill_id)
+        return {"status": "ok", "id": skill_id}
+    except ValueError as e:
+        status = 404 if "not found" in str(e) else 422
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/workspaces")
