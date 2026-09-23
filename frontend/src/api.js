@@ -1045,7 +1045,8 @@ export const api = {
       if (response.status === 401) {
         this.clearToken();
       }
-      throw new Error('Failed to send message');
+      const detail = await response.json().then((b) => b.detail).catch(() => null);
+      throw new Error(detail || 'Failed to send message');
     }
 
     const reader = response.body.getReader();

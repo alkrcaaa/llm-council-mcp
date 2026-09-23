@@ -1302,6 +1302,12 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    # A second message while one is still streaming used to attach to the running
+    # stream and silently drop its own content. Reconnects use GET .../stream instead.
+    running = ACTIVE_DELIBERATION_CONTEXTS.get(conversation_id)
+    if running and not running.done:
+        raise HTTPException(status_code=409, detail="A response is still streaming in this conversation")
+
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
 

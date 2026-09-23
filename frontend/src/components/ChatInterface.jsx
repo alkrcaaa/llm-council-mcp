@@ -39,6 +39,7 @@ export default function ChatInterface({
   );
   const [mentionQuery, setMentionQuery] = useState(null);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [queued, setQueued] = useState(null);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const prevMessageCountRef = useRef(0);
@@ -47,6 +48,8 @@ export default function ChatInterface({
   const messageInputRef = useRef(null);
 
   const isRoundTableConv = conversation?.conversation_type === 'roundtable';
+  // A queue belongs to the conversation it was typed in; switching away hides it.
+  const queuedMessage = queued && queued.conversationId === conversation?.id ? queued.text : null;
   const activeDeliberating = Boolean(isLoading || isDeliberating || conversation?.status === 'deliberating');
 
   const handleReplyToModel = (modelId) => {
@@ -207,11 +210,27 @@ export default function ChatInterface({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (input.trim() && !isLoading) {
+    if (!input.trim()) return;
+    if (!isLoading) {
       onSendMessage(input);
+      setInput('');
+    } else if (isRoundTableConv) {
+      // The backend accepts one stream per conversation; hold the message until
+      // the current replies finish instead of swallowing the Enter key.
+      const text = queuedMessage ? `${queuedMessage}\n\n${input.trim()}` : input.trim();
+      setQueued({ conversationId: conversation?.id, text });
       setInput('');
     }
   };
+
+  useEffect(() => {
+    if (!isLoading && queuedMessage) {
+      onSendMessage(queuedMessage);
+      // Reacting to the isLoading prop falling back to false is the point of this effect.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setQueued(null);
+    }
+  }, [isLoading, queuedMessage, onSendMessage]);
 
   const handleKeyDown = (e) => {
     if (mentionQuery != null && mentionMatches.length > 0) {
@@ -938,13 +957,24 @@ export default function ChatInterface({
                 ))}
               </div>
             )}
+            {queuedMessage && (
+              <div className="queued-message">
+                <span className="queued-label">Queued</span>
+                <span className="queued-text">{queuedMessage}</span>
+                <button type="button" className="queued-cancel" onClick={() => setQueued(null)} title="Cancel queued message">
+                  ×
+                </button>
+              </div>
+            )}
             <div className="input-inner">
               <textarea
                 ref={messageInputRef}
                 className="message-input"
                 placeholder={
                   isRoundTableConv
-                    ? 'Write a message or mention a model (@all, @qwen)...'
+                    ? isLoading
+                      ? 'Replies are streaming — Enter queues your message...'
+                      : 'Write a message or mention a model (@all, @qwen)...'
                     : activeDeliberating
                     ? 'Council deliberation in progress...'
                     : 'Reply or ask a follow-up... (@ to mention a panelist, Enter to send)'
@@ -960,7 +990,10 @@ export default function ChatInterface({
                   <button
                     type="button"
                     className="input-icon-btn stop"
-                    onClick={() => onAbortDeliberation && onAbortDeliberation(conversation.id)}
+                    onClick={() => {
+                      setQueued(null);
+                      if (onAbortDeliberation) onAbortDeliberation(conversation.id);
+                    }}
                     title="Stop"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
