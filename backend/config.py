@@ -61,5 +61,9 @@ if _ollama_base:
         "api_key": "not-needed",
     }
 
+# Root for all persisted state (conversations, config, analytics, cache, auth).
+# Same env var auth.py reads, so one override relocates everything.
+DATA_ROOT = os.getenv("DATA_DIR", "data")
+
 # Data directory for conversation storage
-DATA_DIR = "data/conversations"
+DATA_DIR = os.path.join(DATA_ROOT, "conversations")

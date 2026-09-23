@@ -8,6 +8,17 @@ const API_BASE = `http://${window.location.hostname}:8001`;
 
 const TOKEN_KEY = 'council_auth_token';
 
+// Every backend route except login/status/verify requires a bearer token, so
+// all requests go through here instead of relying on each call to add it.
+function apiFetch(url, options = {}) {
+  const token = localStorage.getItem(TOKEN_KEY);
+  const headers = new Headers(options.headers || {});
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  return fetch(url, { ...options, headers });
+}
+
 export const api = {
   getToken() {
     return localStorage.getItem(TOKEN_KEY);
@@ -34,7 +45,7 @@ export const api = {
    * Authenticate user with credentials.
    */
   async login(username, password) {
-    const response = await fetch(`${API_BASE}/api/auth/login`, {
+    const response = await apiFetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -55,7 +66,7 @@ export const api = {
     const token = this.getToken();
     if (!token) return { valid: false };
     try {
-      const response = await fetch(`${API_BASE}/api/auth/verify`, {
+      const response = await apiFetch(`${API_BASE}/api/auth/verify`, {
         headers: this.getAuthHeaders(),
       });
       if (!response.ok) {
@@ -73,7 +84,7 @@ export const api = {
    */
   async getAuthStatus() {
     try {
-      const response = await fetch(`${API_BASE}/api/auth/status`);
+      const response = await apiFetch(`${API_BASE}/api/auth/status`);
       if (!response.ok) return { auth_enabled: true, is_default_password: false };
       return await response.json();
     } catch {
@@ -85,7 +96,7 @@ export const api = {
    * Change admin password.
    */
   async changePassword(oldPassword, newPassword) {
-    const response = await fetch(`${API_BASE}/api/auth/change-password`, {
+    const response = await apiFetch(`${API_BASE}/api/auth/change-password`, {
       method: 'POST',
       headers: this.getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
@@ -117,7 +128,7 @@ export const api = {
     const url = tag
       ? `${API_BASE}/api/conversations?tag=${encodeURIComponent(tag)}`
       : `${API_BASE}/api/conversations`;
-    const response = await fetch(url, {
+    const response = await apiFetch(url, {
       headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
@@ -136,7 +147,7 @@ export const api = {
       ...(validCouncilId ? { council_id: validCouncilId } : {}),
       conversation_type: conversationType || 'deliberation',
     };
-    const response = await fetch(`${API_BASE}/api/conversations`, {
+    const response = await apiFetch(`${API_BASE}/api/conversations`, {
       method: 'POST',
       headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
@@ -154,7 +165,7 @@ export const api = {
    * Get all council profiles and active council ID.
    */
   async getCouncils() {
-    const response = await fetch(`${API_BASE}/api/councils`);
+    const response = await apiFetch(`${API_BASE}/api/councils`);
     if (!response.ok) {
       throw new Error('Failed to get councils');
     }
@@ -165,7 +176,7 @@ export const api = {
    * Get currently active council profile.
    */
   async getActiveCouncil() {
-    const response = await fetch(`${API_BASE}/api/councils/active`);
+    const response = await apiFetch(`${API_BASE}/api/councils/active`);
     if (!response.ok) {
       throw new Error('Failed to get active council');
     }
@@ -176,7 +187,7 @@ export const api = {
    * Activate a council profile by ID.
    */
   async activateCouncil(councilId) {
-    const response = await fetch(`${API_BASE}/api/councils/${encodeURIComponent(councilId)}/activate`, {
+    const response = await apiFetch(`${API_BASE}/api/councils/${encodeURIComponent(councilId)}/activate`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
     });
@@ -190,7 +201,7 @@ export const api = {
    * Create a new custom council profile.
    */
   async createCouncil(councilData) {
-    const response = await fetch(`${API_BASE}/api/councils`, {
+    const response = await apiFetch(`${API_BASE}/api/councils`, {
       method: 'POST',
       headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
@@ -208,7 +219,7 @@ export const api = {
    * Update a council profile.
    */
   async updateCouncil(councilId, updates) {
-    const response = await fetch(`${API_BASE}/api/councils/${encodeURIComponent(councilId)}`, {
+    const response = await apiFetch(`${API_BASE}/api/councils/${encodeURIComponent(councilId)}`, {
       method: 'PUT',
       headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
@@ -226,7 +237,7 @@ export const api = {
    * Delete a custom council profile.
    */
   async deleteCouncil(councilId) {
-    const response = await fetch(`${API_BASE}/api/councils/${encodeURIComponent(councilId)}`, {
+    const response = await apiFetch(`${API_BASE}/api/councils/${encodeURIComponent(councilId)}`, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
     });
@@ -241,7 +252,7 @@ export const api = {
    * Get all chat rosters and active roster ID.
    */
   async getChatRosters() {
-    const response = await fetch(`${API_BASE}/api/chat-rosters`);
+    const response = await apiFetch(`${API_BASE}/api/chat-rosters`);
     if (!response.ok) {
       throw new Error('Failed to get chat rosters');
     }
@@ -252,7 +263,7 @@ export const api = {
    * Get currently active chat roster.
    */
   async getActiveChatRoster() {
-    const response = await fetch(`${API_BASE}/api/chat-rosters/active`);
+    const response = await apiFetch(`${API_BASE}/api/chat-rosters/active`);
     if (!response.ok) {
       throw new Error('Failed to get active chat roster');
     }
@@ -263,7 +274,7 @@ export const api = {
    * Activate a chat roster by ID.
    */
   async activateChatRoster(rosterId) {
-    const response = await fetch(`${API_BASE}/api/chat-rosters/${encodeURIComponent(rosterId)}/activate`, {
+    const response = await apiFetch(`${API_BASE}/api/chat-rosters/${encodeURIComponent(rosterId)}/activate`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
     });
@@ -277,7 +288,7 @@ export const api = {
    * Create a new custom chat roster.
    */
   async createChatRoster(rosterData) {
-    const response = await fetch(`${API_BASE}/api/chat-rosters`, {
+    const response = await apiFetch(`${API_BASE}/api/chat-rosters`, {
       method: 'POST',
       headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
@@ -295,7 +306,7 @@ export const api = {
    * Update a chat roster.
    */
   async updateChatRoster(rosterId, updates) {
-    const response = await fetch(`${API_BASE}/api/chat-rosters/${encodeURIComponent(rosterId)}`, {
+    const response = await apiFetch(`${API_BASE}/api/chat-rosters/${encodeURIComponent(rosterId)}`, {
       method: 'PUT',
       headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
@@ -313,7 +324,7 @@ export const api = {
    * Delete a custom chat roster.
    */
   async deleteChatRoster(rosterId) {
-    const response = await fetch(`${API_BASE}/api/chat-rosters/${encodeURIComponent(rosterId)}`, {
+    const response = await apiFetch(`${API_BASE}/api/chat-rosters/${encodeURIComponent(rosterId)}`, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
     });
@@ -328,7 +339,7 @@ export const api = {
    * Get round table chat settings (models and injected custom prompt / user bio).
    */
   async getChatSettings() {
-    const response = await fetch(`${API_BASE}/api/chat-settings`);
+    const response = await apiFetch(`${API_BASE}/api/chat-settings`);
     if (!response.ok) {
       throw new Error('Failed to get chat settings');
     }
@@ -340,7 +351,7 @@ export const api = {
    * @param {{ models?: string[], system_prompt?: string }} settings
    */
   async updateChatSettings(settings) {
-    const response = await fetch(`${API_BASE}/api/chat-settings`, {
+    const response = await apiFetch(`${API_BASE}/api/chat-settings`, {
       method: 'POST',
       headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
@@ -358,7 +369,7 @@ export const api = {
    * Reset injected prompt to canonical English bio template.
    */
   async resetChatBio() {
-    const response = await fetch(`${API_BASE}/api/chat-settings/reset-bio`, {
+    const response = await apiFetch(`${API_BASE}/api/chat-settings/reset-bio`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
     });
@@ -372,7 +383,7 @@ export const api = {
    * Get all agent visual profiles (names, colors, avatar URLs).
    */
   async getAgentProfiles() {
-    const response = await fetch(`${API_BASE}/api/agent-profiles`, {
+    const response = await apiFetch(`${API_BASE}/api/agent-profiles`, {
       headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
@@ -386,7 +397,7 @@ export const api = {
    */
   async updateAgentProfile(modelId, profileData) {
     const cleanId = (modelId || '').split('@')[0].trim();
-    const response = await fetch(`${API_BASE}/api/agent-profiles/${cleanId}`, {
+    const response = await apiFetch(`${API_BASE}/api/agent-profiles/${cleanId}`, {
       method: 'PUT',
       headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
@@ -403,7 +414,7 @@ export const api = {
    * Switch the council bound to a specific conversation.
    */
   async updateConversationCouncil(conversationId, councilId) {
-    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/council`, {
+    const response = await apiFetch(`${API_BASE}/api/conversations/${conversationId}/council`, {
       method: 'PUT',
       headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
@@ -420,7 +431,7 @@ export const api = {
    * Get a specific conversation.
    */
   async getConversation(conversationId) {
-    const response = await fetch(
+    const response = await apiFetch(
       `${API_BASE}/api/conversations/${conversationId}`
     );
     if (!response.ok) {
@@ -434,7 +445,7 @@ export const api = {
    * @param {string} conversationId - The conversation ID
    */
   async deleteConversation(conversationId) {
-    const response = await fetch(
+    const response = await apiFetch(
       `${API_BASE}/api/conversations/${conversationId}`,
       {
         method: 'DELETE',
@@ -453,7 +464,7 @@ export const api = {
    * @param {string[]} tags - Array of tag strings
    */
   async updateTags(conversationId, tags) {
-    const response = await fetch(
+    const response = await apiFetch(
       `${API_BASE}/api/conversations/${conversationId}/tags`,
       {
         method: 'PUT',
@@ -473,7 +484,7 @@ export const api = {
    * Get all unique tags across all conversations.
    */
   async getAllTags() {
-    const response = await fetch(`${API_BASE}/api/tags`);
+    const response = await apiFetch(`${API_BASE}/api/tags`);
     if (!response.ok) {
       throw new Error('Failed to get tags');
     }
@@ -485,7 +496,7 @@ export const api = {
    * @returns {Promise<{council_models: string[], chairman_model: string}>}
    */
   async getConfig() {
-    const response = await fetch(`${API_BASE}/api/config`);
+    const response = await apiFetch(`${API_BASE}/api/config`);
     if (!response.ok) {
       throw new Error('Failed to get config');
     }
@@ -499,7 +510,7 @@ export const api = {
    * @returns {Promise<{council_models: string[], chairman_model: string}>}
    */
   async updateConfig(councilModels, chairmanModel) {
-    const response = await fetch(`${API_BASE}/api/config`, {
+    const response = await apiFetch(`${API_BASE}/api/config`, {
       method: 'PUT',
       headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
@@ -521,7 +532,7 @@ export const api = {
    * @returns {Promise<{council_models: string[], chairman_model: string}>}
    */
   async resetConfig() {
-    const response = await fetch(`${API_BASE}/api/config/reset`, {
+    const response = await apiFetch(`${API_BASE}/api/config/reset`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
     });
@@ -536,7 +547,7 @@ export const api = {
    * @returns {Promise<{models: string[]}>}
    */
   async getAvailableModels() {
-    const response = await fetch(`${API_BASE}/api/config/models`);
+    const response = await apiFetch(`${API_BASE}/api/config/models`);
     if (!response.ok) {
       throw new Error('Failed to get available models');
     }
@@ -548,7 +559,7 @@ export const api = {
    * @returns {Promise<{skills: Array<{id: string, title: string, description: string, category: string, badge: string}>}>}
    */
   async getSkills() {
-    const response = await fetch(`${API_BASE}/api/skills`, {
+    const response = await apiFetch(`${API_BASE}/api/skills`, {
       headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
@@ -563,7 +574,7 @@ export const api = {
    * @returns {Promise<{id: string, title: string, category: string, badge: string, description: string, guidelines: string, content: string}>}
    */
   async getSkillDetails(skillId) {
-    const response = await fetch(`${API_BASE}/api/skills/${encodeURIComponent(skillId)}`, {
+    const response = await apiFetch(`${API_BASE}/api/skills/${encodeURIComponent(skillId)}`, {
       headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
@@ -576,7 +587,7 @@ export const api = {
    * Get list of discoverable local workspace projects for context evaluation.
    */
   async getWorkspaces() {
-    const response = await fetch(`${API_BASE}/api/workspaces`);
+    const response = await apiFetch(`${API_BASE}/api/workspaces`);
     if (!response.ok) {
       throw new Error('Failed to get workspaces');
     }
@@ -602,7 +613,7 @@ export const api = {
       body.use_research = useResearch;
     }
 
-    const response = await fetch(
+    const response = await apiFetch(
       `${API_BASE}/api/conversations/${conversationId}/message`,
       {
         method: 'POST',
@@ -627,7 +638,7 @@ export const api = {
    * @returns {Promise<{models: Object, summary: Object}>}
    */
   async getAnalytics() {
-    const response = await fetch(`${API_BASE}/api/analytics`);
+    const response = await apiFetch(`${API_BASE}/api/analytics`);
     if (!response.ok) {
       throw new Error('Failed to get analytics');
     }
@@ -640,7 +651,7 @@ export const api = {
    * @returns {Promise<{queries: Array}>}
    */
   async getRecentQueries(limit = 50) {
-    const response = await fetch(`${API_BASE}/api/analytics/recent?limit=${limit}`);
+    const response = await apiFetch(`${API_BASE}/api/analytics/recent?limit=${limit}`);
     if (!response.ok) {
       throw new Error('Failed to get recent queries');
     }
@@ -652,7 +663,7 @@ export const api = {
    * @returns {Promise<{models: Object, total_syntheses: number}>}
    */
   async getChairmanAnalytics() {
-    const response = await fetch(`${API_BASE}/api/analytics/chairman`);
+    const response = await apiFetch(`${API_BASE}/api/analytics/chairman`);
     if (!response.ok) {
       throw new Error('Failed to get chairman analytics');
     }
@@ -665,7 +676,7 @@ export const api = {
    * @returns {Promise<{status: string, message: string}>}
    */
   async clearAnalytics() {
-    const response = await fetch(`${API_BASE}/api/analytics`, {
+    const response = await apiFetch(`${API_BASE}/api/analytics`, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
     });
@@ -684,7 +695,7 @@ export const api = {
    * @returns {Promise<{weights: Object, has_historical_data: boolean, models_with_history: number, weight_range: Object, explanation: string}>}
    */
   async getWeights() {
-    const response = await fetch(`${API_BASE}/api/weights`);
+    const response = await apiFetch(`${API_BASE}/api/weights`);
     if (!response.ok) {
       throw new Error('Failed to get weights');
     }
@@ -697,7 +708,7 @@ export const api = {
    * @returns {Promise<{weight: number, normalized_weight: number, win_rate: number, average_rank: number, total_queries: number, has_history: boolean, weight_explanation: string}>}
    */
   async getModelWeight(model) {
-    const response = await fetch(`${API_BASE}/api/weights/${encodeURIComponent(model)}`);
+    const response = await apiFetch(`${API_BASE}/api/weights/${encodeURIComponent(model)}`);
     if (!response.ok) {
       throw new Error('Failed to get model weight');
     }
@@ -713,7 +724,7 @@ export const api = {
    * @returns {Promise<{pools: Object, categories: Object}>}
    */
   async getRoutingPools() {
-    const response = await fetch(`${API_BASE}/api/routing/pools`);
+    const response = await apiFetch(`${API_BASE}/api/routing/pools`);
     if (!response.ok) {
       throw new Error('Failed to get routing pools');
     }
@@ -726,7 +737,7 @@ export const api = {
    * @returns {Promise<{category: string, confidence: number, reasoning: string, models: string[], is_routed: boolean}>}
    */
   async classifyQuestion(query) {
-    const response = await fetch(`${API_BASE}/api/routing/classify?query=${encodeURIComponent(query)}`, {
+    const response = await apiFetch(`${API_BASE}/api/routing/classify?query=${encodeURIComponent(query)}`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
     });
@@ -745,7 +756,7 @@ export const api = {
    * @returns {Promise<{tier1_models: string[], tier2_models: string[], thresholds: Object, description: Object, escalation_rules: string[]}>}
    */
   async getEscalationTiers() {
-    const response = await fetch(`${API_BASE}/api/escalation/tiers`);
+    const response = await apiFetch(`${API_BASE}/api/escalation/tiers`);
     if (!response.ok) {
       throw new Error('Failed to get escalation tiers');
     }
@@ -757,7 +768,7 @@ export const api = {
    * @returns {Promise<{confidence_threshold: number, min_confidence_threshold: number, agreement_threshold: number}>}
    */
   async getEscalationThresholds() {
-    const response = await fetch(`${API_BASE}/api/escalation/thresholds`);
+    const response = await apiFetch(`${API_BASE}/api/escalation/thresholds`);
     if (!response.ok) {
       throw new Error('Failed to get escalation thresholds');
     }
@@ -773,7 +784,7 @@ export const api = {
    * @returns {Promise<{default_max_iterations: number, min_critiques_for_revision: number, non_substantive_phrases: string[]}>}
    */
   async getRefinementConfig() {
-    const response = await fetch(`${API_BASE}/api/refinement/config`);
+    const response = await apiFetch(`${API_BASE}/api/refinement/config`);
     if (!response.ok) {
       throw new Error('Failed to get refinement config');
     }
@@ -789,7 +800,7 @@ export const api = {
    * @returns {Promise<{adversary_model: string, severity_levels: string[], revision_threshold: string[], no_issues_phrases: string[]}>}
    */
   async getAdversaryConfig() {
-    const response = await fetch(`${API_BASE}/api/adversary/config`);
+    const response = await apiFetch(`${API_BASE}/api/adversary/config`);
     if (!response.ok) {
       throw new Error('Failed to get adversary config');
     }
@@ -805,7 +816,7 @@ export const api = {
    * @returns {Promise<{default_num_rounds: number, include_rebuttal: boolean, round_names: string[], description: string}>}
    */
   async getDebateConfig() {
-    const response = await fetch(`${API_BASE}/api/debate/config`);
+    const response = await apiFetch(`${API_BASE}/api/debate/config`);
     if (!response.ok) {
       throw new Error('Failed to get debate config');
     }
@@ -821,7 +832,7 @@ export const api = {
    * @returns {Promise<{default_max_sub_questions: number, complexity_threshold: number, decomposer_model: string, complexity_indicators: string[], description: string}>}
    */
   async getDecompositionConfig() {
-    const response = await fetch(`${API_BASE}/api/decomposition/config`);
+    const response = await apiFetch(`${API_BASE}/api/decomposition/config`);
     if (!response.ok) {
       throw new Error('Failed to get decomposition config');
     }
@@ -837,7 +848,7 @@ export const api = {
    * @returns {Promise<{similarity_threshold: number, max_cache_entries: number, use_api_embeddings: boolean, embedding_model: string, cache_dir: string, description: string}>}
    */
   async getCacheConfig() {
-    const response = await fetch(`${API_BASE}/api/cache/config`);
+    const response = await apiFetch(`${API_BASE}/api/cache/config`);
     if (!response.ok) {
       throw new Error('Failed to get cache config');
     }
@@ -849,7 +860,7 @@ export const api = {
    * @returns {Promise<{cache_size: number, max_entries: number, similarity_threshold: number, total_entry_hits: number, stats: Object}>}
    */
   async getCacheInfo() {
-    const response = await fetch(`${API_BASE}/api/cache/info`);
+    const response = await apiFetch(`${API_BASE}/api/cache/info`);
     if (!response.ok) {
       throw new Error('Failed to get cache info');
     }
@@ -861,7 +872,7 @@ export const api = {
    * @returns {Promise<{total_queries: number, cache_hits: number, cache_misses: number, hit_rate: number, total_cost_saved: number, total_time_saved_ms: number}>}
    */
   async getCacheStats() {
-    const response = await fetch(`${API_BASE}/api/cache/stats`);
+    const response = await apiFetch(`${API_BASE}/api/cache/stats`);
     if (!response.ok) {
       throw new Error('Failed to get cache stats');
     }
@@ -875,7 +886,7 @@ export const api = {
    * @returns {Promise<{entries: Array, total: number, limit: number, offset: number, has_more: boolean}>}
    */
   async getCacheEntries(limit = 50, offset = 0) {
-    const response = await fetch(`${API_BASE}/api/cache/entries?limit=${limit}&offset=${offset}`);
+    const response = await apiFetch(`${API_BASE}/api/cache/entries?limit=${limit}&offset=${offset}`);
     if (!response.ok) {
       throw new Error('Failed to get cache entries');
     }
@@ -888,7 +899,7 @@ export const api = {
    * @returns {Promise<{success: boolean, entries_cleared: number, message: string}>}
    */
   async clearCache() {
-    const response = await fetch(`${API_BASE}/api/cache`, {
+    const response = await apiFetch(`${API_BASE}/api/cache`, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
     });
@@ -903,7 +914,7 @@ export const api = {
    * @returns {Promise<{success: boolean, message: string}>}
    */
   async clearCacheStats() {
-    const response = await fetch(`${API_BASE}/api/cache/stats`, {
+    const response = await apiFetch(`${API_BASE}/api/cache/stats`, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
     });
@@ -919,7 +930,7 @@ export const api = {
    * @returns {Promise<{success: boolean, deleted: string, message: string}>}
    */
   async deleteCacheEntry(cacheId) {
-    const response = await fetch(`${API_BASE}/api/cache/entries/${encodeURIComponent(cacheId)}`, {
+    const response = await apiFetch(`${API_BASE}/api/cache/entries/${encodeURIComponent(cacheId)}`, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
     });
@@ -941,7 +952,7 @@ export const api = {
     if (systemPrompt) {
       url += `&system_prompt=${encodeURIComponent(systemPrompt)}`;
     }
-    const response = await fetch(url, { method: 'POST', headers: this.getAuthHeaders() });
+    const response = await apiFetch(url, { method: 'POST', headers: this.getAuthHeaders() });
     if (!response.ok) {
       throw new Error('Failed to search cache');
     }
@@ -953,7 +964,7 @@ export const api = {
    * @returns {Promise<{default_model: string, embedding_dimension: number, hash_dimension: number, api_url: string, description: string}>}
    */
   async getEmbeddingsConfig() {
-    const response = await fetch(`${API_BASE}/api/embeddings/config`);
+    const response = await apiFetch(`${API_BASE}/api/embeddings/config`);
     if (!response.ok) {
       throw new Error('Failed to get embeddings config');
     }
@@ -1021,7 +1032,7 @@ export const api = {
       body.use_research = useResearch;
     }
 
-    const response = await fetch(
+    const response = await apiFetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
         method: 'POST',
@@ -1069,7 +1080,7 @@ export const api = {
    */
   async subscribeToConversationEvents(conversationId, onEvent) {
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_BASE}/api/conversations/${conversationId}/events`,
         {
           method: 'GET',
@@ -1120,7 +1131,7 @@ export const api = {
    * @param {Object} options - Search channel options
    */
   async scoutCandidates(query, maxCandidates = 6, options = {}) {
-    const response = await fetch(`${API_BASE}/api/research/scout`, {
+    const response = await apiFetch(`${API_BASE}/api/research/scout`, {
       method: 'POST',
       headers: this.getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
@@ -1143,7 +1154,7 @@ export const api = {
    * @param {string} conversationId
    */
   async abortDeliberation(conversationId) {
-    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/abort`, {
+    const response = await apiFetch(`${API_BASE}/api/conversations/${conversationId}/abort`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
     });
@@ -1157,7 +1168,7 @@ export const api = {
    * Get all actively running deliberation conversation IDs.
    */
   async getActiveDeliberations() {
-    const response = await fetch(`${API_BASE}/api/conversations/active`);
+    const response = await apiFetch(`${API_BASE}/api/conversations/active`);
     if (!response.ok) {
       throw new Error('Failed to fetch active deliberations');
     }
@@ -1168,7 +1179,7 @@ export const api = {
    * List all registered custom LLM providers.
    */
   async getProviders() {
-    const response = await fetch(`${API_BASE}/api/providers`);
+    const response = await apiFetch(`${API_BASE}/api/providers`);
     if (!response.ok) {
       throw new Error('Failed to fetch custom providers');
     }
@@ -1180,7 +1191,7 @@ export const api = {
    * @param {Object} providerData
    */
   async saveProvider(providerData) {
-    const response = await fetch(`${API_BASE}/api/providers`, {
+    const response = await apiFetch(`${API_BASE}/api/providers`, {
       method: 'POST',
       headers: this.getAuthHeaders({
         'Content-Type': 'application/json',
@@ -1199,7 +1210,7 @@ export const api = {
    * @param {string} providerId
    */
   async deleteProvider(providerId) {
-    const response = await fetch(`${API_BASE}/api/providers/${encodeURIComponent(providerId)}`, {
+    const response = await apiFetch(`${API_BASE}/api/providers/${encodeURIComponent(providerId)}`, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
     });
@@ -1214,7 +1225,7 @@ export const api = {
    * @param {Object} data { base_url, preset, model_id, api_key }
    */
   async testProvider(data) {
-    const response = await fetch(`${API_BASE}/api/providers/test`, {
+    const response = await apiFetch(`${API_BASE}/api/providers/test`, {
       method: 'POST',
       headers: this.getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
@@ -1230,7 +1241,7 @@ export const api = {
    * Get standard provider presets.
    */
   async getProviderPresets() {
-    const response = await fetch(`${API_BASE}/api/providers/presets`);
+    const response = await apiFetch(`${API_BASE}/api/providers/presets`);
     if (!response.ok) {
       throw new Error('Failed to fetch provider presets');
     }
@@ -1242,7 +1253,7 @@ export const api = {
    * @param {Object} data { base_url, preset, api_key }
    */
   async fetchProviderModels(data) {
-    const response = await fetch(`${API_BASE}/api/providers/fetch-models`, {
+    const response = await apiFetch(`${API_BASE}/api/providers/fetch-models`, {
       method: 'POST',
       headers: this.getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
@@ -1259,7 +1270,7 @@ export const api = {
    * @param {string} providerId
    */
   async pingProvider(providerId) {
-    const response = await fetch(`${API_BASE}/api/providers/ping/${encodeURIComponent(providerId)}`, {
+    const response = await apiFetch(`${API_BASE}/api/providers/ping/${encodeURIComponent(providerId)}`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
     });
@@ -1273,7 +1284,7 @@ export const api = {
    * Ping all system and custom providers concurrently.
    */
   async pingAllProviders() {
-    const response = await fetch(`${API_BASE}/api/providers/ping-all`, {
+    const response = await apiFetch(`${API_BASE}/api/providers/ping-all`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
     });
