@@ -67,6 +67,7 @@ export default function Stage1({
   aggregateConfidence,
   streamingResponses,
   streamingReasoning,
+  streamingTools,
   isStreaming,
   routingInfo,
   escalationInfo,
@@ -90,12 +91,13 @@ export default function Stage1({
       response: streaming[model] || '',
       confidence: null,
       reasoning_details: streamingReasoning?.[model] || null,
+      tools_executed: streamingTools?.[model] || [],
       isStreaming: true,
     }));
 
     // Combine completed and streaming responses
     return [...completed, ...streamingPlaceholders];
-  }, [responses, streamingResponses, streamingReasoning]);
+  }, [responses, streamingResponses, streamingReasoning, streamingTools]);
 
   // Auto-select first streaming model if no responses yet
   useEffect(() => {
@@ -228,6 +230,23 @@ export default function Stage1({
             <span className="reasoning-model-badge">Reasoning Model</span>
           )}
         </div>
+
+        {/* Autonomous Tool Execution Dossier */}
+        {currentResponse?.tools_executed && currentResponse.tools_executed.length > 0 && (
+          <div className="stage1-tools-container">
+            <span className="stage1-tools-title">Tools Used:</span>
+            {currentResponse.tools_executed.map((t, idx) => {
+              const argStr = t.arguments?.package_query || t.arguments?.query || t.arguments?.target_workspace || t.arguments?.file_path || (typeof t.arguments === 'string' ? t.arguments : '');
+              return (
+                <span key={idx} className="stage1-tool-chip" title={typeof t.arguments === 'object' ? JSON.stringify(t.arguments, null, 2) : String(t.arguments || '')}>
+                  <span className="stage1-tool-icon">🛠️</span>
+                  <span className="stage1-tool-name">{t.tool}</span>
+                  {argStr && <span className="stage1-tool-arg">{argStr}</span>}
+                </span>
+              );
+            })}
+          </div>
+        )}
 
         {/* Chain-of-Thought Section (structured view) */}
         {hasCot && !isCurrentStreaming && (

@@ -38,24 +38,24 @@ export default function AccountModal({ isOpen, onClose, currentUser = 'admin' })
     setSuccess(null);
 
     if (!oldPassword) {
-      setError('Lütfen mevcut şifrenizi girin.');
+      setError('Please enter your current password.');
       return;
     }
 
     if (newPassword.length < 6) {
-      setError('Yeni şifre en az 6 karakter olmalıdır.');
+      setError('New password must be at least 6 characters.');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError('Yeni şifreler birbiriyle eşleşmiyor.');
+      setError('New passwords do not match.');
       return;
     }
 
     setLoading(true);
     try {
       await api.changePassword(oldPassword, newPassword);
-      setSuccess('Şifreniz başarıyla güncellendi! Yeni oturum anahtarınız kaydedildi.');
+      setSuccess('Password updated successfully! New session token saved.');
       setOldPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -63,7 +63,7 @@ export default function AccountModal({ isOpen, onClose, currentUser = 'admin' })
         onClose();
       }, 1800);
     } catch (err) {
-      setError(err.message || 'Şifre güncellenirken bir hata oluştu.');
+      setError(err.message || 'An error occurred while updating the password.');
     } finally {
       setLoading(false);
     }
@@ -81,11 +81,11 @@ export default function AccountModal({ isOpen, onClose, currentUser = 'admin' })
         <div className="account-modal-header">
           <div className="account-modal-title-row">
             <div>
-              <h2 id="account-modal-title">Hesap & Şifre Yönetimi</h2>
-              <p className="account-subtitle">Aktif kullanıcı: <strong>{currentUser}</strong></p>
+              <h2 id="account-modal-title">Account & Password Management</h2>
+              <p className="account-subtitle">Active user: <strong>{currentUser}</strong></p>
             </div>
           </div>
-          <button className="account-close-btn" onClick={onClose} title="Kapat (Esc)">✕</button>
+          <button className="account-close-btn" onClick={onClose} title="Close (Esc)">✕</button>
         </div>
 
         {error && (
@@ -102,13 +102,13 @@ export default function AccountModal({ isOpen, onClose, currentUser = 'admin' })
 
         <form onSubmit={handleSubmit} className="account-form">
           <div className="account-form-group">
-            <label htmlFor="old-password">Mevcut Şifre</label>
+            <label htmlFor="old-password">Current Password</label>
             <input
               id="old-password"
               type="password"
               value={oldPassword}
               onChange={(e) => setOldPassword(e.target.value)}
-              placeholder="Mevcut şifrenizi girin"
+              placeholder="Enter current password"
               autoComplete="current-password"
               required
               disabled={loading}
@@ -116,13 +116,13 @@ export default function AccountModal({ isOpen, onClose, currentUser = 'admin' })
           </div>
 
           <div className="account-form-group">
-            <label htmlFor="new-password">Yeni Şifre</label>
+            <label htmlFor="new-password">New Password</label>
             <input
               id="new-password"
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="En az 6 karakter"
+              placeholder="At least 6 characters"
               autoComplete="new-password"
               required
               disabled={loading}
@@ -130,13 +130,13 @@ export default function AccountModal({ isOpen, onClose, currentUser = 'admin' })
           </div>
 
           <div className="account-form-group">
-            <label htmlFor="confirm-password">Yeni Şifre (Tekrar)</label>
+            <label htmlFor="confirm-password">Confirm New Password</label>
             <input
               id="confirm-password"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Yeni şifrenizi tekrar girin"
+              placeholder="Re-enter new password"
               autoComplete="new-password"
               required
               disabled={loading}
@@ -150,21 +150,21 @@ export default function AccountModal({ isOpen, onClose, currentUser = 'admin' })
               onClick={onClose}
               disabled={loading}
             >
-              İptal
+              Cancel
             </button>
             <button
               type="submit"
               className="account-btn-submit"
               disabled={loading}
             >
-              {loading ? 'Güncelleniyor...' : 'Şifreyi Güncelle'}
+              {loading ? 'Updating...' : 'Update Password'}
             </button>
           </div>
         </form>
 
         <div className="account-modal-footer">
           <span className="footer-hint">
-            Yeni şifreniz kalıcı depolama birimine (data volume) güvenli PBKDF2 hash ile kaydedilir.
+            Your new password is encrypted and securely stored using PBKDF2 hashing.
           </span>
         </div>
       </div>

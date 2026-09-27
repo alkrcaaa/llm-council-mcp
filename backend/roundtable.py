@@ -9,8 +9,8 @@ without the bureaucratic 3-stage formal deliberation or ADR pipeline.
 import re
 import asyncio
 from datetime import datetime
-from typing import List, Dict, Any, Tuple, AsyncGenerator
-from .openrouter import query_model_streaming
+from typing import List, Dict, Any, Tuple, AsyncGenerator, Optional
+from .openrouter import query_model_streaming, query_model
 from . import storage
 
 
@@ -135,6 +135,8 @@ def format_roundtable_prompt(
     user_name: str = "User",
     custom_context: str = "",
     max_history_turns: int = 6,
+    lead_model: Optional[str] = None,
+    custom_model_prompt: Optional[str] = None,
 ) -> List[Dict[str, str]]:
     """
     Build the message context for a specific model participating in the round table.
@@ -147,22 +149,53 @@ def format_roundtable_prompt(
     peer_names = [short_model_name(m) for m in all_models if m != current_model]
     peers_str = ", ".join(peer_names) if peer_names else "none"
 
-    system_content = (
-        f"You are {current_short} participating in an open, direct, and unconstrained round-table "
-        f"group chat with {user_name} and your AI colleagues ({peers_str}).\n\n"
-        f"Conversation Guidelines:\n"
-        f"- CRITICAL IDENTITY RULE: Speak ONLY as yourself ({current_short}). NEVER impersonate, script, roleplay, or generate dialogue turns for your colleagues ({peers_str}). Provide ONLY your own single turn response. If you want a colleague to answer or take the next turn, address them with an @mention (e.g. @colleague) and yield the turn — they are real models in this room and will answer in their own turn.\n"
-        f"- Converse naturally, directly, and authentically, as in a team WhatsApp or Discord chat.\n"
-        f"- Keep your response punchy, genuine, and concise (typically 1 to 3 short paragraphs). "
-        f"Do NOT write lengthy formal essays, decision matrices, or structured ADRs unless explicitly asked.\n"
-        f"- You are encouraged to react to, agree with, politely challenge, or riff on what your colleagues have said.\n"
-        f"- If {user_name} tagged you directly with an @mention, answer them directly.\n"
-        f"- If another colleague tagged you (e.g. @{current_short}), answer your colleague directly while keeping {user_name} in the loop.\n"
-        f"- You may also tag a colleague with @mention (e.g. @qwen3.6-27b, @antigravity, @claude-code) if you specifically need their perspective or answer.\n"
-        f"- When a question, handshake, or exchange is complete, summarize or sign off WITHOUT an @mention so the conversation naturally concludes.\n"
-        f"- If {user_name} addressed the whole room, offer your own unique angle without repeating what others already said.\n"
-        f"- Always respond in the language used in the room."
+    is_lead = False
+    lead_name = ""
+    if lead_model:
+        lead_name = short_model_name(lead_model)
+        is_lead = (current_model == lead_model or 
+                   current_model.split("@")[0] == lead_model.split("@")[0] or
+                   current_short.lower() == lead_name.lower())
+
+    if is_lead:
+        role_header = (
+            f"You are {current_short}, the designated TEAM LEAD & LEAD ARCHITECT of this engineering round table.\n"
+            f"Colleagues at the table: {peers_str}.\n"
+            f"Your responsibility: Steer the technical discussion, synthesize the team's perspectives, "
+            f"evaluate trade-offs objectively, and deliver cohesive, authoritative conclusions to {user_name}.\n"
+            f"Listen to your specialists; never be authoritarian. If a colleague raises valid risks or better alternatives, "
+            f"acknowledge them and incorporate them into the final engineering decision."
+        )
+    else:
+        lead_reference = f"The designated Team Lead is {lead_name}." if lead_name else "A Team Lead coordinates the room."
+        role_header = (
+            f"You are {current_short}, a Senior Engineering Specialist participating in this round table.\n"
+            f"Team members: {peers_str}. {lead_reference}\n"
+            f"Your responsibility: Provide deep, uncompromised domain expertise from your perspective."
+        )
+
+    anti_sycophancy_rules = (
+        "- STRICT ANTI-SYCOPHANCY RULE (YALAKALIK YASAĞI): Do NOT be a yes-man or sycophant. "
+        "Never post empty agreement, superficial flattery, or polite deferrals (e.g. 'I agree with the lead', "
+        "'Well said', or 'I am waiting for my turn'). Such replies waste context and are strictly forbidden.\n"
+        "- EVIDENCE-BASED BACKBONE (DİK DURUŞ): Defend your technical position with first principles, "
+        "RFC standards, concrete benchmark numbers, real code trade-offs, or production failure modes. "
+        "If the Team Lead or a colleague proposes something flawed, suboptimal, or high-risk, "
+        "CHALLENGE THEM RESPECTFULLY BUT DIRECTLY with concrete evidence and provide the superior alternative.\n"
+        "- MENTION & TURN DISCIPLINE: When referring to a colleague in third person or outlining future plans "
+        "(e.g. 'as Claude noted', 'I will check with Qwen later'), write their name in PLAIN TEXT without the '@' prefix. "
+        "ONLY use an '@mention' tag (e.g. @model) if you are directly addressing them to take the microphone and answer right now.\n"
+        "- CRITICAL IDENTITY RULE: Speak ONLY as yourself ({current_short}). NEVER impersonate, script, roleplay, or generate dialogue turns for your colleagues ({peers_str}). Provide ONLY your own single turn response.\n"
+        "- Converse naturally, directly, and punchily (typically 1 to 3 focused paragraphs). Skip formal essays unless asked.\n"
+        "- If {user_name} tagged you directly with an @mention, answer them directly.\n"
+        "- Always respond in the language used in the room (Turkish/English)."
     )
+
+    custom_role_section = ""
+    if custom_model_prompt and custom_model_prompt.strip():
+        custom_role_section = f"\n\n--- Assigned Domain Role & Directives for {current_short} (from UI) ---\n{custom_model_prompt.strip()}\n-------------------------------------------------------------"
+
+    system_content = f"{role_header}\n\nCore Guidelines:\n{anti_sycophancy_rules}{custom_role_section}"
 
     if custom_context and custom_context.strip():
         system_content += f"\n\n--- Injected User Profile & Guidelines ---\n{custom_context.strip()}\n------------------------------------------"
@@ -217,24 +250,65 @@ def format_roundtable_prompt(
 
 async def stream_single_model_roundtable(
     model: str,
-    messages: List[Dict[str, str]],
+    messages: List[Dict[str, Any]],
     out_queue: asyncio.Queue,
     timeout: float = 120.0,
+    target_workspace: Optional[str] = None,
 ):
-    """Worker task that queries a single model and pushes SSE events into out_queue."""
+    """Worker task that queries a single model with tool support and pushes SSE events into out_queue."""
     try:
-        async for chunk in query_model_streaming(model, messages, timeout=timeout):
+        import json
+        from .tools import get_tools_for_model, execute_tool
+
+        current_messages = list(messages)
+        tools = get_tools_for_model(model, is_roundtable=True, target_workspace=target_workspace)
+
+        if tools:
+            first_pass = await query_model(model, current_messages, timeout=30.0, tools=tools)
+            if first_pass and first_pass.get("tool_calls"):
+                current_messages.append({
+                    "role": "assistant",
+                    "content": first_pass.get("content") or "",
+                    "tool_calls": first_pass["tool_calls"],
+                })
+
+                for tc in first_pass["tool_calls"]:
+                    func = tc.get("function", {})
+                    name = func.get("name", "")
+                    call_id = tc.get("id", f"call_{name}")
+                    raw_args = func.get("arguments", "{}")
+                    args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
+
+                    if target_workspace and "target_workspace" not in args:
+                        args["target_workspace"] = target_workspace
+
+                    await out_queue.put({
+                        "type": "tool_call",
+                        "model": model,
+                        "tool": name,
+                        "arguments": args,
+                    })
+
+                    tool_res = await execute_tool(name, args)
+                    current_messages.append({
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "name": name,
+                        "content": tool_res,
+                    })
+
+        async for chunk in query_model_streaming(model, current_messages, timeout=timeout):
             await out_queue.put(chunk)
     except Exception as e:
         await out_queue.put({
             "type": "error",
             "model": model,
-            "error": str(e)
+            "error": str(e),
         })
     finally:
         await out_queue.put({
             "_internal_done": True,
-            "model": model
+            "model": model,
         })
 
 
@@ -242,7 +316,9 @@ async def run_roundtable_stream(
     conversation_id: str,
     content: str,
     user_name: str = "User",
-    max_hops: int = 8,
+    max_hops: int = 2,
+    target_workspace: Optional[str] = None,
+    workspace_dossier: Optional[str] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
     Execute a round-table message turn and yield SSE-ready events.
@@ -269,7 +345,7 @@ async def run_roundtable_stream(
     if not target_models:
         target_models = list(council_models)
 
-    # Append user message
+    # Append user message (clean, without raw dossier pollution)
     user_msg = {
         "role": "user",
         "sender_name": user_name,
@@ -281,12 +357,19 @@ async def run_roundtable_stream(
     conversation["messages"].append(user_msg)
     storage.save_conversation(conversation)
 
-    # Fetch custom context from conversation or active chat settings
+    # Fetch active roster to identify Lead Model and custom model prompts
+    from . import councils
+    active_roster = councils.get_active_chat_roster() or {}
+    lead_model = active_roster.get("lead_model") or (council_models[0] if council_models else None)
+    model_prompts = active_roster.get("model_prompts") or {}
+
     custom_context = conversation.get("system_prompt")
     if not custom_context:
-        from . import councils
         chat_cfg = councils.get_chat_settings()
         custom_context = chat_cfg.get("system_prompt", "")
+
+    if workspace_dossier:
+        custom_context = f"{custom_context}\n\n{workspace_dossier}" if custom_context else workspace_dossier
 
     current_targets = list(target_models)
     hop = 1
@@ -313,8 +396,10 @@ async def run_roundtable_stream(
         model_buffers: Dict[str, str] = {m: "" for m in current_targets}
         model_usages: Dict[str, Dict[str, Any]] = {}
         model_costs: Dict[str, Dict[str, Any]] = {}
+        model_tools: Dict[str, List[Dict[str, Any]]] = {m: [] for m in current_targets}
 
         for model in current_targets:
+            custom_model_prompt = model_prompts.get(model) or model_prompts.get(model.split("@")[0])
             if hop == 1:
                 history_for_models = conversation["messages"][:-1]
                 prompt_messages = format_roundtable_prompt(
@@ -324,6 +409,8 @@ async def run_roundtable_stream(
                     user_content=content,
                     user_name=user_name,
                     custom_context=custom_context,
+                    lead_model=lead_model,
+                    custom_model_prompt=custom_model_prompt,
                 )
             else:
                 # In subsequent hops, all previous dialogue turns are already saved in storage
@@ -336,10 +423,13 @@ async def run_roundtable_stream(
                     user_content="",
                     user_name=user_name,
                     custom_context=custom_context,
+                    lead_model=lead_model,
+                    custom_model_prompt=custom_model_prompt,
                 )
 
+            effective_ws = target_workspace or conversation.get("target_workspace")
             task = asyncio.create_task(
-                stream_single_model_roundtable(model, prompt_messages, chunk_queue)
+                stream_single_model_roundtable(model, prompt_messages, chunk_queue, target_workspace=effective_ws)
             )
             tasks.append(task)
 
@@ -364,6 +454,21 @@ async def run_roundtable_stream(
                     "model": model,
                     "content": tok,
                 }
+            elif chunk_type == "tool_call":
+                tool_data = {
+                    "tool": chunk.get("tool"),
+                    "arguments": chunk.get("arguments"),
+                }
+                if model not in model_tools:
+                    model_tools[model] = []
+                model_tools[model].append(tool_data)
+                yield {
+                    "type": "roundtable_tool_call",
+                    "model": model,
+                    "tool": chunk.get("tool"),
+                    "arguments": chunk.get("arguments"),
+                    "hop": hop,
+                }
             elif chunk_type == "complete":
                 model_buffers[model] = chunk.get("content", model_buffers[model])
                 if "usage" in chunk:
@@ -379,6 +484,7 @@ async def run_roundtable_stream(
                     "created_at": datetime.utcnow().isoformat(),
                     "usage": model_usages.get(model),
                     "cost": model_costs.get(model),
+                    "tools_executed": model_tools.get(model, []),
                 }
                 curr_conv = storage.get_conversation(conversation_id)
                 if curr_conv:
@@ -395,6 +501,7 @@ async def run_roundtable_stream(
                     "content": model_buffers[model],
                     "usage": model_usages.get(model),
                     "cost": model_costs.get(model),
+                    "tools_executed": model_tools.get(model, []),
                     "hop": hop,
                 }
             elif chunk_type == "error":
@@ -410,14 +517,22 @@ async def run_roundtable_stream(
         # Wait for all background worker tasks to conclude for this hop
         await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Check for peer mentions to chain into next hop
+        # Check for peer mentions to chain into next hop (only if not already broadcast and within hop limit)
         next_targets: List[str] = []
-        for m in current_targets:
-            reply_text = model_buffers.get(m, "")
-            peer_mentions = parse_peer_mentions(reply_text, council_models, author_model=m)
-            for pm in peer_mentions:
-                if pm not in next_targets:
-                    next_targets.append(pm)
+        if hop < max_hops and not is_broadcast:
+            for m in current_targets:
+                reply_text = model_buffers.get(m, "")
+                peer_mentions = parse_peer_mentions(reply_text, council_models, author_model=m)
+                # Take at most 1 peer mention per speaker to avoid concurrent chain explosions
+                for pm in peer_mentions[:1]:
+                    # Guard: Never re-trigger a model that already completed a response in this turn
+                    if pm not in all_completed_models and pm not in next_targets:
+                        next_targets.append(pm)
+                        break
+
+            # Limit next_targets to 1 model per hop during autonomous chaining
+            if len(next_targets) > 1:
+                next_targets = next_targets[:1]
 
         current_targets = next_targets
         hop += 1

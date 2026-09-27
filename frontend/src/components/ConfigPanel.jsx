@@ -221,6 +221,10 @@ export default function ConfigPanel({
   const [newRosterModelInput, setNewRosterModelInput] = useState('');
   const [newRosterModelSkill, setNewRosterModelSkill] = useState('');
   const [isSavingRoster, setIsSavingRoster] = useState(false);
+  const [rosterLeadModel, setRosterLeadModel] = useState('');
+  const [rosterModelPrompts, setRosterModelPrompts] = useState({});
+  const [expandedPromptModel, setExpandedPromptModel] = useState(null);
+  const [isLoadingPresets, setIsLoadingPresets] = useState(false);
 
   // -------------------------------------------------------------------------
   // 2. Custom & System Providers State
@@ -408,13 +412,15 @@ export default function ConfigPanel({
       ]);
       setSavedRosters(rosterRes.rosters || []);
       setActiveRosterId(rosterRes.active_roster_id || '');
+      const active = (rosterRes.rosters || []).find((r) => r.id === rosterRes.active_roster_id) || rosterRes.rosters?.[0];
+      if (active) {
+        setRosterLeadModel(active.lead_model || '');
+        setRosterModelPrompts(active.model_prompts || {});
+      }
       if (settingsRes && settingsRes.models && settingsRes.models.length > 0) {
         setRosterModels(settingsRes.models);
-      } else {
-        const active = (rosterRes.rosters || []).find((r) => r.id === rosterRes.active_roster_id) || rosterRes.rosters?.[0];
-        if (active) {
-          setRosterModels(active.models || []);
-        }
+      } else if (active) {
+        setRosterModels(active.models || []);
       }
       setChatSystemPrompt(settingsRes?.system_prompt || '');
     } catch (err) {
@@ -537,12 +543,42 @@ export default function ConfigPanel({
   const handleLoadRoster = async (roster) => {
     setActiveRosterId(roster.id);
     setRosterModels([...(roster.models || [])]);
+    setRosterLeadModel(roster.lead_model || '');
+    setRosterModelPrompts(roster.model_prompts || {});
     try {
       await api.activateChatRoster(roster.id);
       showNotification(`Activated chat team "${roster.name}".`);
       onCouncilsUpdated?.();
     } catch (err) {
       console.error('Failed to activate roster:', err);
+    }
+  };
+
+  const handleModelPromptChange = (modelKey, text) => {
+    setRosterModelPrompts((prev) => ({
+      ...prev,
+      [modelKey]: text,
+    }));
+  };
+
+  const handleLoadHierarchyPresets = async () => {
+    try {
+      setIsLoadingPresets(true);
+      const res = await api.getHierarchyPrompts();
+      if (res && res.prompts) {
+        setRosterModelPrompts((prev) => ({
+          ...prev,
+          ...res.prompts,
+        }));
+        if (res.lead_model && !rosterLeadModel) {
+          setRosterLeadModel(res.lead_model);
+        }
+        showNotification('Hiyerarşik roller ve dik duruş / anti-yalakalık promptları yüklendi.');
+      }
+    } catch (err) {
+      setError(err.message || 'Hiyerarşik şablon yüklenemedi.');
+    } finally {
+      setIsLoadingPresets(false);
     }
   };
 
@@ -586,10 +622,14 @@ export default function ConfigPanel({
         system_prompt: chatSystemPrompt,
       });
       if (activeRosterId) {
-        await api.updateChatRoster(activeRosterId, { models: rosterModels }).catch(() => {});
+        await api.updateChatRoster(activeRosterId, {
+          models: rosterModels,
+          lead_model: rosterLeadModel,
+          model_prompts: rosterModelPrompts,
+        }).catch(() => {});
       }
       await loadChatRosters();
-      showNotification('Round Table settings & user profile saved successfully.');
+      showNotification('Round Table ayarları, lider ve model promptları başarıyla kaydedildi.');
       onCouncilsUpdated?.();
     } catch (err) {
       setError(err.message || 'Failed to save chat settings');
@@ -623,6 +663,8 @@ export default function ConfigPanel({
         name: newRosterName.trim(),
         description: newRosterDesc.trim(),
         models: rosterModels,
+        lead_model: rosterLeadModel,
+        model_prompts: rosterModelPrompts,
       });
       await api.activateChatRoster(created.id);
       await loadChatRosters();
@@ -1536,6 +1578,56 @@ export default function ConfigPanel({
                   ============================================================= */}
               {activeTab === 'chat' && (
                 <div className="tab-pane-seats">
+                  {/* Saved Chat Teams Bar */}
+                  <div className="config-section councils-section">
+                    <div className="section-header-row">
+                      <h3>Active Chat Team</h3>
+                      <button
+                        type="button"
+                        className="new-council-btn"
+                        onClick={() => setShowSaveRosterModal(true)}
+                        title="Save current chat participants and roles as a reusable team"
+                      >
+                        + New Team
+                      </button>
+                    </div>
+
+                    <div className="councils-grid">
+                      {savedRosters.map((r) => {
+                        const isActive = r.id === activeRosterId;
+                        return (
+                          <div
+                            key={r.id}
+                            className={`council-card ${isActive ? 'active' : ''}`}
+                            onClick={() => handleLoadRoster(r)}
+                          >
+                            <div className="council-card-top">
+                              <span className="council-card-name">{r.name}</span>
+                              {isActive && <span className="council-active-tag">Active</span>}
+                              {!r.is_builtin && (
+                                <button
+                                  type="button"
+                                  className="delete-council-btn"
+                                  onClick={(e) => handleDeleteRoster(r.id, e)}
+                                  title="Delete team"
+                                >
+                                  &times;
+                                </button>
+                              )}
+                            </div>
+                            <p className="council-card-desc">{r.description || `${r.models?.length} participants`}</p>
+                            <div className="council-card-seats">
+                              <span className="seats-count">{r.models?.length} participants</span>
+                              {r.lead_model && (
+                                <span className="chairman-tag">★ Lead: {r.lead_model.split('/')[1]?.split('@')[0] || r.lead_model}</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* Injected Prompt Set & User Profile Section */}
                   <div className="config-section">
                     <div className="section-header-row">
@@ -1578,16 +1670,29 @@ export default function ConfigPanel({
                   {/* Participants Roster */}
                   <div className="config-section">
                     <div className="section-header-row">
-                      <h3>Round Table Participants</h3>
-                      <span className="section-subtitle">Min 1 required (Current: {rosterModels.length})</span>
+                      <div>
+                        <h3>Round Table Participants</h3>
+                        <span className="section-subtitle">Min 1 required (Current: {rosterModels.length})</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="preset-hierarchy-btn"
+                        onClick={handleLoadHierarchyPresets}
+                        disabled={isLoadingPresets}
+                        title="Tüm modellere dik duruş, uzmanlık ve lider hiyerarşisi şablonunu otomatik yükle"
+                      >
+                        {isLoadingPresets ? 'Yükleniyor…' : '⚡ Hiyerarşik Şablonu Yükle'}
+                      </button>
                     </div>
                     <p className="config-help">
-                      Assign models participating in the Round Table chat room. Skills are optional — models converse directly and collaborate without formal deliberation stages or chairman synthesis.
+                      Ekip üyelerini, lideri (Lead) ve modellere özel rol promptlarını belirleyin. Lider sohbeti yönetir; uzman modeller ise dik duruşla kendi alanlarını savunur, gerekçesiz onay vermez.
                     </p>
 
                     <ul className="model-list">
                       {rosterModels.map((model, index) => {
                         const [baseModel, currentSkillId = ''] = model.split('@');
+                        const isLead = baseModel === rosterLeadModel || model === rosterLeadModel;
+                        const hasCustomPrompt = Boolean(rosterModelPrompts[baseModel]?.trim());
 
                         return (
                           <li key={`${model}-${index}`} className="model-item">
@@ -1651,26 +1756,80 @@ export default function ConfigPanel({
                                   )}
                                 </div>
                               </div>
+
+                              <div className="model-item-actions">
+                                {isLead ? (
+                                  <span className="lead-badge" title="Lead Model: Sohbeti yönlendirir, delegasyonu yapar ve nihai sentezi sunar.">
+                                    ★ Lead (Patron)
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="set-lead-btn"
+                                    onClick={() => setRosterLeadModel(baseModel)}
+                                    title="Bu modeli ekibin Lead / Patron modeli yap"
+                                  >
+                                    Lead Yap
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  className={`role-prompt-toggle-btn ${hasCustomPrompt ? 'has-prompt' : ''} ${expandedPromptModel === baseModel ? 'active' : ''}`}
+                                  onClick={() => setExpandedPromptModel(expandedPromptModel === baseModel ? null : baseModel)}
+                                  title="Bu modele özel rol / prompt talimatını düzenle"
+                                >
+                                  {hasCustomPrompt && <span className="role-prompt-dot" />}
+                                  ✎ Rol Prompt
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="seat-profile-btn"
+                                  onClick={() => handleOpenCustomizeProfile(baseModel)}
+                                  title="Bu modelin profil resmini, rengini ve ismini özelleştir"
+                                >
+                                  Persona
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="remove-btn"
+                                  onClick={() => handleRemoveRosterModel(index)}
+                                  title="Remove participant"
+                                  disabled={rosterModels.length <= 1}
+                                >
+                                  &times;
+                                </button>
+                              </div>
                             </div>
 
-                            <button
-                              type="button"
-                              className="seat-profile-btn"
-                              onClick={() => handleOpenCustomizeProfile(baseModel)}
-                              title="Bu modelin profil resmini, rengini ve ismini özelleştir"
-                            >
-                              Persona
-                            </button>
-
-                            <button
-                              type="button"
-                              className="remove-btn"
-                              onClick={() => handleRemoveRosterModel(index)}
-                              title="Remove participant"
-                              disabled={rosterModels.length <= 1}
-                            >
-                              &times;
-                            </button>
+                            {/* Collapsible Model Prompt Editor */}
+                            {expandedPromptModel === baseModel && (
+                              <div className="model-prompt-editor-box">
+                                <div className="model-prompt-header">
+                                  <span className="model-prompt-title">
+                                    {baseModel} — Özel Rol ve Karakter Talimatı
+                                  </span>
+                                  {hasCustomPrompt && (
+                                    <button
+                                      type="button"
+                                      className="model-prompt-clear-btn"
+                                      onClick={() => handleModelPromptChange(baseModel, '')}
+                                    >
+                                      Temizle
+                                    </button>
+                                  )}
+                                </div>
+                                <textarea
+                                  className="model-prompt-textarea"
+                                  rows={4}
+                                  placeholder={`Bu modele özel talimat (örn: "Kod kalitesinden ödün verme, delilsiz katılma, RFC ve somut kaynaklarla savun.")`}
+                                  value={rosterModelPrompts[baseModel] || ''}
+                                  onChange={(e) => handleModelPromptChange(baseModel, e.target.value)}
+                                />
+                              </div>
+                            )}
                           </li>
                         );
                       })}

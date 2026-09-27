@@ -75,17 +75,17 @@ export default function ProcessMonitor({
   };
 
   const verbosityLabels = [
-    '0 • Kapalı (Sessiz)',
-    '1 • Aşamalar (Milestones)',
-    '2 • Metrikler & Hız',
-    '3 • Ham Canlı Akış',
+    '0 • Off (Silent)',
+    '1 • Milestones',
+    '2 • Metrics & Speed',
+    '3 • Raw Live Stream',
   ];
 
   const verbosityDescriptions = [
-    'Minimal: Sadece oturum başlangıcı ve nihai hakem sentezi bildirilir; ara loglar gizlenir.',
-    'Aşamalar: Konsey aşama geçişleri (1. Aşama Bağımsız Görüşler → 2. Aşama Çapraz İnceleme → 3. Aşama Sentez).',
-    'Metrikler: Model yanıt gecikmeleri (ms), token üretim hızları ve oylama konsensüs verileri.',
-    'Ham Akış: Modellerden dönen anlık token parçacıkları ve SSE telemetri olayları.',
+    'Minimal: Only session start and final synthesis are logged; intermediate events hidden.',
+    'Milestones: Council stage transitions (Stage 1 Responses → Stage 2 Peer Review → Stage 3 Synthesis).',
+    'Metrics: Model latency (ms), token generation speed, and consensus voting metrics.',
+    'Raw Stream: Real-time token streaming chunks and full SSE telemetry events.',
   ];
 
   if (!isOpen) {
@@ -93,7 +93,7 @@ export default function ProcessMonitor({
       <button
         className="process-monitor-toggle collapsed"
         onClick={onToggle}
-        title="Canlı Telemetri Panelini Aç"
+        title="Open Live Telemetry Panel"
       >
         <span className="toggle-icon">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -115,14 +115,14 @@ export default function ProcessMonitor({
           <div className="title-with-pill">
             <span className="pulse-indicator"></span>
             <div>
-              <h3 style={{ margin: 0, fontSize: '13px' }}>Canlı Süreç Telemetrisi</h3>
-              <span style={{ fontSize: '10px', color: '#8b949e' }}>Modellerin anlık düşünce ve aşama akışı</span>
+              <h3 style={{ margin: 0, fontSize: '13px' }}>Live Process Telemetry</h3>
+              <span style={{ fontSize: '10px', color: '#8b949e' }}>Real-time model reasoning and stage execution</span>
             </div>
           </div>
           <button
             className="close-btn"
             onClick={onToggle}
-            title="Paneli Kapat (Esc)"
+            title="Close Panel (Esc)"
             aria-label="Collapse Process Monitor"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -132,7 +132,7 @@ export default function ProcessMonitor({
         </div>
         <div className="verbosity-control">
           <div className="verbosity-header">
-            <label>Telemetri Detay Seviyesi</label>
+            <label>Telemetry Detail Level</label>
             <span className="verbosity-label">{verbosityLabels[verbosity]}</span>
           </div>
           <div className="verbosity-slider">
@@ -151,7 +151,7 @@ export default function ProcessMonitor({
                 key={level}
                 className={`verbosity-dot ${verbosity >= level ? 'active' : ''} ${verbosity === level ? 'current' : ''}`}
                 onClick={() => onVerbosityChange(level)}
-                title={`Seviye ${level}: ${verbosityLabels[level]}`}
+                title={`Level ${level}: ${verbosityLabels[level]}`}
               >
                 {level}
               </button>
@@ -171,14 +171,14 @@ export default function ProcessMonitor({
         {verbosity === 0 ? (
           <div className="no-events-message">
             <span className="no-events-icon">◎</span>
-            <p>Telemetri Duraklatıldı (Sessiz Mod)</p>
-            <p className="hint">Canlı model yanıtlarını, aşama geçişlerini ve konsensüs skorlarını izlemek için yukarıdaki seviyeyi (1-3) yükseltin.</p>
+            <p>Telemetry Paused (Silent Mode)</p>
+            <p className="hint">Increase the detail level above (1-3) to view live model responses, stage transitions, and consensus scores.</p>
           </div>
         ) : events.length === 0 ? (
           <div className="no-events-message">
             <span className="no-events-icon">◈</span>
-            <p>Canlı Dinleme Hazır</p>
-            <p className="hint">Sohbet alanından bir soru gönderdiğinizde konsey üyelerinin paralel yanıt üretimi, çapraz değerlendirmeleri ve hakem sentezi burada canlı akacaktır.</p>
+            <p>Telemetry Ready</p>
+            <p className="hint">When you submit a query, real-time stage transitions, peer evaluations, and synthesis logs will appear here.</p>
           </div>
         ) : (
 

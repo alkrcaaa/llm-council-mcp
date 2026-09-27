@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import ConfigPanel from './components/ConfigPanel';
@@ -16,6 +16,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [conversations, setConversations] = useState([]);
+  const [providerStatusMap, setProviderStatusMap] = useState({});
   // Do not force-open the last conversation on fresh load unless user clicks it
   // The open conversation lives in the URL (?c=<id>) so a refresh, back/forward
   // and a copied link all land on the same chat. The bare URL stays a clean landing.
@@ -24,10 +25,12 @@ function App() {
   );
   const [currentConversation, _setCurrentConversation] = useState(null);
   const setCurrentConversation = _setCurrentConversation;
+  const [landingMode, setLandingMode] = useState('roundtable');
   const [loadingConversationId, setLoadingConversationId] = useState(null);
   const activeStreamRef = useRef({});
   const skipNextLoadRef = useRef(null);
   const isAttachingRef = useRef(false);
+  const pollingTimerRef = useRef(null);
   const isLoading = !!loadingConversationId;
   const [systemPrompt, setSystemPrompt] = useState(
     () => localStorage.getItem('systemPrompt') || ''
@@ -147,6 +150,10 @@ function App() {
     loadChatRosters();
     loadWorkspaces();
     loadProviderLabels();
+    checkProviderHealth();
+
+    const healthInterval = setInterval(checkProviderHealth, 60000);
+    return () => clearInterval(healthInterval);
   }, [currentUser]);
 
   // Persist modal open/tab state for this tab session so a page refresh (F5)
@@ -169,12 +176,25 @@ function App() {
       if (e.key === 'Escape') {
         if (showCouncilDropdown) setShowCouncilDropdown(false);
         if (showDashboard) setShowDashboard(false);
+        if (showProcessMonitor) setShowProcessMonitor(false);
+        if (showSettings) setShowSettings(false);
+        if (showConfigPanel) setShowConfigPanel(false);
+        if (showAccountModal) setShowAccountModal(false);
         if (conversationToDelete && !isDeletingConversation) setConversationToDelete(null);
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [showCouncilDropdown, showDashboard, conversationToDelete, isDeletingConversation]);
+  }, [
+    showCouncilDropdown,
+    showDashboard,
+    showProcessMonitor,
+    showSettings,
+    showConfigPanel,
+    showAccountModal,
+    conversationToDelete,
+    isDeletingConversation,
+  ]);
 
   const loadWorkspaces = async () => {
     try {
@@ -200,6 +220,36 @@ function App() {
       console.warn('Failed to load provider labels:', e);
     }
   };
+
+  const checkProviderHealth = async () => {
+    try {
+      const results = await api.pingAllProviders();
+      if (results && typeof results === 'object') {
+        setProviderStatusMap(results);
+      }
+    } catch (err) {
+      console.warn('Failed to ping providers:', err);
+    }
+  };
+
+  const offlineCouncilSeats = useMemo(() => {
+    if (!activeCouncil || !activeCouncil.council_models || Object.keys(providerStatusMap).length === 0) {
+      return [];
+    }
+    const seats = [...activeCouncil.council_models];
+    if (activeCouncil.chairman_model) {
+      seats.push(activeCouncil.chairman_model);
+    }
+    const offline = [];
+    for (const seat of seats) {
+      const baseId = seat.split('@')[0];
+      const statusObj = providerStatusMap[baseId];
+      if (statusObj && statusObj.status === 'offline') {
+        offline.push(baseId);
+      }
+    }
+    return Array.from(new Set(offline));
+  }, [activeCouncil, providerStatusMap]);
 
   const loadCouncils = async () => {
     try {
@@ -313,8 +363,13 @@ function App() {
   useEffect(() => {
     const url = new URL(window.location.href);
     if ((url.searchParams.get('c') || null) === (currentConversationId || null)) return;
-    if (currentConversationId) url.searchParams.set('c', currentConversationId);
-    else url.searchParams.delete('c');
+    if (currentConversationId) {
+      url.searchParams.set('c', currentConversationId);
+      localStorage.setItem('lastActiveConversationId', currentConversationId);
+    } else {
+      url.searchParams.delete('c');
+      localStorage.removeItem('lastActiveConversationId');
+    }
     window.history.pushState(null, '', url);
   }, [currentConversationId]);
 
@@ -334,12 +389,6 @@ function App() {
     // A conversation restored from the URL must wait for the auth check;
     // fetching before it would 401 and bounce the user to the landing screen.
     if (!currentUser) return;
-    // handleNewConversation already has the freshly-created conversation
-    // object and sets it directly; refetching it here raced against the
-    // SSE stream that starts right after (landing-composer flow sends the
-    // first message immediately) — the GET could resolve with an empty
-    // messages: [] and stomp the in-progress assistant placeholder,
-    // crashing the next stage event's mutation on messages[length-1].
     if (skipNextLoadRef.current === currentConversationId) {
       skipNextLoadRef.current = null;
       return;
@@ -370,8 +419,14 @@ function App() {
     try {
       const convs = await api.listConversations(tag);
       setConversations(convs);
-      // Clean landing: Do not auto-select the last conversation on fresh page visit.
-      // The user chooses from the sidebar or starts a new deliberation cleanly.
+
+      // ChatGPT / Claude style: Auto-restore last active conversation on fresh reload
+      const urlId = new URLSearchParams(window.location.search).get('c');
+      const savedId = localStorage.getItem('lastActiveConversationId');
+      const targetId = urlId || savedId;
+      if (!currentConversationId && targetId && convs.some((c) => c.id === targetId)) {
+        setCurrentConversationId(targetId);
+      }
     } catch (error) {
       console.error('Failed to load conversations:', error);
     }
@@ -463,8 +518,37 @@ function App() {
       const connected = await api.subscribeToConversationEvents(conversationId, dispatchStreamEvent);
 
       if (!connected) {
-        setLoadingConversationId(null);
-        await loadConversation(conversationId);
+        // If there is no active SSE stream (e.g. initiated synchronously via MCP or external tool)
+        // but the conversation is still marked as deliberating, start polling until it completes.
+        const freshConv = await api.getConversation(conversationId);
+        if (freshConv && (freshConv.status === 'deliberating' || freshConv.status === 'streaming')) {
+          _setCurrentConversation(freshConv);
+          setLoadingConversationId(conversationId);
+
+          if (!pollingTimerRef.current) {
+            pollingTimerRef.current = setInterval(async () => {
+              try {
+                const polled = await api.getConversation(conversationId);
+                if (polled) {
+                  _setCurrentConversation(polled);
+                  if (polled.status !== 'deliberating' && polled.status !== 'streaming') {
+                    if (pollingTimerRef.current) {
+                      clearInterval(pollingTimerRef.current);
+                      pollingTimerRef.current = null;
+                    }
+                    setLoadingConversationId(null);
+                    await loadConversations(selectedTag);
+                  }
+                }
+              } catch (e) {
+                console.warn('Deliberation polling check error:', e);
+              }
+            }, 2500);
+          }
+        } else {
+          setLoadingConversationId(null);
+          await loadConversation(conversationId);
+        }
       }
     } catch (err) {
       console.warn('Failed to reconnect to active stream:', err);
@@ -477,6 +561,11 @@ function App() {
   const handleAbortDeliberation = async (conversationId) => {
     const targetId = conversationId || currentConversationId;
     if (!targetId) return;
+
+    if (pollingTimerRef.current) {
+      clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
 
     try {
       await api.abortDeliberation(targetId);
@@ -493,10 +582,32 @@ function App() {
     }
   };
 
+  // Clear polling interval when switching conversation
+  useEffect(() => {
+    return () => {
+      if (pollingTimerRef.current) {
+        clearInterval(pollingTimerRef.current);
+        pollingTimerRef.current = null;
+      }
+    };
+  }, [currentConversationId]);
+
+  // Close council dropdown on Escape key
+  useEffect(() => {
+    if (!showCouncilDropdown) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowCouncilDropdown(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showCouncilDropdown]);
+
   // Background stream recovery (survives F5 / page reload / tab switch):
   // Reconnects directly to the active SSE stream if a conversation is in progress.
   useEffect(() => {
-    const isStreamActive = loadingConversationId !== null;
+    const isStreamActive = loadingConversationId !== null || pollingTimerRef.current !== null;
     const isRunning =
       currentConversation?.status === 'deliberating' ||
       currentConversation?.status === 'streaming';
@@ -517,14 +628,32 @@ function App() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [currentConversationId, loadingConversationId]);
 
-  const handleNewConversation = async (councilId = null, initialMessage = null, conversationType = 'deliberation') => {
+  const handleNewConversation = async (councilId = null, initialMessage = null, conversationType = 'roundtable') => {
     setShowSettings(false);
+    // If no initial message, enter clean landing state immediately without littering DB or sidebar
+    if (!initialMessage || !initialMessage.trim()) {
+      setLandingMode(conversationType || 'roundtable');
+      setCurrentConversationId(null);
+      _setCurrentConversation(null);
+      setSelectedTag(null);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('c');
+      window.history.replaceState({}, '', url.pathname + url.search);
+      localStorage.removeItem('lastActiveConversationId');
+      return;
+    }
+
     try {
       const defaultId = conversationType === 'roundtable' ? activeChatRoster?.id : activeCouncil?.id;
       const targetCouncilId = (typeof councilId === 'string' && councilId.trim()) ? councilId.trim() : defaultId;
       const newConv = await api.createConversation(targetCouncilId, conversationType);
-      // Clear tag filter when creating new conversation
       setSelectedTag(null);
+      const userMessage = {
+        role: 'user',
+        content: initialMessage,
+        created_at: new Date().toISOString(),
+      };
+      newConv.messages = [userMessage];
       setConversations((prev) => [
         {
           id: newConv.id,
@@ -534,18 +663,18 @@ function App() {
           conversation_type: newConv.conversation_type || conversationType,
           council_id: newConv.council_id,
           council_name: newConv.council_name,
-          message_count: 0,
+          message_count: 1,
         },
         ...prev,
       ]);
       skipNextLoadRef.current = newConv.id;
       setCurrentConversationId(newConv.id);
-      setCurrentConversation(newConv);
-      if (initialMessage && initialMessage.trim()) {
-        // Pass the id explicitly: currentConversationId in this closure is
-        // still the pre-update value until the next render.
-        handleSendMessage(initialMessage, false, newConv.id);
-      }
+      _setCurrentConversation(newConv);
+      const url = new URL(window.location.href);
+      url.searchParams.set('c', newConv.id);
+      window.history.replaceState({}, '', url.pathname + url.search);
+      localStorage.setItem('lastActiveConversationId', newConv.id);
+      handleSendMessage(initialMessage, false, newConv.id);
     } catch (error) {
       console.error('Failed to create conversation:', error);
       if (error.message?.includes('Authentication') || error.message?.includes('401')) {
@@ -720,20 +849,21 @@ function App() {
     const setCurrentConversation = (updater) => {
       let updatedAssistantMsg = null;
       _setCurrentConversation((prev) => {
-        // Check the guard BEFORE running the updater: several updaters below
-        // mutate messages[messages.length - 1] directly (not a pure spread),
-        // so calling one against an unrelated/mismatched `prev` — not just
-        // discarding its result — can throw (e.g. an empty conversation's
-        // messages[-1] is undefined) and crash the whole render tree.
-        if (!prev || prev.id !== targetConversationId) {
+        if (prev && prev.id !== targetConversationId) {
           return prev;
         }
+        const current = prev || {
+          id: targetConversationId,
+          title: 'New Conversation',
+          messages: [],
+          status: 'deliberating',
+        };
         let next;
         try {
-          next = typeof updater === 'function' ? updater(prev) : updater;
+          next = typeof updater === 'function' ? updater(current) : updater;
         } catch (err) {
           console.error('Dropped a malformed stream update instead of crashing:', err);
-          return prev;
+          return current;
         }
         if (next && next.messages && next.messages.length > 0) {
           const last = next.messages[next.messages.length - 1];
@@ -752,10 +882,15 @@ function App() {
       // Optimistically add user message to UI only if not a retry
       if (!isRetry) {
         const userMessage = { role: 'user', content, created_at: new Date().toISOString() };
-        setCurrentConversation((prev) => ({
-          ...prev,
-          messages: [...prev.messages, userMessage],
-        }));
+        setCurrentConversation((prev) => {
+          const currentList = prev?.messages || [];
+          const alreadyHas = currentList.some((m) => m.role === 'user' && m.content === content);
+          if (alreadyHas) return prev;
+          return {
+            ...prev,
+            messages: [...currentList, userMessage],
+          };
+        });
       }
 
       // Create a partial assistant message that will be updated progressively
@@ -841,7 +976,7 @@ function App() {
       // Add the partial assistant message
       setCurrentConversation((prev) => ({
         ...prev,
-        messages: [...prev.messages, assistantMessage],
+        messages: [...(prev?.messages || []), assistantMessage],
       }));
 
       const dispatchStreamEvent = createStreamDispatcher({
@@ -895,7 +1030,7 @@ function App() {
       // Remove optimistic messages on error
       setCurrentConversation((prev) => ({
         ...prev,
-        messages: isRetry ? prev.messages.slice(0, -1) : prev.messages.slice(0, -2),
+        messages: isRetry ? (prev?.messages || []).slice(0, -1) : (prev?.messages || []).slice(0, -2),
       }));
       setLoadingConversationId(null);
     }
@@ -1053,6 +1188,22 @@ function App() {
                 );
               })()}
 
+              {/* Council Offline Models Indicator Pill */}
+              {offlineCouncilSeats.length > 0 && (
+                <button
+                  type="button"
+                  className="council-health-warning-pill"
+                  onClick={() => {
+                    setConfigPanelTab('providers');
+                    setShowConfigPanel(true);
+                  }}
+                  title={`${offlineCouncilSeats.length} seat(s) offline (${offlineCouncilSeats.join(', ')}). Click to open Model Studio.`}
+                >
+                  <span className="health-dot offline"></span>
+                  <span>{offlineCouncilSeats.length} Offline</span>
+                </button>
+              )}
+
               {/* Workspace Context Selector */}
               {workspaces.length > 0 && (
                 <div className="workspace-selector-pill-wrap">
@@ -1071,7 +1222,6 @@ function App() {
                   </select>
                 </div>
               )}
-
             </div>
           </div>
         </div>
@@ -1080,6 +1230,8 @@ function App() {
           activeCouncil={activeCouncil}
           activeChatRoster={activeChatRoster}
           currentUser={currentUser}
+          landingMode={landingMode}
+          onLandingModeChange={setLandingMode}
           onSendMessage={handleSendMessage}
           onNewConversation={handleNewConversation}
           isLoading={loadingConversationId === currentConversationId}
@@ -1087,6 +1239,11 @@ function App() {
           onAbortDeliberation={handleAbortDeliberation}
           onTagsChange={handleTagsChange}
           providerLabels={providerLabels}
+          offlineCouncilSeats={offlineCouncilSeats}
+          onOpenProviders={() => {
+            setConfigPanelTab('providers');
+            setShowConfigPanel(true);
+          }}
           onInspectSkill={(skillId) => {
             setSelectedSkillIdForModal(skillId);
             setConfigPanelTab('skills');

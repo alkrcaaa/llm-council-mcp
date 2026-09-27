@@ -179,6 +179,8 @@ class CreateChatRosterRequest(BaseModel):
     icon: str = "💬"
     description: str = ""
     models: List[str]
+    lead_model: Optional[str] = None
+    model_prompts: Optional[Dict[str, str]] = None
 
 
 class UpdateChatRosterRequest(BaseModel):
@@ -187,6 +189,8 @@ class UpdateChatRosterRequest(BaseModel):
     icon: Optional[str] = None
     description: Optional[str] = None
     models: Optional[List[str]] = None
+    lead_model: Optional[str] = None
+    model_prompts: Optional[Dict[str, str]] = None
 
 
 class UpdateChatSettingsRequest(BaseModel):
@@ -659,6 +663,15 @@ async def activate_chat_roster(roster_id: str):
     return target
 
 
+@app.get("/api/chat-rosters/hierarchy-prompts")
+async def get_hierarchy_prompts():
+    """Return default hierarchy role prompts and lead model preset."""
+    return {
+        "lead_model": "local/claude-code",
+        "prompts": councils.DEFAULT_HIERARCHY_PROMPTS,
+    }
+
+
 @app.post("/api/chat-rosters")
 async def create_new_chat_roster(request: CreateChatRosterRequest):
     """Create a new custom chat roster."""
@@ -669,6 +682,8 @@ async def create_new_chat_roster(request: CreateChatRosterRequest):
         models=request.models,
         icon=request.icon,
         description=request.description,
+        lead_model=request.lead_model,
+        model_prompts=request.model_prompts,
     )
     return created
 
@@ -1339,6 +1354,7 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
             use_early_consensus=request.use_early_consensus,
             council_models=active_council_models,
             chairman_model=active_chairman_model,
+            target_workspace=request.target_workspace,
         )
         if ingest_meta.get("enriched"):
             metadata["ingestion"] = ingest_meta
@@ -1470,7 +1486,27 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 if is_first_message:
                     title_task = asyncio.create_task(generate_conversation_title(request.content))
 
-                async for event in roundtable.run_roundtable_stream(conversation_id, request.content):
+                # Enrich with target workspace context if specified or auto-detected
+                target_ws = request.target_workspace or conversation.get("target_workspace")
+                effective_query, ingest_meta = await ingestion.resolve_evaluation_context(
+                    request.content,
+                    target_workspace=target_ws
+                )
+
+                if ingest_meta.get("enriched"):
+                    resolved_ws = ingest_meta.get("target_workspace")
+                    if resolved_ws and not conversation.get("target_workspace"):
+                        conversation["target_workspace"] = resolved_ws
+                        storage.save_conversation(conversation)
+                    yield f"data: {json.dumps({'type': 'context_ingested', 'metadata': ingest_meta})}\n\n"
+
+                dossier_text = effective_query if (ingest_meta.get("enriched") and effective_query != request.content) else None
+                async for event in roundtable.run_roundtable_stream(
+                    conversation_id,
+                    request.content,
+                    target_workspace=ingest_meta.get("target_workspace") or target_ws,
+                    workspace_dossier=dossier_text
+                ):
                     yield f"data: {json.dumps(event)}\n\n"
 
                 if title_task:

@@ -232,3 +232,46 @@
     transform: scale(1.2);
   }
 }
+
+.roundtable-tools-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 10px 0;
+}
+
+.roundtable-tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #38bdf8;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roundtable-tool-icon {
+  font-size: 11px;
+}
+
+.roundtable-tool-name {
+  font-weight: 600;
+  color: #7dd3fc;
+}
+
+.roundtable-tool-arg {
+  color: #bae6fd;
+  opacity: 0.85;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

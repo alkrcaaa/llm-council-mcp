@@ -18,12 +18,12 @@ BUILTIN_COUNCILS: List[Dict[str, Any]] = [
         "id": "cognitive-strategy",
         "name": "Cognitive Strategy Board",
         "icon": "",
-        "description": "High-stakes architectural & strategic decisions: Antigravity Red Team, Gemini 3.6 Flash Red Team, Qwen First Principles, Groq Llama 3.3 Deep Research + Claude Referee.",
+        "description": "High-stakes architectural & strategic decisions: Antigravity Red Team, Gemini 3.6 Flash Red Team, Qwen First Principles, Qwen 3.8 Deep Research + Claude Referee.",
         "council_models": [
             "local/antigravity@red-team-reasoning",
             "custom/gemini-3-6-flash@red-team-reasoning",
             "local/qwen3.6-27b@first-principles",
-            "custom/groq@deep-research",
+            "local/qwen3.8-27b@deep-research",
         ],
         "chairman_model": "local/claude-code",
         "is_builtin": True,
@@ -32,12 +32,12 @@ BUILTIN_COUNCILS: List[Dict[str, Any]] = [
         "id": "code-craft",
         "name": "Code Craft & Hard Refactor",
         "icon": "",
-        "description": "Deep refactoring & surgical simplicity: Antigravity Diff Risk, Qwen Test & Verification, Gemini 3.6 Static Analysis, Groq Llama 3.3 Simplicity + Claude Principal Engineer.",
+        "description": "Deep refactoring & surgical simplicity: Antigravity Diff Risk, Qwen Test & Verification, Gemini 3.6 Static Analysis, Qwen 3.8 Simplicity + Claude Principal Engineer.",
         "council_models": [
             "local/antigravity@differential-review",
             "local/qwen3.6-27b@testing-handbook",
             "custom/gemini-3-6-flash@static-analysis",
-            "custom/groq@karpathy-guidelines",
+            "local/qwen3.8-27b@karpathy-guidelines",
         ],
         "chairman_model": "local/claude-code",
         "is_builtin": True,
@@ -46,12 +46,12 @@ BUILTIN_COUNCILS: List[Dict[str, Any]] = [
         "id": "deep-tech",
         "name": "Deep Tech & RFC Evaluation",
         "icon": "",
-        "description": "Technology, protocol & library evaluation: Antigravity Deep Research, Qwen Supply Chain Audit, Gemini 3.6 First Principles, Groq Llama 3.3 Simplicity + Claude CTO.",
+        "description": "Technology, protocol & library evaluation: Antigravity Deep Research, Qwen Supply Chain Audit, Gemini 3.6 First Principles, Qwen 3.8 Simplicity + Claude CTO.",
         "council_models": [
             "local/antigravity@deep-research",
             "local/qwen3.6-27b@supply-chain-audit",
             "custom/gemini-3-6-flash@first-principles",
-            "custom/groq@karpathy-guidelines",
+            "local/qwen3.8-27b@karpathy-guidelines",
         ],
         "chairman_model": "local/claude-code",
         "is_builtin": True,
@@ -60,11 +60,11 @@ BUILTIN_COUNCILS: List[Dict[str, Any]] = [
         "id": "sec-ops",
         "name": "Production Hardening & SecOps",
         "icon": "",
-        "description": "Production security & SRE resilience: Antigravity Red Team, Qwen OWASP Security, Groq Llama 3.3 DevOps, Gemini 3.6 Static Analysis + Claude CISO.",
+        "description": "Production security & SRE resilience: Antigravity Red Team, Qwen OWASP Security, Qwen 3.8 DevOps, Gemini 3.6 Static Analysis + Claude CISO.",
         "council_models": [
             "local/antigravity@red-team-reasoning",
             "local/qwen3.6-27b@owasp-security",
-            "custom/groq@devops",
+            "local/qwen3.8-27b@devops",
             "custom/gemini-3-6-flash@static-analysis",
         ],
         "chairman_model": "local/claude-code",
@@ -74,11 +74,11 @@ BUILTIN_COUNCILS: List[Dict[str, Any]] = [
         "id": "frontend-craft",
         "name": "UI/UX & Design System Craft",
         "icon": "",
-        "description": "Distinctive design systems & user flows: Antigravity Frontend Design, Qwen Design DNA, Groq Web Testing, Gemini 3.6 First Principles + Claude Design Lead.",
+        "description": "Distinctive design systems & user flows: Antigravity Frontend Design, Qwen Design DNA, Qwen 3.8 Web Testing, Gemini 3.6 First Principles + Claude Design Lead.",
         "council_models": [
             "local/antigravity@frontend-design",
             "local/qwen3.6-27b@design-dna",
-            "custom/groq@webapp-testing",
+            "local/qwen3.8-27b@webapp-testing",
             "custom/gemini-3-6-flash@first-principles",
         ],
         "chairman_model": "local/claude-code",
@@ -88,12 +88,12 @@ BUILTIN_COUNCILS: List[Dict[str, Any]] = [
         "id": "tech-scout",
         "name": "Tech Scout & Candidate Radar",
         "icon": "",
-        "description": "Automated technology scouting & candidate evaluation: Antigravity Deep Research, Qwen Supply Chain Audit, Gemini 3.6 First Principles, Groq Simplicity + Claude Evaluator.",
+        "description": "Automated technology scouting & candidate evaluation: Antigravity Deep Research, Qwen Supply Chain Audit, Gemini 3.6 First Principles, Qwen 3.8 Simplicity + Claude Evaluator.",
         "council_models": [
             "local/antigravity@deep-research",
             "local/qwen3.6-27b@supply-chain-audit",
             "custom/gemini-3-6-flash@first-principles",
-            "custom/groq@karpathy-guidelines",
+            "local/qwen3.8-27b@karpathy-guidelines",
         ],
         "chairman_model": "local/claude-code",
         "is_builtin": True,
@@ -103,16 +103,26 @@ BUILTIN_COUNCILS: List[Dict[str, Any]] = [
         "id": "cloud-deliberation",
         "name": "Cloud Deliberation",
         "icon": "",
-        "description": "Responsive zero-cost cloud & local models: Gemini 3.6 Flash, Groq Llama 3.3, Local Qwen.",
+        "description": "Responsive zero-cost cloud & local models: Gemini 3.6 Flash, Local Qwen 3.8, Local Qwen 3.6.",
         "council_models": [
             "custom/gemini-3-6-flash@red-team-reasoning",
-            "custom/groq@first-principles",
+            "local/qwen3.8-27b@first-principles",
             "local/qwen3.6-27b@deep-research",
         ],
         "chairman_model": "custom/gemini-3-6-flash",
         "is_builtin": True,
     },
 ]
+
+
+DEFAULT_HIERARCHY_PROMPTS: Dict[str, str] = {
+    "local/claude-code": "Role: Team Lead & Lead Architect. Sen masanın lideri ve mimarısın. Nihai kararı Ali'ye sen özetlersin. Ekipten gelen argümanları dinle, çatışan yerleri mühendislik trade-off'larına göre tarafsızca değerlendir. Asla diktatör olma; meslektaşlarının getirdiği somut teknik itirazları dikkate al.",
+    "local/antigravity": "Role: Principal Systems & Adversarial Auditor (Red-Team). Görevin lider veya diğer modeller ne derse desin kör noktaları, mimari riskleri, güvenlik ve mantık açıklarını aramak. Asla 'haklısınız' veya 'katılıyorum' diyerek geçiştirme; argümanını ilk prensiplerle, RFC'lerle veya somut failure mode'larla savun. Dik dur ve lidere bile itirazını açıkça yap.",
+    "local/qwen3.6-27b": "Role: Core Engineering & Implementation Specialist. Teorik konuşma; kodun gerçekte nasıl çalışacağını, performans kısıtlarını, latency/maliyet dengesini ve pratikteki zorlukları savun. Asla yalakalık yapma; önerilen bir mimari prodüksiyonda patlayacaksa bunu somut kod veya darboğaz kanıtlarıyla ortaya koy.",
+    "local/qwen3.8-27b": "Role: Core Engineering & Implementation Specialist. Teorik konuşma; kodun gerçekte nasıl çalışacağını, performans kısıtlarını, latency/maliyet dengesini ve pratikteki zorlukları savun. Asla yalakalık yapma; önerilen bir mimari prodüksiyonda patlayacaksa bunu somut kod veya darboğaz kanıtlarıyla ortaya koy.",
+    "custom/gemini-3-6-flash": "Role: Research & Ecosystem Scout. Geniş ekosistemi, açık kaynak alternatifleri, RFC standartlarını ve güncel benchmark verilerini masaya getir. İddialarını sağlam teknik temellere dayandır.",
+    "custom/groq": "Role: Rapid Prototyping & Logic Verifier. Fikirlerin mantıksal tutarlılığını test et, gereksiz karmaşıklığı buda ve en sade çözümü savun.",
+}
 
 
 BUILTIN_CHAT_ROSTERS: List[Dict[str, Any]] = [
@@ -128,6 +138,8 @@ BUILTIN_CHAT_ROSTERS: List[Dict[str, Any]] = [
             "custom/gemini-3-6-flash",
             "custom/groq",
         ],
+        "lead_model": "local/claude-code",
+        "model_prompts": dict(DEFAULT_HIERARCHY_PROMPTS),
         "is_builtin": True,
     },
     {
@@ -422,6 +434,8 @@ def create_custom_chat_roster(
     models: List[str],
     icon: str = "",
     description: str = "",
+    lead_model: Optional[str] = None,
+    model_prompts: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Create a new custom chat roster."""
     data = load_councils_data()
@@ -433,6 +447,8 @@ def create_custom_chat_roster(
         "icon": icon.strip(),
         "description": description.strip(),
         "models": models,
+        "lead_model": lead_model or (models[0] if models else None),
+        "model_prompts": model_prompts or {},
         "is_builtin": False,
     }
 

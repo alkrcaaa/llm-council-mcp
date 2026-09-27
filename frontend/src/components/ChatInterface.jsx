@@ -18,6 +18,8 @@ export default function ChatInterface({
   activeCouncil,
   activeChatRoster,
   currentUser,
+  landingMode = 'roundtable',
+  onLandingModeChange,
   onSendMessage,
   onNewConversation,
   isLoading,
@@ -26,6 +28,8 @@ export default function ChatInterface({
   onTagsChange,
   onInspectSkill,
   providerLabels = {},
+  offlineCouncilSeats = [],
+  onOpenProviders,
 }) {
   const [input, setInput] = useState('');
   const [landingInput, setLandingInput] = useState('');
@@ -37,8 +41,14 @@ export default function ChatInterface({
     () => localStorage.getItem('feedView') !== 'false'
   );
   const [activeMode, setActiveMode] = useState(
-    () => conversation?.conversation_type || 'roundtable'
+    () => conversation?.conversation_type || landingMode || 'roundtable'
   );
+
+  const effectiveMode = conversation?.conversation_type || landingMode || activeMode;
+  const setMode = (mode) => {
+    setActiveMode(mode);
+    onLandingModeChange?.(mode);
+  };
   const [mentionQuery, setMentionQuery] = useState(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [queued, setQueued] = useState(null);
@@ -284,7 +294,7 @@ export default function ChatInterface({
     if (conversation && conversation.id) {
       onSendMessage(landingInput);
     } else if (onNewConversation) {
-      onNewConversation(null, landingInput, activeMode);
+      onNewConversation(null, landingInput, effectiveMode);
     }
     setLandingInput('');
   };
@@ -300,7 +310,7 @@ export default function ChatInterface({
 
   if (!hasMessages) {
     const displayName = currentUser ? currentUser.charAt(0).toUpperCase() + currentUser.slice(1) : '';
-    const isRoundTable = activeMode === 'roundtable';
+    const isRoundTable = effectiveMode === 'roundtable';
     const rosterModels = isRoundTable
       ? (activeChatRoster?.models?.length ? activeChatRoster.models : conversation?.council_models || [])
       : ((activeCouncil?.council_models?.length ? activeCouncil.council_models : conversation?.council_models) || []);
@@ -316,27 +326,27 @@ export default function ChatInterface({
           <div className="landing-mode-selector">
             <button
               type="button"
-              className={`landing-mode-btn ${activeMode === 'roundtable' ? 'active' : ''}`}
-              onClick={() => setActiveMode('roundtable')}
+              className={`landing-mode-btn ${effectiveMode === 'roundtable' ? 'active' : ''}`}
+              onClick={() => setMode('roundtable')}
             >
               Round Table (Group Chat)
             </button>
             <button
               type="button"
-              className={`landing-mode-btn ${activeMode === 'deliberation' ? 'active' : ''}`}
-              onClick={() => setActiveMode('deliberation')}
+              className={`landing-mode-btn ${effectiveMode === 'deliberation' ? 'active' : ''}`}
+              onClick={() => setMode('deliberation')}
             >
               Deliberation (3-Stage ADR)
             </button>
           </div>
 
           <h1 className="landing-greeting">
-            {activeMode === 'roundtable'
+            {effectiveMode === 'roundtable'
               ? (displayName ? `Hello ${displayName}, welcome to the table.` : 'Welcome to the round table.')
               : (displayName ? `Hello ${displayName}, what's on your mind?` : "What's on your mind?")}
           </h1>
           <p className="landing-subtext">
-            {activeMode === 'roundtable'
+            {effectiveMode === 'roundtable'
               ? 'Direct multi-agent conversation with unconstrained turn-taking. Mention @all to broadcast or @model to target.'
               : 'Council models propose independent solutions, peer-review each other, and synthesize a final ADR verdict.'}
           </p>
@@ -541,6 +551,26 @@ export default function ChatInterface({
         </div>
       )}
 
+      {/* Offline Seats Advisory Alert */}
+      {offlineCouncilSeats.length > 0 && (
+        <div className="offline-seats-alert">
+          <span>⚠️</span>
+          <span>
+            {offlineCouncilSeats.length} model{offlineCouncilSeats.length > 1 ? 's' : ''} offline ({offlineCouncilSeats.join(', ')}). Deliberation can continue with available models.
+          </span>
+          {onOpenProviders && (
+            <button
+              type="button"
+              className="offline-seats-link"
+              onClick={onOpenProviders}
+              style={{ background: 'none', border: 'none', padding: 0 }}
+            >
+              Configure
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="messages-container" ref={messagesContainerRef}>
         {conversation.messages.map((msg, index) => (
             <div key={index} className="message-group">
@@ -566,6 +596,7 @@ export default function ChatInterface({
                       content={r.content}
                       cost={r.cost}
                       usage={r.usage}
+                      toolsExecuted={r.tools_executed || r.toolsExecuted}
                       onReplyToModel={handleReplyToModel}
                     />
                   ))}
@@ -575,6 +606,7 @@ export default function ChatInterface({
                       model={m}
                       content={text}
                       isStreaming
+                      toolsExecuted={msg.roundtableStreamingTools?.[m]}
                       onReplyToModel={handleReplyToModel}
                     />
                   ))}
@@ -833,6 +865,7 @@ export default function ChatInterface({
                               aggregateConfidence={msg.metadata?.aggregate_confidence}
                               streamingResponses={msg.stage1Streaming}
                               streamingReasoning={msg.stage1ReasoningStreaming}
+                              streamingTools={msg.stage1ToolsStreaming}
                               isStreaming={msg.loading?.stage1}
                               routingInfo={msg.routingInfo}
                               escalationInfo={msg.escalationInfo}
@@ -922,10 +955,40 @@ export default function ChatInterface({
             </div>
           )}
 
+        {/* Error state banner */}
+        {!isRoundTableConv &&
+          !activeDeliberating &&
+          conversation.status === 'error' && (
+            <div className="pending-deliberation-wrap">
+              <div className="pending-deliberation-card error-card" style={{ borderColor: 'rgba(239, 68, 68, 0.4)', background: 'rgba(239, 68, 68, 0.08)' }}>
+                <div className="pending-card-header">
+                  <span className="pending-card-title" style={{ color: '#ef4444' }}>⚠️ Deliberation Failed</span>
+                </div>
+                <p className="pending-card-desc">
+                  {conversation.error_message || 'A council model or backend service encountered an error during deliberation. You can retry with fewer models or check provider health.'}
+                </p>
+                <button
+                  className="pending-retry-btn"
+                  onClick={() =>
+                    onSendMessage(
+                      conversation.messages[conversation.messages.length - 1]?.content || '',
+                      true
+                    )
+                  }
+                >
+                  <span>Retry Deliberation</span>
+                </button>
+              </div>
+            </div>
+          )}
+
         {/* Interrupted or pending deliberation after page reload (Deliberation mode only) */}
         {!isRoundTableConv &&
           !activeDeliberating &&
           conversation.status !== 'aborted' &&
+          conversation.status !== 'error' &&
+          conversation.status !== 'deliberating' &&
+          conversation.status !== 'streaming' &&
           conversation.messages.length > 0 &&
           conversation.messages[conversation.messages.length - 1]?.role === 'user' && (
             <div className="pending-deliberation-wrap">
@@ -985,10 +1048,6 @@ export default function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {(isRoundTableConv ||
-        conversation.messages[conversation.messages.length - 1]?.role === 'assistant' ||
-        activeDeliberating ||
-        conversation.status === 'aborted') && (
         <div className="input-form-wrapper">
           <form className="input-form" onSubmit={handleSubmit}>
             {mentionQuery != null && mentionMatches.length > 0 && (
@@ -1031,7 +1090,6 @@ export default function ChatInterface({
                 value={input}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                disabled={!isRoundTableConv && activeDeliberating}
                 rows={2}
               />
               {isRoundTableConv ? (
@@ -1089,7 +1147,6 @@ export default function ChatInterface({
             </div>
           </form>
         </div>
-      )}
     </div>
   );
 }

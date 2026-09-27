@@ -88,32 +88,94 @@ def _prepare_messages_for_model(model: str, messages: List[Dict[str, str]]) -> L
         return augmented
     except Exception as e:
         print(f"Error preparing skill messages for {model}: {e}")
-        return messages
+def _extract_raw_tool_calls_from_text(content: Optional[str]) -> Optional[List[Dict[str, Any]]]:
+    """
+    Catch XML or pseudo-tag tool calls emitted directly into content text by models
+    (such as local Qwen models running under standard chat templates).
+    """
+    if not content or "<tool_call>" not in content:
+        return None
+
+    import json
+    import re
+    import uuid
+    tool_calls = []
+
+    # Case 1: JSON inside <tool_call>...</tool_call>
+    json_blocks = re.findall(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", content, re.DOTALL)
+    for block in json_blocks:
+        try:
+            parsed = json.loads(block)
+            name = parsed.get("name") or parsed.get("function")
+            args = parsed.get("arguments") or parsed.get("parameters") or {}
+            if name:
+                tool_calls.append({
+                    "id": f"call_raw_{uuid.uuid4().hex[:8]}",
+                    "type": "function",
+                    "function": {
+                        "name": str(name).strip(),
+                        "arguments": json.dumps(args) if isinstance(args, dict) else str(args),
+                    }
+                })
+        except Exception:
+            pass
+
+    if tool_calls:
+        return tool_calls
+
+    # Case 2: XML parameter tags: <function=web_search> or <function name="web_search">
+    func_blocks = re.findall(r"<tool_call>.*?(?:<function=([^>]+)>|<function name=[\"']([^\"']+)[\"']>)(.*?)</tool_call>", content, re.DOTALL)
+    for match in func_blocks:
+        name = match[0] or match[1]
+        body = match[2]
+        args = {}
+        params = re.findall(r"(?:<parameter=([^>]+)>|<parameter name=[\"']([^\"']+)[\"']>)(.*?)</parameter>", body, re.DOTALL)
+        for p in params:
+            p_name = p[0] or p[1]
+            p_val = p[2].strip().strip('"\'')
+            args[p_name] = p_val
+
+        if name:
+            tool_calls.append({
+                "id": f"call_raw_{uuid.uuid4().hex[:8]}",
+                "type": "function",
+                "function": {
+                    "name": name.strip(),
+                    "arguments": json.dumps(args),
+                }
+            })
+
+    return tool_calls if tool_calls else None
 
 
 async def query_model(
     model: str,
-    messages: List[Dict[str, str]],
-    timeout: float = 120.0
+    messages: List[Dict[str, Any]],
+    timeout: float = 120.0,
+    tools: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
     """
-    Query a single model via OpenRouter API.
+    Query a single model via OpenRouter API with optional tool specifications.
 
     Args:
         model: OpenRouter model identifier (e.g., "openai/gpt-4o" or "local/qwen3.6-27b@owasp-security")
         messages: List of message dicts with 'role' and 'content'
         timeout: Request timeout in seconds
+        tools: Optional OpenAI-compatible tool specifications
 
     Returns:
-        Response dict with content, reasoning_details, usage, and cost.
+        Response dict with content, tool_calls, reasoning_details, usage, and cost.
     """
     url, headers, outgoing_model = _resolve_endpoint(model)
     model_messages = _prepare_messages_for_model(model, messages)
 
-    payload = {
+    payload: Dict[str, Any] = {
         "model": outgoing_model,
         "messages": model_messages,
     }
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -135,8 +197,17 @@ async def query_model(
             # Calculate cost based on usage
             cost = calculate_cost(model, prompt_tokens, completion_tokens)
 
+            raw_tool_calls = message.get('tool_calls')
+            content_str = message.get('content')
+            if not raw_tool_calls and content_str and '<tool_call>' in content_str:
+                extracted = _extract_raw_tool_calls_from_text(content_str)
+                if extracted:
+                    raw_tool_calls = extracted
+                    content_str = None
+
             return {
-                'content': message.get('content'),
+                'content': content_str,
+                'tool_calls': raw_tool_calls,
                 'reasoning_details': message.get('reasoning_details'),
                 'usage': {
                     'prompt_tokens': prompt_tokens,
@@ -151,31 +222,80 @@ async def query_model(
         return None
 
 
+async def query_model_agentic(
+    model: str,
+    messages: List[Dict[str, Any]],
+    timeout: float = 120.0,
+    target_workspace: Optional[str] = None,
+    is_roundtable: bool = False,
+    enable_tools: bool = True,
+) -> Optional[Dict[str, Any]]:
+    """
+    Query a model with autonomous multi-turn tool execution (ReAct) loop.
+
+    If tools are enabled and defined for the model's skill, the model can
+    call tools (web search, web fetch, GitHub scout, workspace diff/read),
+    receive their output, and incorporate real evidence into its answer.
+    """
+    if not enable_tools:
+        return await query_model(model, messages, timeout=timeout)
+
+    try:
+        from .tools import get_tools_for_model, run_agentic_tool_loop
+        tools = get_tools_for_model(model, is_roundtable=is_roundtable)
+        if not tools:
+            return await query_model(model, messages, timeout=timeout)
+
+        async def _runner(m, msgs, tools=None):
+            return await query_model(m, msgs, timeout=timeout, tools=tools)
+
+        return await run_agentic_tool_loop(
+            _runner,
+            model=model,
+            messages=messages,
+            tools=tools,
+            target_workspace=target_workspace,
+            max_turns=3,
+        )
+    except Exception as e:
+        print(f"Error in agentic tool loop for {model}: {e}, falling back to direct query")
+        return await query_model(model, messages, timeout=timeout)
+
+
 async def query_models_parallel(
     models: List[str],
-    messages: List[Dict[str, str]]
+    messages: List[Dict[str, Any]],
+    target_workspace: Optional[str] = None,
+    enable_tools: bool = True,
 ) -> Dict[str, Optional[Dict[str, Any]]]:
     """
-    Query multiple models in parallel.
+    Query multiple models in parallel with autonomous tool capabilities.
 
     Args:
         models: List of OpenRouter model identifiers
         messages: List of message dicts to send to each model
+        target_workspace: Optional workspace directory context
+        enable_tools: If True, grants models their skill-specific toolkits
 
     Returns:
         Dict mapping model identifier to response dict (or None if failed).
-        Each response includes content, reasoning_details, usage, and cost.
     """
     import asyncio
 
-    # Create tasks for all models
-    tasks = [query_model(model, messages) for model in models]
-
-    # Wait for all to complete
-    responses = await asyncio.gather(*tasks)
-
-    # Map models to their responses
-    return {model: response for model, response in zip(models, responses)}
+    tasks = [
+        query_model_agentic(
+            model,
+            messages,
+            target_workspace=target_workspace,
+            enable_tools=enable_tools,
+        )
+        for model in models
+    ]
+    responses = await asyncio.gather(*tasks, return_exceptions=True)
+    return {
+        model: (resp if not isinstance(resp, Exception) else None)
+        for model, resp in zip(models, responses)
+    }
 
 
 async def query_model_streaming(

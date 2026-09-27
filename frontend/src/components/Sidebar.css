@@ -38,23 +38,23 @@
 
 .sidebar-new-actions {
   display: flex;
-  gap: 8px;
   width: 100%;
 }
 
 .new-conversation-btn {
-  flex: 1.2;
+  flex: 1;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 9px 12px;
+  gap: 8px;
+  padding: 9px 14px;
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-active);
-  border-radius: 999px;
+  border-radius: var(--radius-md, 8px);
   color: var(--text-primary);
   cursor: pointer;
-  font-size: 12.5px;
+  font-size: 13px;
   font-family: var(--font-body);
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -66,32 +66,6 @@
   background: var(--accent-subtle);
   border-color: var(--accent-primary);
   box-shadow: 0 0 12px var(--accent-glow);
-}
-
-.new-deliberation-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 9px 12px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 12.5px;
-  font-family: var(--font-body);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  transition: all 0.2s ease;
-}
-
-.new-deliberation-btn:hover {
-  background: var(--bg-surface-hover);
-  border-color: var(--border-medium);
-  color: var(--text-primary);
-  transform: translateY(-1px);
 }
 
 .new-conversation-btn:active {
@@ -438,6 +412,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  transition: all 0.15s ease;
+}
+
+.sidebar-active-council.clickable:hover {
+  background: var(--bg-surface-elevated);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 10px var(--accent-glow);
+  cursor: pointer;
 }
 
 .sidebar-active-council-label {

@@ -9,7 +9,8 @@ import { api } from './api';
 let cachedProfiles = {
   'local/antigravity': { display_name: 'Antigravity', color: '#6366f1', avatar_url: '' },
   'local/claude-code': { display_name: 'Claude Code', color: '#d97706', avatar_url: '' },
-  'local/qwen3.6-27b': { display_name: 'Qwen 27B', color: '#10b981', avatar_url: '' },
+  'local/qwen3.6-27b': { display_name: 'Qwen 3.6', color: '#10b981', avatar_url: '' },
+  'local/qwen3.8-27b': { display_name: 'Qwen 3.8', color: '#06b6d4', avatar_url: '' },
   'custom/gemini-3-6-flash': { display_name: 'Gemini 3.6 Flash', color: '#3b82f6', avatar_url: '' },
   'custom/groq': { display_name: 'Groq Llama 3.3', color: '#f97316', avatar_url: '' },
   'openai/gpt-4o': { display_name: 'GPT-4o', color: '#10a37f', avatar_url: '' },
@@ -69,6 +70,8 @@ export function getAgentProfile(modelId) {
     displayName = parts[parts.length - 1] || baseModel;
     if (displayName.includes('antigravity')) displayName = 'Antigravity';
     else if (displayName.includes('claude')) displayName = 'Claude Code';
+    else if (displayName.includes('qwen3.8') || displayName.includes('qwen-3.8')) displayName = 'Qwen 3.8';
+    else if (displayName.includes('qwen3.6') || displayName.includes('qwen-3.6')) displayName = 'Qwen 3.6';
     else if (displayName.includes('qwen')) displayName = 'Qwen';
     else if (displayName.includes('gemini')) displayName = 'Gemini';
     else if (displayName.includes('groq')) displayName = 'Groq';

@@ -101,7 +101,7 @@ export default function DebateView({
             className={`stepper-pill ${viewMode === 'all' ? 'active' : ''}`}
             onClick={() => setViewMode('all')}
           >
-            <span>Tümü</span>
+            <span>All</span>
           </button>
 
           {/* R1 Step */}
@@ -114,7 +114,7 @@ export default function DebateView({
             title="Round 1: Position Statements"
           >
             <span className="step-tag">R1</span>
-            <span className="step-label">Pozisyonlar</span>
+            <span className="step-label">Positions</span>
             {hasRound1 && <span className="step-count">{positions.length}</span>}
             {currentRound === 1 && isDebating && <span className="pulse-dot"></span>}
           </button>
@@ -129,7 +129,7 @@ export default function DebateView({
             title="Round 2: Cross Critiques"
           >
             <span className="step-tag">R2</span>
-            <span className="step-label">Eleştiriler</span>
+            <span className="step-label">Critiques</span>
             {hasRound2 && <span className="step-count">{critiques.length}</span>}
             {currentRound === 2 && isDebating && <span className="pulse-dot"></span>}
           </button>
@@ -145,7 +145,7 @@ export default function DebateView({
               title="Round 3: Rebuttals & Defense"
             >
               <span className="step-tag">R3</span>
-              <span className="step-label">Savunmalar</span>
+              <span className="step-label">Rebuttals</span>
               {hasRound3 && <span className="step-count">{rebuttals.length}</span>}
               {currentRound === 3 && isDebating && <span className="pulse-dot"></span>}
             </button>
@@ -161,7 +161,7 @@ export default function DebateView({
             title="Final Chairman Judgment"
           >
             <span className="step-tag">J</span>
-            <span className="step-label">Hüküm</span>
+            <span className="step-label">Verdict</span>
             {isJudging && <span className="pulse-dot"></span>}
           </button>
         </div>

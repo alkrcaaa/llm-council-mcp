@@ -235,7 +235,8 @@ async def stage1_collect_responses(
     user_query: str,
     system_prompt: str = None,
     use_cot: bool = False,
-    models: List[str] = None
+    models: List[str] = None,
+    target_workspace: str = None,
 ) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
@@ -248,9 +249,10 @@ async def stage1_collect_responses(
         system_prompt: Optional system prompt to prepend to all queries
         use_cot: If True, request Chain-of-Thought structured responses
         models: Optional list of specific models to use (for dynamic routing)
+        target_workspace: Optional workspace directory context for code/diff tools
 
     Returns:
-        List of dicts with 'model', 'response', 'confidence', and optional
+        List of dicts with 'model', 'response', 'confidence', 'tools_executed', and optional
         'reasoning_details', 'cot' (chain-of-thought), plus 'usage' and 'cost' data.
     """
     messages = []
@@ -268,7 +270,7 @@ async def stage1_collect_responses(
 
     # Use provided models or get current council models dynamically
     council_models = models if models else get_council_models()
-    responses = await query_models_parallel(council_models, messages)
+    responses = await query_models_parallel(council_models, messages, target_workspace=target_workspace)
 
     # Format results, including reasoning_details, confidence, CoT, and cost data
     stage1_results = []
@@ -286,6 +288,7 @@ async def stage1_collect_responses(
                 "model": model,
                 "response": clean_response,
                 "confidence": confidence,
+                "tools_executed": response.get('tools_executed', []),
                 "usage": response.get('usage', {}),
                 "cost": response.get('cost', {}),
             }
@@ -1165,7 +1168,8 @@ async def run_full_council(
     use_early_consensus: bool = False,
     use_dynamic_routing: bool = False,
     council_models: Optional[List[str]] = None,
-    chairman_model: Optional[str] = None
+    chairman_model: Optional[str] = None,
+    target_workspace: Optional[str] = None,
 ) -> Tuple[List, List, Dict, Dict]:
     """
     Run the complete 3-stage council process.
@@ -1179,6 +1183,7 @@ async def run_full_council(
         use_dynamic_routing: If True, classify question and route to specialized model pool
         council_models: Optional list of council models to participate
         chairman_model: Optional chairman model for Stage 3 synthesis
+        target_workspace: Optional project workspace directory for code inspection tools
 
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
@@ -1198,7 +1203,13 @@ async def run_full_council(
 
     # Stage 1: Collect individual responses (using routed models if routing is enabled)
     models_for_stage1 = routed_models if use_dynamic_routing else council_models
-    stage1_results = await stage1_collect_responses(user_query, system_prompt, use_cot, models_for_stage1)
+    stage1_results = await stage1_collect_responses(
+        user_query,
+        system_prompt,
+        use_cot,
+        models_for_stage1,
+        target_workspace=target_workspace,
+    )
 
     # If no models responded successfully, return error
     if not stage1_results:

@@ -2608,3 +2608,147 @@
   color: #f85149;
   font-size: 0.68rem;
 }
+
+/* ==========================================================================
+   Round Table Hierarchy & Custom Role Prompts
+   ========================================================================== */
+.lead-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #d29922;
+  background: rgba(210, 153, 34, 0.15);
+  border: 1px solid rgba(210, 153, 34, 0.4);
+  padding: 3px 8px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.set-lead-btn {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.set-lead-btn:hover {
+  color: #d29922;
+  border-color: #d29922;
+}
+
+.role-prompt-toggle-btn {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+
+.role-prompt-toggle-btn.has-prompt {
+  border-color: rgba(56, 139, 253, 0.5);
+  color: #58a6ff;
+  background: rgba(56, 139, 253, 0.1);
+}
+
+.role-prompt-toggle-btn.active {
+  background: #30363d;
+  color: #ffffff;
+}
+
+.role-prompt-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3fb950;
+  display: inline-block;
+}
+
+.model-prompt-editor-box {
+  margin-top: 0.65rem;
+  padding: 0.75rem;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.model-prompt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.model-prompt-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.model-prompt-clear-btn {
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.model-prompt-clear-btn:hover {
+  color: #ff7b72;
+}
+
+.model-prompt-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #f0f6fc;
+  font-family: inherit;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  padding: 0.5rem;
+  resize: vertical;
+  min-height: 70px;
+}
+
+.model-prompt-textarea:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+.preset-hierarchy-btn {
+  background: rgba(163, 113, 247, 0.15);
+  border: 1px solid rgba(163, 113, 247, 0.4);
+  color: #d2a8ff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.preset-hierarchy-btn:hover {
+  background: rgba(163, 113, 247, 0.25);
+  color: #ffffff;
+  border-color: #d2a8ff;
+}
+

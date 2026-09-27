@@ -18,15 +18,48 @@ export function createStreamDispatcher({
   const setCurrentConversation = (updater) => {
     let updatedAssistantMsg = null;
     _setCurrentConversation((prev) => {
-      if (!prev || prev.id !== targetConversationId) {
+      // If user navigated to a different conversation, do not overwrite screen
+      if (prev && prev.id !== targetConversationId) {
         return prev;
       }
+      let current = prev || {
+        id: targetConversationId,
+        title: 'New Conversation',
+        messages: [],
+        status: 'deliberating',
+      };
+
+      if (!current.messages) {
+        current = { ...current, messages: [] };
+      }
+
+      // Ensure assistant placeholder message exists at the tail for progressive token appending
+      const messages = [...current.messages];
+      if (messages.length === 0 || messages[messages.length - 1]?.role !== 'assistant') {
+        messages.push({
+          role: 'assistant',
+          stage1: null,
+          stage2: null,
+          stage3: null,
+          metadata: null,
+          loading: {},
+          created_at: new Date().toISOString(),
+        });
+        current = { ...current, messages };
+      } else {
+        const last = messages[messages.length - 1];
+        if (!last.loading) {
+          last.loading = {};
+          current = { ...current, messages };
+        }
+      }
+
       let next;
       try {
-        next = typeof updater === 'function' ? updater(prev) : updater;
+        next = typeof updater === 'function' ? updater(current) : updater;
       } catch (err) {
         console.error('Dropped a malformed stream update instead of crashing:', err);
-        return prev;
+        return current;
       }
       if (next && next.messages && next.messages.length > 0) {
         const last = next.messages[next.messages.length - 1];
@@ -77,19 +110,38 @@ export function createStreamDispatcher({
             });
             break;
 
+          case 'roundtable_tool_call':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              if (!lastMsg.roundtableStreamingTools) lastMsg.roundtableStreamingTools = {};
+              if (!lastMsg.roundtableStreamingTools[event.model]) lastMsg.roundtableStreamingTools[event.model] = [];
+              lastMsg.roundtableStreamingTools[event.model].push({
+                tool: event.tool,
+                arguments: event.arguments,
+              });
+              return { ...prev, messages };
+            });
+            break;
+
           case 'roundtable_model_complete':
             setCurrentConversation((prev) => {
               const messages = [...prev.messages];
               const lastMsg = messages[messages.length - 1];
               if (!lastMsg.roundtableResponses) lastMsg.roundtableResponses = [];
+              const tools = event.tools_executed || lastMsg.roundtableStreamingTools?.[event.model] || [];
               lastMsg.roundtableResponses.push({
                 model: event.model,
                 content: event.content,
                 usage: event.usage,
                 cost: event.cost,
+                tools_executed: tools,
               });
               if (lastMsg.roundtableStreaming) {
                 delete lastMsg.roundtableStreaming[event.model];
+              }
+              if (lastMsg.roundtableStreamingTools) {
+                delete lastMsg.roundtableStreamingTools[event.model];
               }
               return { ...prev, messages };
             });
@@ -137,6 +189,36 @@ export function createStreamDispatcher({
               const messages = [...prev.messages];
               const lastMsg = messages[messages.length - 1];
               lastMsg.researchMeta = event.metadata;
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'tool_call':
+            if (setProcessEvents) {
+              setProcessEvents((prev) => [
+                ...prev,
+                {
+                  event: 'tool_call',
+                  data: { model: event.model, tool: event.tool, arguments: event.arguments },
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+            }
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              if (!lastMsg.toolsExecuted) lastMsg.toolsExecuted = [];
+              lastMsg.toolsExecuted.push({
+                model: event.model,
+                tool: event.tool,
+                arguments: event.arguments,
+              });
+              if (!lastMsg.stage1ToolsStreaming) lastMsg.stage1ToolsStreaming = {};
+              if (!lastMsg.stage1ToolsStreaming[event.model]) lastMsg.stage1ToolsStreaming[event.model] = [];
+              lastMsg.stage1ToolsStreaming[event.model].push({
+                tool: event.tool,
+                arguments: event.arguments,
+              });
               return { ...prev, messages };
             });
             break;
@@ -464,7 +546,9 @@ export function createStreamDispatcher({
             break;
 
           case 'title_complete':
-            // Reload conversations to get updated title
+            if (event.title) {
+              setCurrentConversation((prev) => (prev ? { ...prev, title: event.title } : prev));
+            }
             loadConversations();
             break;
 

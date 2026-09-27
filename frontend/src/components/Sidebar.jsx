@@ -151,24 +151,31 @@ export default function Sidebar({
           <button
             type="button"
             className="new-conversation-btn"
-            onClick={() => onNewConversation?.(null, null, 'roundtable')}
-            title="Start an organic Round-Table group chat"
+            onClick={() => {
+              if (currentConversationId !== null) {
+                onNewConversation?.(null, null, 'roundtable');
+              } else {
+                const el = document.querySelector('.landing-composer-input') || document.querySelector('.chat-input');
+                el?.focus();
+              }
+            }}
+            title="Start a new chat (⌘N)"
           >
-            New Chat
-          </button>
-          <button
-            type="button"
-            className="new-deliberation-btn"
-            onClick={() => onNewConversation?.(null, null, 'deliberation')}
-            title="Start a formal 3-stage Council Deliberation"
-          >
-            Council
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>New Chat</span>
           </button>
         </div>
       </div>
 
       {activeCouncil && (
-        <div className="sidebar-active-council" title={`New conversations will start with ${activeCouncil.name}`}>
+        <div
+          className="sidebar-active-council clickable"
+          onClick={onOpenConfigPanel}
+          title={`Active Council: ${activeCouncil.name}. Click to configure models.`}
+        >
           <span className="sidebar-active-council-label">COUNCIL</span>
           <span className="sidebar-active-council-value">{activeCouncil.name}</span>
         </div>

@@ -125,6 +125,9 @@ def list_conversations() -> List[Dict[str, Any]]:
                     data = json.load(f)
                     if not isinstance(data, dict) or "id" not in data or "messages" not in data:
                         continue
+                    # Ignore abandoned conversations with 0 messages
+                    if len(data.get("messages", [])) == 0:
+                        continue
                     # Return metadata only
                     conversations.append({
                         "id": data["id"],

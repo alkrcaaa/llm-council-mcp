@@ -86,7 +86,7 @@ export default function LoginModal({ onLoginSuccess }) {
             {authStatus?.is_default_password ? (
               <span>Default credentials: <code>admin</code> / <code>admin</code></span>
             ) : (
-              <span>Sistem yöneticisinin belirlediği kimlik bilgileriyle giriş yapın.</span>
+              <span>Sign in with administrator credentials.</span>
             )}
           </div>
         </form>

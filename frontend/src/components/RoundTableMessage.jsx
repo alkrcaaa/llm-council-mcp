@@ -10,6 +10,7 @@ export default function RoundTableMessage({
   isStreaming = false,
   cost,
   usage,
+  toolsExecuted = [],
   onReplyToModel,
 }) {
   const [copied, setCopied] = useState(false);
@@ -91,6 +92,21 @@ export default function RoundTableMessage({
             )}
           </div>
         </div>
+
+        {toolsExecuted && toolsExecuted.length > 0 && (
+          <div className="roundtable-tools-container">
+            {toolsExecuted.map((t, idx) => {
+              const argStr = t.arguments?.package_query || t.arguments?.query || t.arguments?.target_workspace || t.arguments?.file_path || (typeof t.arguments === 'string' ? t.arguments : '');
+              return (
+                <span key={idx} className="roundtable-tool-chip" title={typeof t.arguments === 'object' ? JSON.stringify(t.arguments, null, 2) : String(t.arguments || '')}>
+                  <span className="roundtable-tool-icon">🛠️</span>
+                  <span className="roundtable-tool-name">{t.tool}</span>
+                  {argStr && <span className="roundtable-tool-arg">{argStr}</span>}
+                </span>
+              );
+            })}
+          </div>
+        )}
 
         <div className="roundtable-bubble-content markdown-content">
           {content ? (

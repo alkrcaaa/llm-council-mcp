@@ -103,8 +103,8 @@ export const api = {
       body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
     });
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ detail: 'Şifre güncellenemedi' }));
-      throw new Error(err.detail || 'Şifre güncellenemedi');
+      const err = await response.json().catch(() => ({ detail: 'Failed to update password' }));
+      throw new Error(err.detail || 'Failed to update password');
     }
     const data = await response.json();
     if (data.token) {
@@ -245,6 +245,17 @@ export const api = {
     if (!response.ok) {
       const err = await response.json().catch(() => ({ detail: 'Failed to delete council' }));
       throw new Error(err.detail || 'Failed to delete council');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get default anti-sycophancy hierarchy prompts per model family.
+   */
+  async getHierarchyPrompts() {
+    const response = await apiFetch(`${API_BASE}/api/chat-rosters/hierarchy-prompts`);
+    if (!response.ok) {
+      throw new Error('Failed to get hierarchy prompts');
     }
     return response.json();
   },
