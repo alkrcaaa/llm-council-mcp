@@ -88,6 +88,9 @@ def _prepare_messages_for_model(model: str, messages: List[Dict[str, str]]) -> L
         return augmented
     except Exception as e:
         print(f"Error preparing skill messages for {model}: {e}")
+        return messages
+
+
 def _extract_raw_tool_calls_from_text(content: Optional[str]) -> Optional[List[Dict[str, Any]]]:
     """
     Catch XML or pseudo-tag tool calls emitted directly into content text by models
@@ -242,7 +245,7 @@ async def query_model_agentic(
 
     try:
         from .tools import get_tools_for_model, run_agentic_tool_loop
-        tools = get_tools_for_model(model, is_roundtable=is_roundtable)
+        tools = get_tools_for_model(model, is_roundtable=is_roundtable, target_workspace=target_workspace)
         if not tools:
             return await query_model(model, messages, timeout=timeout)
 
@@ -255,7 +258,7 @@ async def query_model_agentic(
             messages=messages,
             tools=tools,
             target_workspace=target_workspace,
-            max_turns=3,
+            max_turns=4,
         )
     except Exception as e:
         print(f"Error in agentic tool loop for {model}: {e}, falling back to direct query")

@@ -12,9 +12,8 @@ import re
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
-import httpx
-
 from .config_api import get_chairman_model
+from .netguard import safe_get
 from .openrouter import query_model
 from .skills import (
     SKILL_METADATA,
@@ -22,6 +21,7 @@ from .skills import (
     parse_frontmatter,
 )
 
+MAX_SKILL_BYTES = 500_000
 RAW_HOST = "https://raw.githubusercontent.com"
 DEFAULT_BRANCHES = ("main", "master")
 SKILL_FILENAMES = ("SKILL.md", "README.md")
@@ -143,10 +143,10 @@ def suggest_skill_id(url: str) -> str:
 async def fetch_url(url: str) -> Optional[str]:
     """Fetch a URL, returning its text or None when it is not reachable."""
     try:
-        async with httpx.AsyncClient(timeout=FETCH_TIMEOUT, follow_redirects=True) as client:
-            response = await client.get(url)
-        if response.status_code == 200 and response.text.strip():
-            return response.text
+        response, body = await safe_get(url, timeout=FETCH_TIMEOUT, max_bytes=MAX_SKILL_BYTES)
+        text = body.decode(response.charset_encoding or "utf-8", errors="replace")
+        if response.status_code == 200 and text.strip():
+            return text
     except Exception:
         return None
     return None

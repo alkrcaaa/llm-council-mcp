@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown.jsx';
 import { ConfidenceBadge, AggregateConfidenceSummary } from './ConfidenceDisplay';
 import ReasoningView, { CoTBadge } from './ReasoningView';
 import { TierBadge, TierSummary, EscalationBanner } from './TierIndicator';
@@ -274,9 +274,9 @@ export default function Stage1({
                   Chain of Thought
                 </div>
                 <div className="reasoning-text markdown-content">
-                  <ReactMarkdown>
+                  <SafeMarkdown>
                     {formatReasoning(currentResponse.reasoning_details)}
-                  </ReactMarkdown>
+                  </SafeMarkdown>
                 </div>
               </div>
             )}
@@ -290,7 +290,7 @@ export default function Stage1({
               <div className="response-label">Final Response</div>
             )}
             <div className={`response-text markdown-content ${isCurrentStreaming ? 'streaming' : ''}`}>
-              <ReactMarkdown>{currentResponse.response}</ReactMarkdown>
+              <SafeMarkdown>{currentResponse.response}</SafeMarkdown>
               {isCurrentStreaming && <span className="streaming-cursor"></span>}
             </div>
           </div>
@@ -300,7 +300,7 @@ export default function Stage1({
         {hasCot && isCurrentStreaming && (
           <div className="response-section">
             <div className={`response-text markdown-content streaming`}>
-              <ReactMarkdown>{currentResponse.response}</ReactMarkdown>
+              <SafeMarkdown>{currentResponse.response}</SafeMarkdown>
               <span className="streaming-cursor"></span>
             </div>
           </div>

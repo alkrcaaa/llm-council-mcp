@@ -1,4 +1,4 @@
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown.jsx';
 import MultiSynthesis from './MultiSynthesis';
 import RefinementView, { RefinementBadge } from './RefinementView';
 import AdversaryReview, { AdversaryBadge } from './AdversaryReview';
@@ -188,7 +188,7 @@ export default function Stage3({
             Winner: {modelShort}
           </div>
           <div className="final-text markdown-content">
-            <ReactMarkdown>{finalResponse.response || ''}</ReactMarkdown>
+            <SafeMarkdown>{finalResponse.response || ''}</SafeMarkdown>
           </div>
         </div>
       </div>
@@ -347,7 +347,7 @@ export default function Stage3({
           {isStreaming && <span className="streaming-badge">Generating...</span>}
         </div>
         <div className={`final-text markdown-content ${isStreaming ? 'streaming' : ''}`}>
-          <ReactMarkdown>{displayResponse}</ReactMarkdown>
+          <SafeMarkdown>{displayResponse}</SafeMarkdown>
           {isStreaming && <span className="streaming-cursor"></span>}
         </div>
       </div>

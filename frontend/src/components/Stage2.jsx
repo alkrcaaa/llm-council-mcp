@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown.jsx';
 import './Stage2.css';
 
 function formatModelLabel(model) {
@@ -209,9 +209,9 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings, useW
               {formatModelLabel(rankings[activeTab].model)}'s Peer Review
             </div>
             <div className="ranking-content markdown-content">
-              <ReactMarkdown>
+              <SafeMarkdown>
                 {deAnonymizeText(rankings[activeTab].ranking, labelToModel)}
-              </ReactMarkdown>
+              </SafeMarkdown>
             </div>
 
             {rankings[activeTab].parsed_ranking &&

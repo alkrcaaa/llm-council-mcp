@@ -112,6 +112,15 @@ def _mask_key(key: Optional[str]) -> str:
     return f"{key[:4]}••••{key[-4:]}"
 
 
+def redact_provider(provider: Dict[str, Any]) -> Dict[str, Any]:
+    """Copy of a provider safe to return over the API: the raw key never leaves the backend."""
+    safe = dict(provider)
+    raw = safe.pop("api_key", None)
+    safe["api_key_masked"] = _mask_key(raw)
+    safe["api_key_set"] = bool(raw and raw != "not-needed")
+    return safe
+
+
 def load_provider_labels() -> Dict[str, str]:
     """All stored display labels, keyed by provider id."""
     try:
@@ -262,8 +271,12 @@ def save_providers(providers: List[Dict[str, Any]]) -> bool:
     """Persist list of custom providers."""
     _ensure_data_dir()
     try:
-        with open(PROVIDERS_FILE, "w", encoding="utf-8") as f:
+        # Atomic write, owner-only: the file holds provider API keys in plaintext.
+        tmp_path = f"{PROVIDERS_FILE}.tmp"
+        fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(providers, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, PROVIDERS_FILE)
         return True
     except Exception as e:
         print(f"[Providers] Error saving {PROVIDERS_FILE}: {e}")
@@ -323,6 +336,7 @@ def add_or_update_provider(provider_data: Dict[str, Any]) -> Dict[str, Any]:
         model_id = preset_info.get("default_model", "")
 
     api_key = (provider_data.get("api_key") or "").strip()
+    key_supplied = bool(api_key)
     default_skill = (provider_data.get("default_skill") or "").strip() or None
 
     # Local host and Ollama normalization
@@ -373,6 +387,11 @@ def add_or_update_provider(provider_data: Dict[str, Any]) -> Dict[str, Any]:
     # Upsert
     existing_idx = next((i for i, p in enumerate(providers) if p.get("id") == raw_id), None)
     if existing_idx is not None:
+        # The UI never receives stored keys, so an edit that leaves the key blank
+        # means "keep the current one" rather than "wipe it".
+        if not key_supplied and providers[existing_idx].get("api_key"):
+            entry["api_key"] = providers[existing_idx]["api_key"]
+        entry["created_at"] = providers[existing_idx].get("created_at", entry["updated_at"])
         providers[existing_idx] = entry
     else:
         entry["created_at"] = entry["updated_at"]

@@ -48,6 +48,7 @@ from . import ingestion
 from . import research
 from . import roundtable
 from . import agent_profiles
+from .limits import LimitsMiddleware
 
 # Routes reachable without a token. Everything else is authenticated by default,
 # so a newly added endpoint cannot be left open by forgetting a dependency.
@@ -78,6 +79,8 @@ app = FastAPI(title="LLM Council API", dependencies=[Depends(require_auth)])
 # Enable CORS for local development, including access from other devices
 # on the LAN (e.g. http://192.168.x.x:5173) since the frontend is often
 # viewed from a machine other than the one running the containers.
+app.add_middleware(LimitsMiddleware)
+# Added last so CORS is outermost: 413/429 replies still carry CORS headers.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"]
@@ -473,19 +476,22 @@ async def create_conversation(request: CreateConversationRequest):
     return conversation
 
 
+def is_deliberation_running(conversation_id: str) -> bool:
+    """True while a deliberation task is alive, whether started by SSE or by the blocking endpoint."""
+    ctx = ACTIVE_DELIBERATION_CONTEXTS.get(conversation_id)
+    if ctx and not ctx.done and ctx.task and not ctx.task.done():
+        return True
+    task = ACTIVE_DELIBERATIONS.get(conversation_id)
+    return bool(task and not task.done())
+
+
 @app.get("/api/conversations/active")
 async def get_active_deliberations():
     """
     Get list of currently running deliberation conversation IDs.
     """
-    active_ids = [
-        cid for cid, ctx in ACTIVE_DELIBERATION_CONTEXTS.items()
-        if ctx.task and not ctx.task.done()
-    ]
-    for cid, t in ACTIVE_DELIBERATIONS.items():
-        if cid not in active_ids and not t.done():
-            active_ids.append(cid)
-    return {"active_conversations": active_ids}
+    ids = set(ACTIVE_DELIBERATION_CONTEXTS) | set(ACTIVE_DELIBERATIONS)
+    return {"active_conversations": [cid for cid in ids if is_deliberation_running(cid)]}
 
 
 @app.get("/api/conversations/{conversation_id}", response_model=Conversation)
@@ -495,12 +501,11 @@ async def get_conversation(conversation_id: str):
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Self-heal stale status if no background task is actively running
-    if conversation.get("status") in ("deliberating", "streaming"):
-        ctx = ACTIVE_DELIBERATION_CONTEXTS.get(conversation_id)
-        if not ctx or ctx.done or (ctx.task and ctx.task.done()):
-            conversation["status"] = "idle"
-            storage.save_conversation(conversation)
+    # Self-heal a stale status (e.g. after a restart) only when nothing is running.
+    if conversation.get("status") in ("deliberating", "streaming") and not is_deliberation_running(conversation_id):
+        conversation["status"] = "idle"
+        # Status only: rewriting the whole conversation could clobber a concurrent write.
+        storage.set_conversation_status(conversation_id, "idle")
 
     return conversation
 
@@ -778,6 +783,7 @@ async def update_config(request: UpdateConfigRequest):
     """
     try:
         config = config_api.save_config({
+            **config_api.load_config(),
             "council_models": request.council_models,
             "chairman_model": request.chairman_model,
         })
@@ -802,8 +808,8 @@ async def get_available_models():
 async def get_providers():
     """Get list of registered providers (both system from .env and custom from UI)."""
     from backend import providers
-    system = providers.get_system_providers()
-    custom = providers.load_providers()
+    system = [providers.redact_provider(p) for p in providers.get_system_providers()]
+    custom = [providers.redact_provider(p) for p in providers.load_providers()]
     return {
         "system_providers": system,
         "custom_providers": custom,
@@ -833,7 +839,7 @@ async def create_or_update_provider(request: ProviderRequest):
     from backend import providers
     try:
         saved = providers.add_or_update_provider(request.dict())
-        return {"status": "ok", "provider": saved}
+        return {"status": "ok", "provider": providers.redact_provider(saved)}
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:

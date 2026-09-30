@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown.jsx';
 import './RefinementView.css';
 
 /**
@@ -151,7 +151,7 @@ export default function RefinementView({
                             </span>
                           </div>
                           <div className="critique-text markdown-content">
-                            <ReactMarkdown>{critique.critique || ''}</ReactMarkdown>
+                            <SafeMarkdown>{critique.critique || ''}</SafeMarkdown>
                           </div>
                         </div>
                       ))}
@@ -165,7 +165,7 @@ export default function RefinementView({
                       <span className="section-title">Chairman Revision</span>
                     </div>
                     <div className="revision-text markdown-content">
-                      <ReactMarkdown>{iter.revision}</ReactMarkdown>
+                      <SafeMarkdown>{iter.revision}</SafeMarkdown>
                     </div>
                   </div>
                 )}
@@ -214,7 +214,7 @@ export default function RefinementView({
                           </span>
                         </div>
                         <div className="critique-text markdown-content">
-                          <ReactMarkdown>{critique.critique || ''}</ReactMarkdown>
+                          <SafeMarkdown>{critique.critique || ''}</SafeMarkdown>
                         </div>
                       </div>
                     ))}
@@ -232,7 +232,7 @@ export default function RefinementView({
                     </span>
                   </div>
                   <div className="revision-text markdown-content streaming">
-                    <ReactMarkdown>{streamingRevision}</ReactMarkdown>
+                    <SafeMarkdown>{streamingRevision}</SafeMarkdown>
                     <span className="streaming-cursor"></span>
                   </div>
                 </div>

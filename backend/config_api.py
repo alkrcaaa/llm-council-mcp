@@ -153,8 +153,10 @@ def save_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "escalation_agreement_threshold": config.get("escalation_agreement_threshold", DEFAULT_CONFIG["escalation_agreement_threshold"]),
     }
 
-    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+    tmp_file = f"{CONFIG_FILE}.tmp"
+    with open(tmp_file, 'w', encoding='utf-8') as f:
         json.dump(config_to_save, f, indent=2)
+    os.replace(tmp_file, CONFIG_FILE)
 
     return config_to_save
 

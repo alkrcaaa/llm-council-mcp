@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown.jsx';
 import { ConfidenceBadge } from './ConfidenceDisplay';
 import { colorForModel, shortModelName, initialsFor, toMentionMarkdown, mentionMarkdownComponents } from './mentionUtils.jsx';
 import { getAgentProfile } from '../agentProfiles';
@@ -29,7 +29,7 @@ function FeedRow({ modelId, roleTag, roleTagClass, content, confidence, isStream
           {isStreaming && <span className="feed-streaming-dot" title="Generating…" />}
         </div>
         <div className="feed-content markdown-content">
-          <ReactMarkdown components={mentionMarkdownComponents}>{content || ''}</ReactMarkdown>
+          <SafeMarkdown components={mentionMarkdownComponents}>{content || ''}</SafeMarkdown>
         </div>
       </div>
     </div>
@@ -167,7 +167,7 @@ export default function LiveFeed({
           </div>
 
           <div className="verdict-content markdown-content">
-            <ReactMarkdown components={mentionMarkdownComponents}>{verdictContent}</ReactMarkdown>
+            <SafeMarkdown components={mentionMarkdownComponents}>{verdictContent}</SafeMarkdown>
             {isStage3Streaming && <span className="verdict-cursor"></span>}
           </div>
         </div>

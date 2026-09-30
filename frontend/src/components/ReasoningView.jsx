@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown.jsx';
 import './ReasoningView.css';
 
 /**
@@ -121,7 +121,7 @@ export default function ReasoningView({ cot, showAll = false, compact = false })
             {expandedSections[section.key] && section.content && (
               <div className="section-content">
                 <div className="markdown-content">
-                  <ReactMarkdown>{section.content}</ReactMarkdown>
+                  <SafeMarkdown>{section.content}</SafeMarkdown>
                 </div>
               </div>
             )}

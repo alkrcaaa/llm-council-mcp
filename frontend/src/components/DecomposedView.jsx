@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown.jsx';
 import './DecomposedView.css';
 
 /**
@@ -215,7 +215,7 @@ export default function DecomposedView({
                       </span>
                     </div>
                     <div className="sub-answer-content markdown-content">
-                      <ReactMarkdown>{result.best_answer || 'No answer available'}</ReactMarkdown>
+                      <SafeMarkdown>{result.best_answer || 'No answer available'}</SafeMarkdown>
                     </div>
                   </div>
                 ))}
@@ -257,7 +257,7 @@ export default function DecomposedView({
           {expandedSections.merge && (
             <div className="section-content merge-content">
               <div className={`merge-text markdown-content ${isMerging ? 'streaming' : ''}`}>
-                <ReactMarkdown>{finalResponse || mergeStreaming}</ReactMarkdown>
+                <SafeMarkdown>{finalResponse || mergeStreaming}</SafeMarkdown>
                 {isMerging && <span className="streaming-cursor"></span>}
               </div>
             </div>

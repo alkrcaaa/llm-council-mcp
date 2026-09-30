@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown.jsx';
 import { api } from '../api';
 import './SkillViewerModal.css';
 
@@ -138,7 +138,7 @@ export default function SkillViewerModal({ initialSkillId = null, onClose }) {
                       Models assigned this skill must strictly enforce these domain rules in Stage 1 answers and Stage 2 peer scoring:
                     </p>
                     <div className="skill-gate-content markdown-content">
-                      <ReactMarkdown>{skillDetails.guidelines}</ReactMarkdown>
+                      <SafeMarkdown>{skillDetails.guidelines}</SafeMarkdown>
                     </div>
                   </div>
                 )}
@@ -149,7 +149,7 @@ export default function SkillViewerModal({ initialSkillId = null, onClose }) {
                     <h4>Complete Skill Documentation</h4>
                   </div>
                   <div className="skill-markdown-body markdown-content">
-                    <ReactMarkdown>{skillDetails.content}</ReactMarkdown>
+                    <SafeMarkdown>{skillDetails.content}</SafeMarkdown>
                   </div>
                 </div>
               </div>

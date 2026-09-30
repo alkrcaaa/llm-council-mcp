@@ -45,6 +45,26 @@ HOST = os.getenv("CLAUDE_SHIM_HOST", "0.0.0.0")
 ALLOW_NO_AUTH = os.getenv("CLAUDE_SHIM_ALLOW_NO_AUTH") == "1"
 PLACEHOLDER_SECRETS = {"", "not-needed"}
 CLAUDE_TIMEOUT_S = 180
+MAX_BODY_BYTES = 8 * 1024 * 1024
+
+
+def flatten_content(content):
+    """OpenAI content may be a string, None, or a list of typed parts; the CLI takes text only."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        texts = []
+        for part in content:
+            if isinstance(part, str):
+                texts.append(part)
+            elif isinstance(part, dict) and part.get("type") == "text":
+                texts.append(str(part.get("text", "")))
+            elif isinstance(part, dict) and part.get("type") == "image_url":
+                texts.append("[image omitted]")
+        return "\n".join(t for t in texts if t)
+    return str(content)
 
 
 def messages_to_prompt(messages):
@@ -52,7 +72,7 @@ def messages_to_prompt(messages):
     parts = []
     for m in messages:
         role = m.get("role", "user")
-        content = m.get("content", "")
+        content = flatten_content(m.get("content", ""))
         if role == "system":
             parts.append(f"[System instructions]\n{content}")
         elif role == "assistant":
@@ -66,7 +86,9 @@ def run_claude(prompt):
     cmd = ["claude", "-p", "--restricted", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--output-format", "json"]
     if MODEL_ALIAS:
         cmd += ["--model", MODEL_ALIAS]
-    cmd.append(prompt)
+    # The prompt goes through stdin, not argv: a single argv item is capped at ~128 KB
+    # on Linux (big round-table prompts would fail) and a prompt starting with "--"
+    # would otherwise be parsed as a CLI flag.
 
     # Determine execution directory: CLAUDE_SHIM_CWD > WORKSPACE_DIR > cwd
     target_cwd = os.getenv("CLAUDE_SHIM_CWD") or os.getenv("WORKSPACE_DIR")
@@ -74,7 +96,7 @@ def run_claude(prompt):
         target_cwd = os.getcwd()
 
     result = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=CLAUDE_TIMEOUT_S,
+        cmd, input=prompt, capture_output=True, text=True, timeout=CLAUDE_TIMEOUT_S,
         cwd=target_cwd,
         # A seat must never re-enter the council: the MCP server reads this guard.
         env={**os.environ, "LLM_COUNCIL_INVOCATION": "1"},
@@ -120,8 +142,16 @@ class Handler(BaseHTTPRequestHandler):
             self._unauthorized()
             return
 
-        length = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(length) or b"{}")
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if not 0 <= length <= MAX_BODY_BYTES:
+                raise ValueError("bad Content-Length")
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except ValueError:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b'{"error":"invalid request body"}')
+            return
         messages = body.get("messages", [])
         stream = bool(body.get("stream"))
         prompt = messages_to_prompt(messages)

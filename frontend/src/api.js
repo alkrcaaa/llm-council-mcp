@@ -7,6 +7,40 @@
 // VITE_API_PORT lets a second stack (infra/docker-compose.qa.yml) point at its own backend.
 const API_BASE = `http://${window.location.hostname}:${import.meta.env.VITE_API_PORT || 8001}`;
 
+/**
+ * Read an SSE response, dispatching each `data:` event to onEvent.
+ * Buffers across network chunks so an event (or a multi-byte character) split
+ * at a chunk boundary is reassembled instead of dropped.
+ */
+async function readSSE(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  const dispatch = (line) => {
+    if (!line.startsWith('data: ')) return;
+    try {
+      const event = JSON.parse(line.slice(6));
+      onEvent(event.type, event);
+    } catch (e) {
+      console.error('Failed to parse SSE event:', e);
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    lines.forEach(dispatch);
+  }
+
+  buffer += decoder.decode();
+  if (buffer) dispatch(buffer);
+}
+
 const TOKEN_KEY = 'council_auth_token';
 
 // Every backend route except login/status/verify requires a bearer token, so
@@ -1184,28 +1218,7 @@ export const api = {
       throw new Error(detail || 'Failed to send message');
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n');
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          try {
-            const event = JSON.parse(data);
-            onEvent(event.type, event);
-          } catch (e) {
-            console.error('Failed to parse SSE event:', e);
-          }
-        }
-      }
-    }
+    await readSSE(response, onEvent);
   },
 
   /**
@@ -1231,28 +1244,7 @@ export const api = {
         throw new Error(`Failed to connect to stream: ${response.status}`);
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            try {
-              const event = JSON.parse(data);
-              onEvent(event.type, event);
-            } catch (e) {
-              console.error('Failed to parse SSE event:', e);
-            }
-          }
-        }
-      }
+      await readSSE(response, onEvent);
       return true;
     } catch (err) {
       console.warn('Stream subscription ended or failed:', err);

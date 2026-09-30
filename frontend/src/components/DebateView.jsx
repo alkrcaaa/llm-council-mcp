@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown.jsx';
 import { getAgentProfile } from '../agentProfiles';
 import './DebateView.css';
 
@@ -206,7 +206,7 @@ export default function DebateView({
                         <ModelBadge model={pos.model} roleLabel={roleLabel} />
                       </div>
                       <div className="card-markdown-content">
-                        <ReactMarkdown>{pos.position}</ReactMarkdown>
+                        <SafeMarkdown>{pos.position}</SafeMarkdown>
                       </div>
                     </div>
                   );
@@ -267,7 +267,7 @@ export default function DebateView({
                       </div>
                     </div>
                     <div className="card-markdown-content">
-                      <ReactMarkdown>{crit.critique}</ReactMarkdown>
+                      <SafeMarkdown>{crit.critique}</SafeMarkdown>
                     </div>
                   </div>
                 ))}
@@ -315,7 +315,7 @@ export default function DebateView({
                       <span className="rebuttal-tag">REBUTTAL</span>
                     </div>
                     <div className="card-markdown-content">
-                      <ReactMarkdown>{reb.rebuttal}</ReactMarkdown>
+                      <SafeMarkdown>{reb.rebuttal}</SafeMarkdown>
                     </div>
                   </div>
                 ))}
@@ -355,7 +355,7 @@ export default function DebateView({
           {expandedRounds.judgment && (
             <div className="round-card-body judgment-card-body">
               <div className="card-markdown-content judgment-markdown">
-                <ReactMarkdown>{judgment || judgmentStreaming}</ReactMarkdown>
+                <SafeMarkdown>{judgment || judgmentStreaming}</SafeMarkdown>
                 {isJudging && <span className="streaming-cursor"></span>}
               </div>
             </div>

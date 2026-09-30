@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown.jsx';
 import './AdversaryReview.css';
 
 /**
@@ -116,7 +116,7 @@ export default function AdversaryReview({
               Critical Review
             </div>
             <div className={`critique-text markdown-content ${isReviewing ? 'streaming' : ''}`}>
-              <ReactMarkdown>{displayCritique || 'Analyzing...'}</ReactMarkdown>
+              <SafeMarkdown>{displayCritique || 'Analyzing...'}</SafeMarkdown>
               {isReviewing && <span className="streaming-cursor"></span>}
             </div>
           </div>
@@ -129,7 +129,7 @@ export default function AdversaryReview({
                 Chairman Revision
               </div>
               <div className={`revision-text markdown-content ${isRevising ? 'streaming' : ''}`}>
-                <ReactMarkdown>{displayRevision || 'Revising...'}</ReactMarkdown>
+                <SafeMarkdown>{displayRevision || 'Revising...'}</SafeMarkdown>
                 {isRevising && <span className="streaming-cursor"></span>}
               </div>
             </div>

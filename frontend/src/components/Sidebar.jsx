@@ -63,7 +63,7 @@ function ConversationItem({ conv, isActive, isLoading, onSelect, onDelete }) {
 export default function Sidebar({
   conversations,
   currentConversationId,
-  loadingConversationId,
+  loadingIds = {},
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
@@ -267,7 +267,7 @@ export default function Sidebar({
                           key={conv.id}
                           conv={conv}
                           isActive={conv.id === currentConversationId}
-                          isLoading={conv.id === loadingConversationId}
+                          isLoading={!!loadingIds[conv.id]}
                           onSelect={onSelectConversation}
                           onDelete={onDeleteConversation}
                         />
@@ -296,7 +296,7 @@ export default function Sidebar({
                 key={conv.id}
                 conv={conv}
                 isActive={conv.id === currentConversationId}
-                isLoading={conv.id === loadingConversationId}
+                isLoading={!!loadingIds[conv.id]}
                 onSelect={onSelectConversation}
                 onDelete={onDeleteConversation}
               />

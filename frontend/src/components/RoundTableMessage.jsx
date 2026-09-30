@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown.jsx';
 import { colorForModel, shortModelName, initialsFor, mentionMarkdownComponents } from './mentionUtils.jsx';
 import { getAgentProfile } from '../agentProfiles';
 import './RoundTableMessage.css';
@@ -110,9 +110,9 @@ export default function RoundTableMessage({
 
         <div className="roundtable-bubble-content markdown-content">
           {content ? (
-            <ReactMarkdown components={mentionMarkdownComponents}>
+            <SafeMarkdown components={mentionMarkdownComponents}>
               {content}
-            </ReactMarkdown>
+            </SafeMarkdown>
           ) : isStreaming ? (
             <span className="roundtable-typing-dots">
               <span>●</span> <span>●</span> <span>●</span>

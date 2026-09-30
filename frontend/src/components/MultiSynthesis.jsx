@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown.jsx';
 import './MultiSynthesis.css';
 
 /**
@@ -79,7 +79,7 @@ export default function MultiSynthesis({
             className={`synthesis-panel ${activeTab === index ? 'active' : ''}`}
           >
             <div className="synthesis-text markdown-content">
-              <ReactMarkdown>{synthesis.response || ''}</ReactMarkdown>
+              <SafeMarkdown>{synthesis.response || ''}</SafeMarkdown>
             </div>
           </div>
         ))}
@@ -121,9 +121,9 @@ export default function MultiSynthesis({
               </button>
               {showEvaluation && (
                 <div className="selection-reasoning markdown-content">
-                  <ReactMarkdown>
+                  <SafeMarkdown>
                     {selectionReasoning || selectionStreaming || ''}
-                  </ReactMarkdown>
+                  </SafeMarkdown>
                   {isSelecting && <span className="streaming-cursor green"></span>}
                 </div>
               )}
@@ -139,7 +139,7 @@ export default function MultiSynthesis({
             <h4 className="final-synthesis-title">Final Response</h4>
           </div>
           <div className="final-synthesis-text markdown-content">
-            <ReactMarkdown>{finalResponse}</ReactMarkdown>
+            <SafeMarkdown>{finalResponse}</SafeMarkdown>
           </div>
         </div>
       )}

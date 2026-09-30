@@ -31,6 +31,34 @@ def test_add_or_update_provider_with_preset():
         assert entry["preset"] == "google"
 
 
+def test_redact_provider_never_returns_raw_key():
+    safe = providers.redact_provider({"id": "custom/x", "api_key": "sk-secret-1234567890"})
+    assert "api_key" not in safe
+    assert safe["api_key_set"] is True
+    assert "secret" not in safe["api_key_masked"]
+    assert providers.redact_provider({"id": "local/y", "api_key": "not-needed"})["api_key_set"] is False
+
+
+def test_edit_without_key_keeps_stored_key(tmp_path, monkeypatch):
+    monkeypatch.setattr(providers, "PROVIDERS_FILE", str(tmp_path / "providers.json"))
+    base = {"preset": "groq", "model_id": "llama-x", "name": "G"}
+    providers.add_or_update_provider({**base, "api_key": "gsk_original"})
+    providers.add_or_update_provider({**base, "model_id": "llama-y"})  # key left blank
+
+    stored = providers.load_providers()
+    assert len(stored) == 1
+    assert stored[0]["model_id"] == "llama-y"
+    assert stored[0]["api_key"] == "gsk_original"
+
+
+def test_providers_file_is_owner_only(tmp_path, monkeypatch):
+    import stat
+    path = tmp_path / "providers.json"
+    monkeypatch.setattr(providers, "PROVIDERS_FILE", str(path))
+    providers.add_or_update_provider({"preset": "groq", "model_id": "m", "api_key": "k"})
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
 @pytest.mark.asyncio
 async def test_fetch_models_parsing():
     from unittest.mock import MagicMock

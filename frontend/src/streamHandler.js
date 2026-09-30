@@ -9,7 +9,7 @@ export function createStreamDispatcher({
   targetConversationId,
   _setCurrentConversation,
   activeStreamRef,
-  setLoadingConversationId,
+  setConvLoading,
   loadConversation,
   loadConversations,
   setProcessEvents,
@@ -18,16 +18,12 @@ export function createStreamDispatcher({
   const setCurrentConversation = (updater) => {
     let updatedAssistantMsg = null;
     _setCurrentConversation((prev) => {
-      // If user navigated to a different conversation, do not overwrite screen
-      if (prev && prev.id !== targetConversationId) {
+      // If the user navigated elsewhere (another chat or the clean landing screen),
+      // do not overwrite the screen; the stream keeps running and is restored on return.
+      if (!prev || prev.id !== targetConversationId) {
         return prev;
       }
-      let current = prev || {
-        id: targetConversationId,
-        title: 'New Conversation',
-        messages: [],
-        status: 'deliberating',
-      };
+      let current = prev;
 
       if (!current.messages) {
         current = { ...current, messages: [] };
@@ -168,7 +164,7 @@ export function createStreamDispatcher({
             if (activeStreamRef.current) {
               delete activeStreamRef.current[targetConversationId];
             }
-            setLoadingConversationId(null);
+            setConvLoading(targetConversationId, false);
             loadConversation(targetConversationId);
             loadConversations(selectedTag);
             break;
@@ -549,7 +545,7 @@ export function createStreamDispatcher({
             if (event.title) {
               setCurrentConversation((prev) => (prev ? { ...prev, title: event.title } : prev));
             }
-            loadConversations();
+            loadConversations(selectedTag);
             break;
 
           case 'complete':
@@ -558,8 +554,8 @@ export function createStreamDispatcher({
               delete activeStreamRef.current[targetConversationId];
             }
             loadConversation(targetConversationId);
-            loadConversations();
-            setLoadingConversationId(null);
+            loadConversations(selectedTag);
+            setConvLoading(targetConversationId, false);
             break;
 
           case 'error':
@@ -567,7 +563,11 @@ export function createStreamDispatcher({
             if (activeStreamRef.current) {
               delete activeStreamRef.current[targetConversationId];
             }
-            setLoadingConversationId(null);
+            setConvLoading(targetConversationId, false);
+            // Reload the persisted state (status="error") so the UI leaves "deliberating"
+            // and shows the error banner, same as the complete case.
+            loadConversation(targetConversationId);
+            loadConversations(selectedTag);
             break;
 
           case 'refinement_start':

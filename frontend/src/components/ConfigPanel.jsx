@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown.jsx';
 import { api } from '../api';
 import { saveAgentProfile, getAgentProfile, fetchAgentProfiles, useAgentProfiles } from '../agentProfiles';
 import './ConfigPanel.css';
@@ -2545,7 +2545,7 @@ export default function ConfigPanel({
 
                           {/* Markdown Instructions */}
                           <div className="skill-markdown-view">
-                            <ReactMarkdown>{skillDetails.markdown || '*No further documentation.*'}</ReactMarkdown>
+                            <SafeMarkdown>{skillDetails.markdown || '*No further documentation.*'}</SafeMarkdown>
                           </div>
                         </div>
                       ) : (

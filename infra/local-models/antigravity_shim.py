@@ -45,6 +45,27 @@ HOST = os.getenv("ANTIGRAVITY_SHIM_HOST", "0.0.0.0")
 ALLOW_NO_AUTH = os.getenv("ANTIGRAVITY_SHIM_ALLOW_NO_AUTH") == "1"
 PLACEHOLDER_SECRETS = {"", "not-needed"}
 AGY_TIMEOUT_S = 180
+MAX_BODY_BYTES = 8 * 1024 * 1024
+MAX_ARGV_ITEM_BYTES = 120 * 1024
+
+
+def flatten_content(content):
+    """OpenAI content may be a string, None, or a list of typed parts; the CLI takes text only."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        texts = []
+        for part in content:
+            if isinstance(part, str):
+                texts.append(part)
+            elif isinstance(part, dict) and part.get("type") == "text":
+                texts.append(str(part.get("text", "")))
+            elif isinstance(part, dict) and part.get("type") == "image_url":
+                texts.append("[image omitted]")
+        return "\n".join(t for t in texts if t)
+    return str(content)
 
 
 def messages_to_prompt(messages):
@@ -52,7 +73,7 @@ def messages_to_prompt(messages):
     parts = []
     for m in messages:
         role = m.get("role", "user")
-        content = m.get("content", "")
+        content = flatten_content(m.get("content", ""))
         if role == "system":
             parts.append(f"[System instructions]\n{content}")
         elif role == "assistant":
@@ -69,6 +90,12 @@ def run_agy(prompt):
     if MODEL:
         cmd += ["--model", MODEL]
     cmd.append(f"--print={prompt}")
+    # The prompt travels as one argv item; Linux caps a single item at ~128 KB and
+    # would otherwise fail with an opaque "Argument list too long".
+    if len(cmd[-1].encode()) > MAX_ARGV_ITEM_BYTES:
+        raise RuntimeError(
+            f"prompt too large for agy ({len(prompt)} chars); shorten the history or workspace context"
+        )
 
     # Determine execution directory: ANTIGRAVITY_SHIM_CWD > WORKSPACE_DIR > cwd
     target_cwd = os.getenv("ANTIGRAVITY_SHIM_CWD") or os.getenv("WORKSPACE_DIR")
@@ -122,8 +149,16 @@ class Handler(BaseHTTPRequestHandler):
             self._unauthorized()
             return
 
-        length = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(length) or b"{}")
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if not 0 <= length <= MAX_BODY_BYTES:
+                raise ValueError("bad Content-Length")
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except ValueError:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b'{"error":"invalid request body"}')
+            return
         messages = body.get("messages", [])
         stream = bool(body.get("stream"))
         prompt = messages_to_prompt(messages)

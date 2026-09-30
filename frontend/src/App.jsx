@@ -26,12 +26,39 @@ function App() {
   const [currentConversation, _setCurrentConversation] = useState(null);
   const setCurrentConversation = _setCurrentConversation;
   const [landingMode, setLandingMode] = useState('roundtable');
-  const [loadingConversationId, setLoadingConversationId] = useState(null);
+  // Per-conversation loading flags ({ [conversationId]: true }). The ref mirrors the
+  // state so async callbacks read the current value instead of a stale closure.
+  const [loadingIds, setLoadingIds] = useState({});
+  const loadingIdsRef = useRef({});
+  const setConvLoading = (id, on) => {
+    if (!id) return;
+    const next = { ...loadingIdsRef.current };
+    if (on) next[id] = true;
+    else delete next[id];
+    loadingIdsRef.current = next;
+    setLoadingIds(next);
+  };
+  const isConvLoading = (id) => !!loadingIdsRef.current[id];
   const activeStreamRef = useRef({});
   const skipNextLoadRef = useRef(null);
-  const isAttachingRef = useRef(false);
-  const pollingTimerRef = useRef(null);
-  const isLoading = !!loadingConversationId;
+  const attachingIdsRef = useRef(new Set());
+  // One polling timer per conversation ({ [conversationId]: intervalId }).
+  const pollingTimersRef = useRef({});
+  // A polled conversation has no SSE stream, so its loading flag belongs to the timer:
+  // clearing it lets the conversation re-attach when the user comes back.
+  const stopPolling = (id) => {
+    const ids = id === undefined ? Object.keys(pollingTimersRef.current) : [id];
+    ids.forEach((key) => {
+      if (!pollingTimersRef.current[key]) return;
+      clearInterval(pollingTimersRef.current[key]);
+      delete pollingTimersRef.current[key];
+      setConvLoading(key, false);
+    });
+  };
+  // Mirrors the open conversation so async callbacks can tell when the user has moved on.
+  const currentIdRef = useRef(currentConversationId);
+  currentIdRef.current = currentConversationId;
+  const loadSeqRef = useRef(0);
   const [systemPrompt, setSystemPrompt] = useState(
     () => localStorage.getItem('systemPrompt') || ''
   );
@@ -420,10 +447,8 @@ function App() {
       const convs = await api.listConversations(tag);
       setConversations(convs);
 
-      // ChatGPT / Claude style: Auto-restore last active conversation on fresh reload
-      const urlId = new URLSearchParams(window.location.search).get('c');
-      const savedId = localStorage.getItem('lastActiveConversationId');
-      const targetId = urlId || savedId;
+      // The URL (?c=<id>) alone decides what opens; the bare URL stays a clean landing.
+      const targetId = new URLSearchParams(window.location.search).get('c');
       if (!currentConversationId && targetId && convs.some((c) => c.id === targetId)) {
         setCurrentConversationId(targetId);
       }
@@ -442,8 +467,12 @@ function App() {
   };
 
   const loadConversation = async (id) => {
+    const seq = ++loadSeqRef.current;
     try {
       const conv = await api.getConversation(id);
+      // The user may have opened another chat while this request was in flight, or a
+      // newer load may already have answered: a stale reply must not pull the screen back.
+      if (currentIdRef.current !== id || seq !== loadSeqRef.current) return;
       // If this conversation is actively streaming, attach in-flight assistant message
       if (activeStreamRef.current && activeStreamRef.current[id]) {
         conv.messages = [...(conv.messages || []), activeStreamRef.current[id]];
@@ -463,7 +492,7 @@ function App() {
       }
 
       // If this conversation is actively generating in background and not yet attached, reconnect to stream
-      if ((conv.status === 'deliberating' || conv.status === 'streaming') && loadingConversationId !== id) {
+      if ((conv.status === 'deliberating' || conv.status === 'streaming') && !isConvLoading(id)) {
         attachToActiveStream(id, conv);
       }
     } catch (error) {
@@ -475,9 +504,9 @@ function App() {
   };
 
   const attachToActiveStream = async (conversationId, convObj = null) => {
-    if (!conversationId || isAttachingRef.current) return;
-    isAttachingRef.current = true;
-    setLoadingConversationId(conversationId);
+    if (!conversationId || attachingIdsRef.current.has(conversationId)) return;
+    attachingIdsRef.current.add(conversationId);
+    setConvLoading(conversationId, true);
 
     try {
       const conv = convObj || (await api.getConversation(conversationId));
@@ -508,7 +537,7 @@ function App() {
         targetConversationId: conversationId,
         _setCurrentConversation,
         activeStreamRef,
-        setLoadingConversationId,
+        setConvLoading,
         loadConversation,
         loadConversations,
         setProcessEvents,
@@ -522,21 +551,18 @@ function App() {
         // but the conversation is still marked as deliberating, start polling until it completes.
         const freshConv = await api.getConversation(conversationId);
         if (freshConv && (freshConv.status === 'deliberating' || freshConv.status === 'streaming')) {
-          _setCurrentConversation(freshConv);
-          setLoadingConversationId(conversationId);
+          if (currentIdRef.current === conversationId) _setCurrentConversation(freshConv);
+          setConvLoading(conversationId, true);
 
-          if (!pollingTimerRef.current) {
-            pollingTimerRef.current = setInterval(async () => {
+          if (!pollingTimersRef.current[conversationId]) {
+            pollingTimersRef.current[conversationId] = setInterval(async () => {
               try {
                 const polled = await api.getConversation(conversationId);
                 if (polled) {
-                  _setCurrentConversation(polled);
+                  if (currentIdRef.current === conversationId) _setCurrentConversation(polled);
                   if (polled.status !== 'deliberating' && polled.status !== 'streaming') {
-                    if (pollingTimerRef.current) {
-                      clearInterval(pollingTimerRef.current);
-                      pollingTimerRef.current = null;
-                    }
-                    setLoadingConversationId(null);
+                    stopPolling(conversationId);
+                    setConvLoading(conversationId, false);
                     await loadConversations(selectedTag);
                   }
                 }
@@ -546,15 +572,15 @@ function App() {
             }, 2500);
           }
         } else {
-          setLoadingConversationId(null);
+          setConvLoading(conversationId, false);
           await loadConversation(conversationId);
         }
       }
     } catch (err) {
       console.warn('Failed to reconnect to active stream:', err);
-      setLoadingConversationId(null);
+      setConvLoading(conversationId, false);
     } finally {
-      isAttachingRef.current = false;
+      attachingIdsRef.current.delete(conversationId);
     }
   };
 
@@ -562,16 +588,11 @@ function App() {
     const targetId = conversationId || currentConversationId;
     if (!targetId) return;
 
-    if (pollingTimerRef.current) {
-      clearInterval(pollingTimerRef.current);
-      pollingTimerRef.current = null;
-    }
+    stopPolling(targetId);
 
     try {
       await api.abortDeliberation(targetId);
-      if (loadingConversationId === targetId) {
-        setLoadingConversationId(null);
-      }
+      setConvLoading(targetId, false);
       if (activeStreamRef.current) {
         delete activeStreamRef.current[targetId];
       }
@@ -584,12 +605,7 @@ function App() {
 
   // Clear polling interval when switching conversation
   useEffect(() => {
-    return () => {
-      if (pollingTimerRef.current) {
-        clearInterval(pollingTimerRef.current);
-        pollingTimerRef.current = null;
-      }
-    };
+    return () => stopPolling();
   }, [currentConversationId]);
 
   // Close council dropdown on Escape key
@@ -607,7 +623,7 @@ function App() {
   // Background stream recovery (survives F5 / page reload / tab switch):
   // Reconnects directly to the active SSE stream if a conversation is in progress.
   useEffect(() => {
-    const isStreamActive = loadingConversationId !== null || pollingTimerRef.current !== null;
+    const isStreamActive = !!loadingIds[currentConversationId] || !!pollingTimersRef.current[currentConversationId];
     const isRunning =
       currentConversation?.status === 'deliberating' ||
       currentConversation?.status === 'streaming';
@@ -615,18 +631,18 @@ function App() {
     if (!isStreamActive && isRunning && currentConversationId) {
       attachToActiveStream(currentConversationId, currentConversation);
     }
-  }, [currentConversationId, currentConversation?.status, loadingConversationId]);
+  }, [currentConversationId, currentConversation?.status, loadingIds]);
 
   // Tab visibility change: quietly sync state when returning to the tab if no stream is active
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && currentConversationId && !loadingConversationId) {
+      if (document.visibilityState === 'visible' && currentConversationId && !isConvLoading(currentConversationId)) {
         loadConversation(currentConversationId);
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [currentConversationId, loadingConversationId]);
+  }, [currentConversationId, loadingIds]);
 
   const handleNewConversation = async (councilId = null, initialMessage = null, conversationType = 'roundtable') => {
     setShowSettings(false);
@@ -839,7 +855,7 @@ function App() {
     const targetConversationId = overrideId || currentConversationId;
     if (!targetConversationId) return;
 
-    setLoadingConversationId(targetConversationId);
+    setConvLoading(targetConversationId, true);
 
     // Clear process events for new query
     setProcessEvents([]);
@@ -884,8 +900,10 @@ function App() {
         const userMessage = { role: 'user', content, created_at: new Date().toISOString() };
         setCurrentConversation((prev) => {
           const currentList = prev?.messages || [];
-          const alreadyHas = currentList.some((m) => m.role === 'user' && m.content === content);
-          if (alreadyHas) return prev;
+          // Only skip when this exact message is already the tail (double submit);
+          // an identical message earlier in the chat is a legitimate repeat.
+          const last = currentList[currentList.length - 1];
+          if (last && last.role === 'user' && last.content === content) return prev;
           return {
             ...prev,
             messages: [...currentList, userMessage],
@@ -983,7 +1001,7 @@ function App() {
         targetConversationId,
         _setCurrentConversation,
         activeStreamRef,
-        setLoadingConversationId,
+        setConvLoading,
         loadConversation,
         loadConversations,
         setProcessEvents,
@@ -1019,7 +1037,7 @@ function App() {
       if (activeStreamRef.current) {
         delete activeStreamRef.current[targetConversationId];
       }
-      setLoadingConversationId(null);
+      setConvLoading(targetConversationId, false);
       loadConversation(targetConversationId);
       loadConversations(selectedTag);
     } catch (error) {
@@ -1028,11 +1046,15 @@ function App() {
         delete activeStreamRef.current[targetConversationId];
       }
       // Remove optimistic messages on error
-      setCurrentConversation((prev) => ({
-        ...prev,
-        messages: isRetry ? (prev?.messages || []).slice(0, -1) : (prev?.messages || []).slice(0, -2),
-      }));
-      setLoadingConversationId(null);
+      setCurrentConversation((prev) => {
+        // The user may have switched away while the send was failing
+        if (prev && prev.id !== targetConversationId) return prev;
+        return {
+          ...prev,
+          messages: isRetry ? (prev?.messages || []).slice(0, -1) : (prev?.messages || []).slice(0, -2),
+        };
+      });
+      setConvLoading(targetConversationId, false);
     }
   };
 
@@ -1045,7 +1067,7 @@ function App() {
       <Sidebar
         conversations={conversations}
         currentConversationId={currentConversationId}
-        loadingConversationId={loadingConversationId}
+        loadingIds={loadingIds}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
         onDeleteConversation={handleDeleteConversation}
@@ -1234,8 +1256,8 @@ function App() {
           onLandingModeChange={setLandingMode}
           onSendMessage={handleSendMessage}
           onNewConversation={handleNewConversation}
-          isLoading={loadingConversationId === currentConversationId}
-          isDeliberating={loadingConversationId === currentConversationId || currentConversation?.status === 'deliberating'}
+          isLoading={!!loadingIds[currentConversationId]}
+          isDeliberating={!!loadingIds[currentConversationId] || currentConversation?.status === 'deliberating'}
           onAbortDeliberation={handleAbortDeliberation}
           onTagsChange={handleTagsChange}
           providerLabels={providerLabels}

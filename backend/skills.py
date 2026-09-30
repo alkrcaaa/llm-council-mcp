@@ -157,7 +157,10 @@ def _skill_dirs() -> List[Tuple[str, str]]:
     return [(SKILLS_DIR, SOURCE_CURATED), (IMPORTED_SKILLS_DIR, SOURCE_IMPORTED)]
 
 
-_NEW_SKILL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+# An imported skill is untrusted text that lands in every seat's system prompt.
+MAX_INJECTED_SKILL_CHARS = 8000
+
+_NEW_SKILL_ID_RE =re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 
 def is_path_safe_skill_id(skill_id: Any) -> bool:
@@ -219,8 +222,10 @@ def get_available_skills() -> List[Dict[str, Any]]:
                 with open(skill_file, "r", encoding="utf-8") as f:
                     content = f.read()
                 meta, _ = parse_frontmatter(content)
-                skill_id = meta.get("name", item)
-                if skill_id in seen:
+                # The folder name is the id: it is what resolve_skill_file() looks up, so a
+                # frontmatter `name` that differs would be listed but never loadable.
+                skill_id = item
+                if not is_path_safe_skill_id(skill_id) or skill_id in seen:
                     continue
                 seen.add(skill_id)
                 skills.append(_summarize_skill(skill_id, meta, source))
@@ -241,6 +246,8 @@ def get_skill_instructions(skill_id: str) -> Optional[str]:
             content = f.read()
         meta, body = parse_frontmatter(content)
         guidelines = extract_gate_or_summary(body)
+        if len(guidelines) > MAX_INJECTED_SKILL_CHARS:
+            guidelines = guidelines[:MAX_INJECTED_SKILL_CHARS].rstrip() + "\n[...truncated]"
 
         curated = SKILL_METADATA.get(skill_id, {})
         title = curated.get("title", skill_id.replace("-", " ").title())
