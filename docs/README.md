@@ -45,6 +45,7 @@ This approach leverages the collective intelligence of multiple AI models to pro
 |----------|-------------|
 | [**Comprehensive Feature Guide**](./COMPREHENSIVE_FEATURE_GUIDE.md) | **COMPLETE REFERENCE** - All 21 features explained with code details |
 | [Feature Ideas](./FEATURE_IDEAS.md) | Original 21 feature proposals |
+| [Roadmap](./ROADMAP.md) | **Current plan** - phased work list, decisions taken, open items |
 | [Development Plan](./DEVELOPMENT_PLAN.md) | Implementation order, dependencies, effort estimates |
 | [Extending the Codebase](./EXTENDING.md) | How to add features and customize the system |
 | [Troubleshooting](./TROUBLESHOOTING.md) | Common problems and solutions |
