@@ -34,54 +34,90 @@ Karpathy built the original `llm-council` as a fun "Saturday vibe-hack" — a li
 | Capability | Karpathy Original (`llm-council`) | LLM Council MCP (This Fork) |
 | :--- | :--- | :--- |
 | **Primary Consumer** | Humans in a Web Browser | **Autonomous AI Coding Agents (MCP)** + Humans via Web UI |
-| **Agent Interface** | ❌ None (Web UI only) | **Native FastMCP Server (`mcp/`)** with structured ADR generation |
-| **Model Infrastructure** | Cloud-only via OpenRouter | **Hybrid:** Cloud (OpenRouter) + Local vLLM (`local/qwen3.6-27b`) + Host CLI Shims (`local/claude-code`, `local/antigravity`) |
-| **Model Specialization** | Generic system prompts | **Domain Skill Injection:** Models decorated with `@red-team-reasoning`, `@first-principles`, `@karpathy-guidelines`, etc. |
-| **Board Profiles** | Single static list of models | **5 Specialized Domain Boards:** Cognitive Strategy, Code Craft, Deep Tech, SecOps, and UI/UX |
-| **Consensus Mechanics** | Linear 3-stage execution | **Early Consensus Bypass, Weighted Consensus (by win rate), Multi-Chairman, and Adversarial Validation** |
+| **Agent Interface** | ❌ None (Web UI only) | **Native FastMCP Server (`mcp/`)** with structured ADR generation (`ask_council`, `list_councils`, `scout_candidates`) |
+| **Model Infrastructure** | Cloud-only via OpenRouter | **Hybrid:** Cloud (OpenRouter, Gemini, Groq) + Local vLLM (`local/qwen3.6-27b`) + Host CLI Shims (`local/claude-code`, `local/antigravity`) |
+| **Model Specialization** | Generic system prompts | **Domain Skill Injection:** Models decorated with `@red-team-reasoning`, `@first-principles`, `@karpathy-guidelines`, `@deep-research`, `@supply-chain-audit`, etc. |
+| **Board Profiles** | Single static list of models | **7 Specialized Domain Boards:** Cognitive Strategy, Code Craft, Deep Tech, SecOps, UI/UX Craft, Tech Scout, and Cloud Deliberation |
+| **Deliberation Modes** | Linear 3-stage execution | **Dual-Engine:** 3-Stage ADR Deliberation + Freeform **Round Table Group Chat** with unconstrained turn-taking |
+| **Consensus Mechanics** | Simple majority / averaging | **Early Consensus Bypass, Weighted Consensus (by win rate), Multi-Chairman Ensembles, and Adversarial Validation** |
 | **Debate Protocol** | ❌ None | **Multi-round structured debate:** Position → Critique → Rebuttal → Chairman Judgment |
 | **Decision Output** | Unbounded text transcript | **Strict ≤150-word Markdown ADR** (Verdict, Confidence, Recommendation, Dissenting Risk) |
-| **Telemetry & Metrics** | ❌ None | **Empirical Performance Dashboard:** Elo win-rates, peer evaluation stats, and token economics |
+| **Telemetry & Observability** | ❌ None | **Empirical Performance Dashboard** (Elo win-rates, peer stats) + **Live Process Telemetry Panel** (L0–L3 detail, latency, tokens/s) |
 | **Context Ingestion** | ❌ Manual copy-paste | **Automated Local Workspace & GitHub Repository context resolution** |
-| **Technology Scouting** | ❌ None (Hallucinated from weights) | **Autonomous Research Engine:** Live GitHub repo telemetry + DuckDuckGo Lite search + local skills discovery |
+| **Technology Scouting** | ❌ None (Hallucinated from weights) | **Autonomous Research Engine:** Live PyPI/GitHub telemetry + DuckDuckGo search + local skills discovery |
+| **Security & Auth** | ❌ Unauthenticated local script | **JWT session tokens, PBKDF2 credential hashing, Rate Limiting, and CORS isolation** |
 | **Deployment** | Local scripts with hardcoded configs | **12-Factor Docker Compose stack** with zero leaked host credentials via `.env` |
 
 ---
 
-## 📸 Visual Tour of New Capabilities
+## 📸 Visual Tour of Capabilities
 
 ### 1. Stage 1: Domain-Specialized Independent Responses
-Models are not treated as generic chatbots. Each seat operates with an injected domain skill and provides explicit confidence calibration and structured reasoning.
+Models operate as dedicated domain specialists rather than generic chatbots. Each seat evaluates the problem through an injected skill lens, providing evidence-backed technical trade-offs, confidence calibration (1–10), and physical constraint analysis.
 
 <p align="center">
   <img src="docs/images/stage1_responses.png" alt="Stage 1 Specialist Responses" width="95%">
 </p>
 
+- **Specialist Roles:** `@deep-research` verifies primary documentation and specifications; `@supply-chain-audit` validates package pinning, license compliance, and maintainer surface; `@first-principles` strips framework marketing to benchmark raw compute/memory/IO physics.
+- **Peer Review & Ranking:** In Stage 2, seats anonymously critique peer positions, expose hallucinations, and vote on a ranked ballot before the Chairman synthesizes the binding ADR.
+
+---
+
 ### 2. Specialized Council Boards
-Switch between dedicated expert boards with a single click or specify `council_id` in MCP tool calls:
-- 🧠 **`cognitive-strategy`:** High-stakes architectural & strategic trade-offs (Red Team + First Principles + Deep Research).
-- 🛠️ **`code-craft`:** Deep refactoring, diff-risk minimization & surgical simplicity.
-- 🔬 **`deep-tech`:** Protocol RFCs, performance limits, and dependency audits.
-- 🛡️ **`sec-ops`:** Production security, OWASP audits, and SRE resilience.
-- 🎨 **`frontend-craft`:** Distinctive design systems, UI/UX DNA, and client workflows.
+Switch between dedicated expert boards with a single click or target specific boards programmatically via `council_id` in MCP calls:
 
 <p align="center">
   <img src="docs/images/council_boards.png" alt="Specialized Council Boards" width="95%">
 </p>
 
-### 3. Empirical Performance Dashboard
-Track which models and skills provide the most accurate evaluations through peer review. Features historical win rates, peer agreement metrics, and Chairman synthesis quality.
+- 🧠 **`cognitive-strategy`:** High-stakes architectural & strategic trade-offs (Red Team + First Principles + Deep Research).
+- 🛠️ **`code-craft`:** Deep refactoring, diff-risk minimization, and surgical simplicity (Antigravity Diff Risk + Qwen Verification + Claude Referee).
+- 🔬 **`deep-tech`:** Protocol RFCs, low-level binary formats, performance limits, and dependency audits.
+- 🛡️ **`sec-ops`:** Production security, zero-trust policies, OWASP audits, and SRE resilience.
+- 🎨 **`frontend-craft`:** Distinctive design systems, UI/UX DNA, and responsive client workflows.
+- 📡 **`tech-scout`:** Automated technology scouting, candidate radar, and adopt-vs-build evaluations.
+- ☁️ **`cloud-deliberation`:** Responsive zero-cost cloud and local models for fast fallback when host shims are offline.
+
+---
+
+### 3. Round Table Multi-Agent Group Chat & Live Process Telemetry
+Engage in collaborative, unconstrained multi-agent discussions alongside the structured 3-stage deliberation pipeline:
+
+<p align="center">
+  <img src="docs/images/round_table_chat.png" alt="Round Table Multi-Agent Group Chat" width="95%">
+</p>
+
+- **Direct Conversational Collaboration:** Mention `@all` to broadcast or `@model` (e.g. `@qwen`, `@antigravity`) to target specific agents with tool-calling capabilities.
+- **Live Process Telemetry (L0–L3):** Slide between detail levels to inspect step-by-step model reasoning, stage transitions, token generation speeds, and consensus voting metrics in real time.
+
+---
+
+### 4. Empirical Performance Dashboard
+Track which models and domain skills deliver the most accurate evaluations based on historical peer review outcomes:
 
 <p align="center">
   <img src="docs/images/performance_dashboard.png" alt="Performance Dashboard" width="95%">
 </p>
 
-### 4. Advanced Consensus Modes & Settings
-Configure early-exit consensus, Chain-of-Thought reasoning, adversarial reviews, and weighted voting directly from the settings drawer:
+- **Leaderboard Metrics:** Win rates, average peer rank, average confidence calibration, total queries, and unique model evaluations.
+- **Model & Chairman Analytics:** Inspect historical win percentages and peer alignment metrics across observation windows.
+
+---
+
+### 5. Advanced Consensus Modes & Deliberation Presets
+Configure reasoning depth and consensus algorithms directly from the settings drawer:
 
 <p align="center">
-  <img src="docs/images/advanced_settings.png" alt="Advanced Settings" width="95%">
+  <img src="docs/images/advanced_settings.png" alt="Advanced Deliberation Settings" width="95%">
 </p>
+
+- **Deliberation Presets:**
+  - ⚡ **Fast:** Skips Stage 3 synthesis when unanimous peer consensus is detected; reuses cached answers.
+  - ⚖️ **Balanced:** Full 3-stage deliberation with weighted peer votes (default).
+  - 🧠 **Deep:** Structured reasoning passes, critique-and-revise, and devil's advocate challenge rounds.
+  - ⚔️ **Debate:** Multi-round adversarial debate: Position → Direct Critique → Rebuttal → Chairman Judgment.
+- **Consensus Toggles:** Multi-Chairman Ensemble, Win-Rate Weighted Consensus, Early Consensus Exit, and Sub-Question Decomposition.
 
 ---
 
@@ -103,10 +139,10 @@ To prevent agents from lazily delegating routine tasks, `ask_council` enforces a
 Calls to `ask_council` return a structured, high-density Markdown Architectural Decision Record:
 
 ```markdown
-## Verdict: Use SQLite with WAL mode for local conversation storage
-**Confidence:** Consensus — 3 models evaluated (top ranked: local/antigravity@red-team-reasoning)
-**Recommendation:** Deploy SQLite with PRAGMA journal_mode=WAL and PRAGMA busy_timeout=5000. It eliminates network daemon failure modes and delivers near-zero operational complexity.
-**Dissenting risk:** If write contention exceeds 1% busy timeouts under horizontal multi-process scale, pivot to PostgreSQL.
+## Verdict: Adopt SQLite-vec as the primary embedded vector store for sub-100k local embeddings.
+**Confidence:** Consensus — 3 models evaluated (top ranked: local/antigravity@deep-research)
+**Recommendation:** SQLite-vec delivers a single compiled C extension with zero external dependencies and guaranteed format stability through 2050. At <100k vectors, memory-mapped SIMD flat scan delivers sub-5ms latency with 100% recall.
+**Dissenting risk:** Single primary maintainer risk; if scale exceeds 1M vectors or distributed out-of-core indexing is required, evaluate LanceDB.
 ```
 
 ---
@@ -148,51 +184,34 @@ Open **http://localhost:5173** and sign in with the printed credentials (usernam
 
 ### 2. Set up your models
 
-The built-in boards are tuned for the author's machine: they use host-side agent shims
-(`local/claude-code`, `local/antigravity`), a local vLLM server (`local/qwen3.6-27b`) and
-API-key providers (`custom/gemini-*`, `custom/groq`). **On a fresh install those seats
-won't answer until you configure them.** The quickest path:
+The built-in boards support host-side agent shims (`local/claude-code`, `local/antigravity`), a local vLLM server (`local/qwen3.6-27b`) and API-key providers (`custom/gemini-*`, `custom/groq`, OpenRouter). **On a fresh install those seats won't answer until you configure them.** The quickest path:
 
 1. Open **Configure Models** in the UI.
-2. Create your own council (or edit a copy of a built-in one) using OpenRouter model IDs,
-   e.g. `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`. At least 2 seats
-   are required. The free lineup changes often; see the current list at
-   [openrouter.ai/models?q=free](https://openrouter.ai/models?q=free).
-3. Optional: under **Model Studio & Providers**, add other OpenAI-compatible endpoints
-   (Ollama, LM Studio, vLLM, Groq, Gemini, DeepSeek, ...) and use them as seats.
+2. Create your own council (or edit a copy of a built-in one) using OpenRouter model IDs, e.g. `google/gemma-4-31b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`. At least 2 seats are required. The free lineup changes often; see the current list at [openrouter.ai/models?q=free](https://openrouter.ai/models?q=free).
+3. Optional: under **Model Studio & Providers**, add other OpenAI-compatible endpoints (Ollama, LM Studio, vLLM, Groq, Gemini, DeepSeek, ...) and use them as seats.
 
-Free OpenRouter models are rate-limited, so expect occasional `429` errors on busy models;
-the council continues with whichever seats answered.
+Free OpenRouter models are rate-limited, so expect occasional `429` errors on busy models; the council continues with whichever seats answered.
 
 ### 3. Optional: bring the built-in boards online
 
-Each built-in seat type can be activated on your machine. Enable whichever you have;
-seats you don't enable simply fail and the council continues with the rest.
+Each built-in seat type can be activated on your machine. Enable whichever you have; seats you don't enable simply fail and the council continues with the rest.
 
 #### Claude Code & Antigravity seats (`local/claude-code`, `local/antigravity`)
 
-Small host-side bridges in [`infra/local-models/`](infra/local-models/) turn a logged-in CLI
-into an OpenAI-compatible endpoint the backend container can call. They must run on the host
-(not in Docker) because they use your CLI login. Each request is a real CLI call on your
-account, and the CLIs run in restricted/sandboxed mode (no tools, no file writes).
+Small host-side bridges in [`infra/local-models/`](infra/local-models/) turn a logged-in CLI into an OpenAI-compatible endpoint the backend container can call. They must run on the host (not in Docker) because they use your CLI login. Each request is a real CLI call on your account, and the CLIs run in restricted/sandboxed mode (no tools, no file writes).
 
 1. Install and log in to the CLI(s) you have:
-   [Claude Code](https://docs.claude.com/en/docs/claude-code) (`claude`, run it once to log in)
-   and/or Google Antigravity (`agy`).
+   [Claude Code](https://docs.claude.com/en/docs/claude-code) (`claude`, run it once to log in) and/or Google Antigravity (`agy`).
 2. Run:
    ```bash
    ./setup.sh shims
    ```
    It detects which CLIs are installed, generates a per-shim secret in `.env`, and
-   - **Linux (systemd):** installs and starts user services
-     `llm-council-claude-code-shim` / `llm-council-antigravity-shim`, bound to the Docker
-     bridge address so only containers (not your LAN) can reach them. Logs:
-     `journalctl --user -u llm-council-claude-code-shim -f`.
+   - **Linux (systemd):** installs and starts user services `llm-council-claude-code-shim` / `llm-council-antigravity-shim`, bound to the Docker bridge address so only containers (not your LAN) can reach them. Logs: `journalctl --user -u llm-council-claude-code-shim -f`.
    - **macOS / no systemd:** prints the command to run each shim in a terminal.
 3. It restarts the backend so it picks up the secrets. The Claude seats should now answer.
 
-To remove them: `systemctl --user disable --now llm-council-claude-code-shim llm-council-antigravity-shim`
-and delete the unit files in `~/.config/systemd/user/`.
+To remove them: `systemctl --user disable --now llm-council-claude-code-shim llm-council-antigravity-shim` and delete the unit files in `~/.config/systemd/user/`.
 
 #### Local model seat (`local/qwen3.6-27b`)
 
@@ -210,10 +229,7 @@ QWEN_MODEL_ID=qwen3:8b
 
 #### Gemini & Groq seats (`custom/gemini-3-6-flash`, `custom/groq`)
 
-Add them under **Configure Models → Model Studio & Providers** with your own API keys
-(both have free tiers). The seat ID is derived from the friendly name, so name them exactly
-**`Gemini 3.6 Flash`** (→ `custom/gemini-3-6-flash`) and **`Groq`** (→ `custom/groq`) for
-the built-in boards to pick them up.
+Add them under **Configure Models → Model Studio & Providers** with your own API keys (both have free tiers). The seat ID is derived from the friendly name, so name them exactly **`Gemini 3.6 Flash`** (→ `custom/gemini-3-6-flash`) and **`Groq`** (→ `custom/groq`) for the built-in boards to pick them up.
 
 ### Configuration reference
 
@@ -232,7 +248,7 @@ After editing `.env`, run `./setup.sh` again to apply it.
 
 > Opening the UI to your LAN? Keep `AUTH_ENABLED=true`: the API spends your API credits.
 
-### 3. Connect MCP to Your Agents
+### 4. Connect MCP to Your Agents
 
 ```bash
 cd mcp
@@ -272,8 +288,8 @@ cd ..
 
 - **Core Engine:** FastAPI, Async HTTPX, Pydantic, uv
 - **Protocol:** FastMCP (Model Context Protocol stdio transport)
-- **Frontend:** React 18, Vite, Custom Design System, React Markdown
-- **Models:** OpenRouter, vLLM (Qwen 2.5/3.6), Local Host Shims (Claude Code CLI, Antigravity CLI)
+- **Frontend:** React 18, Vite, Obsidian & Azure Design System, React Markdown
+- **Models:** OpenRouter, vLLM (Qwen 2.5/3.6/3.8), Local Host Shims (Claude Code CLI, Antigravity CLI), Gemini, Groq
 - **Containerization:** Docker & Docker Compose
 
 ---
