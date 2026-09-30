@@ -17,6 +17,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 
+from . import mcp_client
 from .mcp_bridge import execute_tool
 
 logger = logging.getLogger("llm_council.executor")
@@ -81,6 +82,28 @@ async def _emit(on_event: Optional[EventCallback], event: Dict[str, Any]) -> Non
             await result
     except Exception:
         logger.exception("tool loop event callback failed")
+
+
+async def _authorize(
+    name: str, args: Dict[str, Any], model: str, on_event: Optional[EventCallback],
+) -> Optional[str]:
+    """None = go ahead, otherwise the error text for the model. Only MCP tools carry a
+    policy: 'deny' is refused, 'ask' waits for the user (no UI to ask = denied)."""
+    policy = mcp_client.policy_for(name)
+    if policy is None or policy == "auto":
+        return None
+    if policy == "deny" or on_event is None:
+        return f"Error: tool '{name}' is not enabled."
+    approval_id, fut = mcp_client.new_approval()
+    try:
+        await _emit(on_event, {
+            "type": "tool_approval_required", "model": model, "tool": name,
+            "arguments": args, "approval_id": approval_id,
+        })
+        approved = await mcp_client.wait_approval(fut)
+    finally:
+        mcp_client.discard_approval(approval_id)  # also on cancellation mid-emit
+    return None if approved else f"Error: the user did not approve the call to '{name}'."
 
 
 def _add_usage(total_usage: Dict[str, int], total_cost: Dict[str, float], response: Dict[str, Any]) -> None:
@@ -183,11 +206,13 @@ async def run_tool_loop(
                 ok, output = False, f"Error: {arg_error}."
             elif len(tools_executed) >= limits.max_calls:
                 ok, output = False, "Error: tool call budget exhausted; answer with what you have."
-            elif key in cache:
+            elif key in cache and mcp_client.policy_for(name) is None:
                 repeats[key] = repeats.get(key, 0) + 1
                 output = cache[key]
                 if repeats[key] >= limits.max_repeats:
                     output += "\n[You already made this exact call; do not repeat it.]"
+            elif (refusal := await _authorize(name, args, model, on_event)) is not None:
+                ok, output = False, refusal
             else:
                 try:
                     output = await asyncio.wait_for(
@@ -201,7 +226,9 @@ async def run_tool_loop(
                 else:
                     output = output or ""
                     ok = not output.startswith("Error")
-                    if ok:
+                    # MCP results are never cached: a repeat must pass the policy (and any
+                    # approval) again, and external tools may have side effects.
+                    if ok and mcp_client.policy_for(name) is None:
                         cache[key] = output
 
             if ok:

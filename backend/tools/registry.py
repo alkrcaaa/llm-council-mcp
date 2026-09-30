@@ -5,6 +5,7 @@ Maps model @skill specifications to curated, high-leverage toolkits.
 
 from typing import Any, Dict, List, Optional
 
+from . import mcp_client
 from .mcp_bridge import get_tool_definitions
 
 # Map each @skill identifier to its allocated toolset
@@ -130,7 +131,7 @@ def get_tools_for_model(
         names = ALL_AVAILABLE_TOOLS
         if not target_workspace:
             names = [n for n in names if n not in WORKSPACE_TOOLS]
-        return get_tool_definitions(names)
+        return get_tool_definitions(names) + mcp_client.get_tool_definitions()
 
     # Extract skill from model string (e.g. 'local/qwen3.8-27b@deep-research')
     skill = None

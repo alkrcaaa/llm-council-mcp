@@ -833,6 +833,79 @@ async def ping_single_provider_endpoint(provider_id: str):
     return result
 
 
+class McpServerRequest(BaseModel):
+    """Create or patch an MCP server. On patch, header/env values are merged (empty deletes)."""
+    id: Optional[str] = None
+    name: Optional[str] = None
+    transport: Optional[str] = None
+    enabled: Optional[bool] = None
+    url: Optional[str] = None
+    headers: Optional[Dict[str, str]] = None
+    command: Optional[str] = None
+    args: Optional[List[str]] = None
+    env: Optional[Dict[str, str]] = None
+    tool_policies: Optional[Dict[str, str]] = None
+
+
+class McpApprovalRequest(BaseModel):
+    approve: bool
+
+
+def _mcp_call(fn, *args):
+    from backend.tools.mcp_client import McpError
+    try:
+        return fn(*args)
+    except McpError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.get("/api/mcp-servers")
+async def list_mcp_servers():
+    """Configured MCP servers with their tools and per-tool policy (no secrets)."""
+    from backend.tools import mcp_client
+    return {"servers": mcp_client.list_servers(), "stdio_allowed": mcp_client.stdio_allowed()}
+
+
+@app.post("/api/mcp-servers")
+async def create_mcp_server(request: McpServerRequest):
+    from backend.tools import mcp_client
+    return {"server": _mcp_call(mcp_client.add_server, request.model_dump(exclude_none=True))}
+
+
+@app.put("/api/mcp-servers/{server_id}")
+async def update_mcp_server(server_id: str, request: McpServerRequest):
+    from backend.tools import mcp_client
+    patch = request.model_dump(exclude_none=True, exclude={"id", "transport"})
+    return {"server": _mcp_call(mcp_client.update_server, server_id, patch)}
+
+
+@app.delete("/api/mcp-servers/{server_id}")
+async def delete_mcp_server(server_id: str):
+    from backend.tools import mcp_client
+    if not mcp_client.delete_server(server_id):
+        raise HTTPException(status_code=404, detail="Unknown MCP server")
+    return {"status": "ok"}
+
+
+@app.post("/api/mcp-servers/{server_id}/refresh")
+async def refresh_mcp_server(server_id: str):
+    """Connect, list the server's tools and store them. New tools start as 'deny'."""
+    from backend.tools import mcp_client
+    try:
+        return {"server": await mcp_client.refresh_server(server_id)}
+    except mcp_client.McpError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.post("/api/mcp-approvals/{approval_id}")
+async def decide_mcp_approval(approval_id: str, request: McpApprovalRequest):
+    """Answer a pending 'ask' tool call (see the tool_approval_required event)."""
+    from backend.tools import mcp_client
+    if not mcp_client.resolve_approval(approval_id, request.approve):
+        raise HTTPException(status_code=404, detail="Unknown or already decided approval")
+    return {"status": "ok"}
+
+
 @app.post("/api/providers")
 async def create_or_update_provider(request: ProviderRequest):
     """Register or update a custom OpenAI-compatible provider."""

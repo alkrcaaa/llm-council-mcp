@@ -474,6 +474,15 @@ async def run_roundtable_stream(
                     "duration_ms": chunk.get("duration_ms"),
                     "hop": hop,
                 }
+            elif chunk_type == "tool_approval_required":
+                yield {
+                    "type": "roundtable_tool_approval",
+                    "model": model,
+                    "tool": chunk.get("tool"),
+                    "arguments": chunk.get("arguments"),
+                    "approval_id": chunk.get("approval_id"),
+                    "hop": hop,
+                }
             elif chunk_type == "tool_limit":
                 yield {"type": "roundtable_tool_limit", "model": model,
                        "reason": chunk.get("reason"), "hop": hop}

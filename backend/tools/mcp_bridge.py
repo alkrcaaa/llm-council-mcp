@@ -21,6 +21,7 @@ from .builtin import (
     tool_workspace_git_diff,
     tool_workspace_read_file,
 )
+from . import mcp_client
 from .search import tool_paper_search, tool_wikipedia
 
 logger = logging.getLogger("llm_council.tools")
@@ -296,6 +297,9 @@ async def execute_tool(
         if tool_name == "workspace_git_diff":
             max_chars = arguments.get("max_chars", 3500)
             return await tool_workspace_git_diff(target_workspace=target_workspace, max_chars=max_chars)
+
+        if tool_name.startswith(mcp_client.PREFIX):
+            return await mcp_client.call_tool(tool_name, arguments)
 
         return f"Error: Tool '{tool_name}' is not recognized."
     except Exception as e:

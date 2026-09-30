@@ -59,8 +59,8 @@ gibi davransın; Council penceresinde kimin ne dediği ve kime cevap verdiği ne
       tekrar), abort, hata olayları, sonuç ve kaynakların kalıcılığı. (Akış ve kalıcılık
       notları aşağıda.)
 - [ ] Shim koltukları için metin tabanlı tool protokolü.
-- [ ] MCP istemcisi (resmi Python SDK), `data/mcp_servers.json`, `/api/mcp-servers` uçları,
-      araç başına izin ve onay akışı.
+- [x] MCP istemcisi (resmi Python SDK), `data/mcp_servers.json`, `/api/mcp-servers` uçları,
+      araç başına izin ve onay akışı. (Notlar aşağıda; UI henüz yok.)
 - [ ] MCP Mağazası (kürate katalog, tek tıkla ekleme). Aday listesi aşağıda.
 - [ ] UI: MCP sekmesi, sohbet başlığında araç popover'ı, araç zaman çizelgesi ve kaynak
       chip'leri, Round Table'da reasoning (thinking) gösterimi.
@@ -171,6 +171,34 @@ Paket adları ve lisanslar eklemeden önce tek tek doğrulanır.
 - Güvenlik: `execute_tool` `web_fetch`'i önce harici fetch MCP sunucusuna yolluyordu; bu
   `netguard` SSRF korumasını atlıyordu. Kaldırıldı, regresyon testi var.
 - Yeni bağımlılık: `pypdf` (imaj yeniden build edildi).
+
+## Aşama 2d'de yapılanlar
+
+- `backend/tools/mcp_client.py` (`mcp==2.2.0`; 2.x API'si 1.x ile uyumsuz, `MCPServer`,
+  `streamable_http_client`, snake_case alanlar). Depo `data/mcp_servers.json` (0600, atomik).
+  HTTP ve stdio taşıması; her işlem (keşif, çağrı) kendi bağlantısını açıp kapatır, yani
+  süreç/oturum ömrü yönetimi yok, bedeli stdio'da çağrı başına süreç başlatmak.
+- Varsayılan-reddet: keşfedilen her araç `deny` başlar; `auto` (serbest) ve `ask` (her çağrı
+  onay) kullanıcı tarafından açılır. Kapalı/silinmiş sunucu ve bilinmeyen araç `deny` sayılır.
+  Araç adı `mcp__<sunucu>__<araç>`; 64 karakteri aşan adlar atlanır (kesmek iki aracı aynı
+  politikaya çökertirdi).
+- stdio sunucusu backend ortamında komut çalıştırır: `MCP_ALLOW_STDIO=1` yoksa eklenemez ve
+  çalışmaz. Headers/env değerleri API'de asla dönmez (`headers_set`, `env_set` yalnız adları
+  verir); PUT'ta boş değer siler, verilmeyen ad korunur. Konteynerde `npx` yok, stdio
+  sunucuları için node'lu imaj gerekir; HTTP sunucuları şimdiden çalışır.
+- Onay akışı: `ask` araçta döngü `tool_approval_required` (Round Table'da
+  `roundtable_tool_approval`, `approval_id` ile) olayı yollar ve `POST /api/mcp-approvals/{id}`
+  `{"approve": bool}` yanıtını bekler; 120 sn zaman aşımı, dinleyici yoksa veya iptalde ret.
+- MCP sonuçları döngü önbelleğine girmez: aynı argümanlı tekrar çağrı politikadan ve onaydan
+  yeniden geçer, yan etkili araç iki kez onaysız çalışmaz. Yenilemede bir aracın açıklaması
+  veya şeması değişmişse (parmak izi) politikası `deny`'a döner ve `definition_changed`
+  işaretlenir; sunucunun sonradan eklediği metin modele onaysız ulaşmasın diye. Bozuk
+  `mcp_servers.json` yazma yollarında hata verir, boş depoyla üzerine yazılmaz. Hata metinleri
+  URL kimlik bilgisi ve sorgu değerinden arındırılır. Sunucu kimliğinde `__` yasak.
+- MCP araçları yalnız Round Table'a verilir (skill'li council koltuklarına henüz değil).
+- Bilinen eksik: HTTP sunucu URL'leri için SSRF koruması yok (yerel MCP sunucuları
+  çalışsın diye); kimlik doğrulamalı çok kullanıcılı kurulumda onay kimlikleri sohbetten
+  bağımsız global. Mağaza ve UI sonraki adım.
 
 ## Önceki oturumda yapılanlar
 
