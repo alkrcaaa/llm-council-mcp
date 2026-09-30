@@ -185,9 +185,9 @@ def format_roundtable_prompt(
         "- MENTION & TURN DISCIPLINE: When referring to a colleague in third person or outlining future plans "
         "(e.g. 'as Claude noted', 'I will check with Qwen later'), write their name in PLAIN TEXT without the '@' prefix. "
         "ONLY use an '@mention' tag (e.g. @model) if you are directly addressing them to take the microphone and answer right now.\n"
-        "- CRITICAL IDENTITY RULE: Speak ONLY as yourself ({current_short}). NEVER impersonate, script, roleplay, or generate dialogue turns for your colleagues ({peers_str}). Provide ONLY your own single turn response.\n"
+        f"- CRITICAL IDENTITY RULE: Speak ONLY as yourself ({current_short}). NEVER impersonate, script, roleplay, or generate dialogue turns for your colleagues ({peers_str}). Provide ONLY your own single turn response.\n"
         "- Converse naturally, directly, and punchily (typically 1 to 3 focused paragraphs). Skip formal essays unless asked.\n"
-        "- If {user_name} tagged you directly with an @mention, answer them directly.\n"
+        f"- If {user_name} tagged you directly with an @mention, answer them directly.\n"
         "- Always respond in the language used in the room (Turkish/English)."
     )
 
@@ -257,45 +257,34 @@ async def stream_single_model_roundtable(
 ):
     """Worker task that queries a single model with tool support and pushes SSE events into out_queue."""
     try:
-        import json
-        from .tools import get_tools_for_model, execute_tool
+        from .tools import get_tools_for_model, run_tool_loop
 
         current_messages = list(messages)
         tools = get_tools_for_model(model, is_roundtable=True, target_workspace=target_workspace)
 
         if tools:
-            first_pass = await query_model(model, current_messages, timeout=30.0, tools=tools)
-            if first_pass and first_pass.get("tool_calls"):
-                current_messages.append({
-                    "role": "assistant",
-                    "content": first_pass.get("content") or "",
-                    "tool_calls": first_pass["tool_calls"],
+            async def _query(m, msgs, tools=None):
+                return await query_model(m, msgs, timeout=timeout, tools=tools)
+
+            result = await run_tool_loop(
+                _query, model, current_messages, tools,
+                target_workspace=target_workspace,
+                on_event=out_queue.put,
+            )
+            if result["stop_reason"] not in ("no_response", "aborted") and result["content"]:
+                # The loop already produced the final answer; re-querying would pay for it twice.
+                await out_queue.put({"type": "token", "model": model, "content": result["content"]})
+                await out_queue.put({
+                    "type": "complete",
+                    "model": model,
+                    "content": result["content"],
+                    "reasoning_details": result.get("reasoning_details"),
+                    "usage": result["usage"],
+                    "cost": result["cost"],
+                    "sources": result["sources"],
                 })
-
-                for tc in first_pass["tool_calls"]:
-                    func = tc.get("function", {})
-                    name = func.get("name", "")
-                    call_id = tc.get("id", f"call_{name}")
-                    raw_args = func.get("arguments", "{}")
-                    args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
-
-                    if target_workspace and "target_workspace" not in args:
-                        args["target_workspace"] = target_workspace
-
-                    await out_queue.put({
-                        "type": "tool_call",
-                        "model": model,
-                        "tool": name,
-                        "arguments": args,
-                    })
-
-                    tool_res = await execute_tool(name, args)
-                    current_messages.append({
-                        "role": "tool",
-                        "tool_call_id": call_id,
-                        "name": name,
-                        "content": tool_res,
-                    })
+                return
+            current_messages = result["messages"]
 
         async for chunk in query_model_streaming(model, current_messages, timeout=timeout):
             await out_queue.put(chunk)
@@ -469,6 +458,25 @@ async def run_roundtable_stream(
                     "arguments": chunk.get("arguments"),
                     "hop": hop,
                 }
+            elif chunk_type == "tool_result":
+                for entry in reversed(model_tools.get(model, [])):
+                    if entry.get("tool") == chunk.get("tool") and "ok" not in entry:
+                        entry.update(ok=chunk.get("ok"), sources=chunk.get("sources"),
+                                     duration_ms=chunk.get("duration_ms"))
+                        break
+                yield {
+                    "type": "roundtable_tool_result",
+                    "model": model,
+                    "tool": chunk.get("tool"),
+                    "ok": chunk.get("ok"),
+                    "preview": chunk.get("result_preview"),
+                    "sources": chunk.get("sources"),
+                    "duration_ms": chunk.get("duration_ms"),
+                    "hop": hop,
+                }
+            elif chunk_type == "tool_limit":
+                yield {"type": "roundtable_tool_limit", "model": model,
+                       "reason": chunk.get("reason"), "hop": hop}
             elif chunk_type == "complete":
                 model_buffers[model] = chunk.get("content", model_buffers[model])
                 if "usage" in chunk:
@@ -485,6 +493,7 @@ async def run_roundtable_stream(
                     "usage": model_usages.get(model),
                     "cost": model_costs.get(model),
                     "tools_executed": model_tools.get(model, []),
+                    "sources": chunk.get("sources") or [],
                 }
                 curr_conv = storage.get_conversation(conversation_id)
                 if curr_conv:
@@ -502,6 +511,7 @@ async def run_roundtable_stream(
                     "usage": model_usages.get(model),
                     "cost": model_costs.get(model),
                     "tools_executed": model_tools.get(model, []),
+                    "sources": chunk.get("sources") or [],
                     "hop": hop,
                 }
             elif chunk_type == "error":

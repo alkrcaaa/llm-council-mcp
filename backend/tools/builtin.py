@@ -17,11 +17,17 @@ from typing import Optional
 
 import httpx
 
+from ..netguard import DEFAULT_CONTENT_TYPES, BlockedURL, safe_get
 from ..research import (
     search_web,
     search_github_repositories,
     search_package_ecosystem,
 )
+from . import webcontent
+from .search import searxng_search
+
+
+PDF_MAX_BYTES = 10_000_000
 
 
 async def tool_web_search(query: str, limit: int = 5) -> str:
@@ -33,7 +39,10 @@ async def tool_web_search(query: str, limit: int = 5) -> str:
     """
     try:
         limit = max(1, min(8, int(limit)))
-        results = await search_web(query, limit=limit)
+        # Self-hosted SearXNG first; legacy HN/DDG search only when it is unset or down.
+        results = await searxng_search(query, limit=limit)
+        if not results:
+            results = await search_web(query, limit=limit)
         if not results:
             return f"No web search results found for query: '{query}'."
 
@@ -49,63 +58,63 @@ async def tool_web_search(query: str, limit: int = 5) -> str:
         return f"Error executing web search: {str(e)}"
 
 
-async def tool_web_fetch(url: str, max_chars: int = 4000) -> str:
-    """Fetch content from a webpage URL and extract clean, readable text.
+async def tool_web_fetch(url: str, max_chars: int = 6000, start_index: int = 0) -> str:
+    """Fetch a URL and return clean markdown (HTML pages, PDFs and text are supported).
+
+    Long pages are paged: pass the `start_index` printed in the truncation note to continue.
 
     Args:
         url: Full HTTP or HTTPS URL to fetch
-        max_chars: Maximum characters to return (default 4000)
+        max_chars: Maximum characters to return per call (500-20000, default 6000)
+        start_index: Character offset to start from, for reading past a truncation
     """
-    if not url.startswith("http://") and not url.startswith("https://"):
-        return "Error: Invalid URL. Must start with http:// or https://"
-
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8",
-        }
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            resp = await client.get(url, headers=headers)
+        max_chars = max(500, min(20000, int(max_chars)))
+        start_index = max(0, int(start_index))
+    except (TypeError, ValueError):
+        return "Error: max_chars and start_index must be integers."
+
+    cached = webcontent.cache_get(url)
+    if cached is None:
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/pdf,text/plain;q=0.9,*/*;q=0.8",
+            }
+            resp, body = await safe_get(
+                url, headers=headers, max_bytes=PDF_MAX_BYTES,
+                content_types=DEFAULT_CONTENT_TYPES + ("application/pdf",),
+            )
             if resp.status_code != 200:
                 return f"Failed to fetch URL {url}: HTTP {resp.status_code}"
+            ctype = resp.headers.get("content-type", "")
+            is_pdf = ctype.split(";")[0].strip().lower() == "application/pdf"
+            if len(body) >= PDF_MAX_BYTES and is_pdf:
+                return f"Error: PDF at {url} is larger than {PDF_MAX_BYTES // 1_000_000} MB."
+            cached = await webcontent.extract(body, ctype, resp.charset_encoding, url)
+            webcontent.cache_put(url, cached)
+        except BlockedURL as e:
+            return f"Error: URL blocked ({e})"
+        except ValueError as e:
+            return f"Error reading {url}: {e}"
+        except Exception as e:
+            return f"Error fetching URL {url}: {type(e).__name__}"
 
-            text = resp.text
-            # Remove scripts and styles
-            text = re.sub(r"<script[^>]*>.*?</script>", " ", text, flags=re.DOTALL | re.IGNORECASE)
-            text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.DOTALL | re.IGNORECASE)
-            text = re.sub(r"<nav[^>]*>.*?</nav>", " ", text, flags=re.DOTALL | re.IGNORECASE)
-            text = re.sub(r"<footer[^>]*>.*?</footer>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+    title, text = cached
+    total = len(text)
+    if total == 0:
+        return f"### Content from: {url}\n\n(The page has no readable text.)"
+    if start_index >= total:
+        return f"### Content from: {url}\n\nstart_index {start_index} is past the end ({total} characters)."
 
-            # Convert links to markdown
-            text = re.sub(
-                r'<a\s+(?:[^>]*?\s+)?href="([^"]*)"[^>]*>(.*?)</a>',
-                r"[\2](\1)",
-                text,
-                flags=re.DOTALL | re.IGNORECASE,
-            )
-            # Convert headings
-            for h in range(1, 6):
-                text = re.sub(
-                    rf"<h{h}[^>]*>(.*?)</h{h}>",
-                    rf"\n{'#' * h} \1\n",
-                    text,
-                    flags=re.DOTALL | re.IGNORECASE,
-                )
-
-            # Strip other tags
-            text = re.sub(r"<[^>]+>", " ", text)
-            # Unescape HTML entities
-            text = html.unescape(text)
-            # Clean up whitespace
-            text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
-            text = re.sub(r"[ \t]+", " ", text).strip()
-
-            if len(text) > max_chars:
-                text = text[:max_chars] + f"\n\n[... Truncated to {max_chars} characters ...]"
-
-            return f"### Content from: {url}\n\n{text}"
-    except Exception as e:
-        return f"Error fetching URL {url}: {str(e)}"
+    chunk = text[start_index:start_index + max_chars]
+    end = start_index + len(chunk)
+    head = f"### Content from: {url}\n" + (f"Title: {title}\n" if title else "")
+    head += f"Characters {start_index}-{end} of {total}\n\n"
+    note = ""
+    if end < total:
+        note = f"\n\n[... truncated. Call web_fetch again with start_index={end} to continue ...]"
+    return head + chunk + note
 
 
 async def tool_github_scout(query_or_repo: str) -> str:
@@ -189,46 +198,73 @@ async def tool_package_scout(package_query: str) -> str:
         return f"Error scouting packages: {str(e)}"
 
 
+_DENY_NAMES = {".env", ".netrc", ".npmrc", ".pypirc", "id_rsa", "id_ed25519", "providers.json", "credentials"}
+_DENY_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".crt")
+_DENY_DIRS = {".git", ".ssh", ".aws", ".gnupg", "data", "node_modules"}
+
+
+def _workspace_roots() -> list:
+    roots = [Path("/app/workspace"), Path(os.path.expanduser("~/workspace"))]
+    return [r.resolve() for r in roots if r.is_dir()]
+
+
+def _is_denied(path: Path) -> bool:
+    """Secrets and runtime data that a model must never read, wherever they sit."""
+    name = path.name.lower()
+    if name in _DENY_NAMES or name.startswith(".env") or name.endswith(_DENY_SUFFIXES):
+        return True
+    return any(part.lower() in _DENY_DIRS for part in path.parts[:-1])
+
+
+def resolve_workspace_file(file_path: str, target_workspace: Optional[str] = None) -> Path:
+    """Resolve file_path inside a workspace root or raise PermissionError/FileNotFoundError."""
+    if target_workspace and (Path(target_workspace).name != target_workspace or target_workspace in (".", "..")):
+        raise PermissionError("target_workspace must be a single directory name")
+    roots = _workspace_roots()
+    if not roots:
+        raise FileNotFoundError("no workspace is mounted")
+
+    p = Path(file_path)
+    if p.is_absolute():
+        candidates = [p]
+    else:
+        candidates = [(r / target_workspace if target_workspace else r) / p for r in roots]
+
+    for cand in candidates:
+        resolved = cand.resolve()
+        if not any(resolved.is_relative_to(r) for r in roots):
+            raise PermissionError("path is outside the workspace")
+        if _is_denied(resolved):
+            raise PermissionError("access to this file is not allowed")
+        if resolved.is_file():
+            return resolved
+    raise FileNotFoundError(file_path)
+
+
 async def tool_workspace_read_file(file_path: str, target_workspace: Optional[str] = None, max_lines: int = 150) -> str:
     """Read a code file from the current project or workspace for architecture/security review.
 
     Args:
-        file_path: Relative or absolute path to the file
+        file_path: Path relative to the workspace (absolute paths must stay inside it)
         target_workspace: Optional workspace directory name (e.g. 'dev-agent-kit')
         max_lines: Max lines to return (default 150)
     """
     try:
-        # Resolve candidate paths
-        base_dir = Path("/app/workspace") if os.path.exists("/app/workspace") else Path(os.path.expanduser("~/workspace"))
-        candidate_paths = []
-        p = Path(file_path)
-        if p.is_absolute():
-            candidate_paths.append(p)
-        else:
-            if target_workspace:
-                candidate_paths.append(base_dir / target_workspace / file_path)
-                candidate_paths.append(Path(os.path.expanduser("~/workspace")) / target_workspace / file_path)
-            candidate_paths.append(base_dir / file_path)
-            candidate_paths.append(Path("/app") / file_path)
-            candidate_paths.append(Path(os.path.expanduser("~/workspace")) / file_path)
-
-        resolved_path = None
-        for cand in candidate_paths:
-            if cand.exists() and cand.is_file():
-                resolved_path = cand
-                break
-
-        if not resolved_path:
-            return f"File not found: {file_path} (checked: {[str(c) for c in candidate_paths[:3]]})"
-
+        max_lines = max(1, min(int(max_lines), 500))
+        resolved_path = resolve_workspace_file(file_path, target_workspace)
         with open(resolved_path, "r", encoding="utf-8", errors="replace") as f:
             lines = [f.readline() for _ in range(max_lines + 1)]
+        lines = [ln for ln in lines if ln]
 
         is_truncated = len(lines) > max_lines
         content = "".join(lines[:max_lines])
         header = f"### File: {file_path} ({len(lines[:max_lines])} lines)\n```\n"
         footer = "\n```" + ("\n[... Truncated remaining lines ...]" if is_truncated else "")
         return header + content + footer
+    except PermissionError as e:
+        return f"Error: cannot read {file_path} ({e})"
+    except FileNotFoundError:
+        return f"File not found: {file_path}"
     except Exception as e:
         return f"Error reading workspace file {file_path}: {str(e)}"
 
@@ -243,6 +279,8 @@ async def tool_workspace_git_diff(target_workspace: Optional[str] = None, max_ch
     try:
         base_dir = "/app/workspace" if os.path.exists("/app/workspace") else os.path.expanduser("~/workspace")
         if target_workspace:
+            if Path(target_workspace).name != target_workspace or target_workspace in (".", ".."):
+                return "Error: target_workspace must be a single directory name"
             base_dir = os.path.join(base_dir, target_workspace)
 
         proc = await asyncio.create_subprocess_exec(

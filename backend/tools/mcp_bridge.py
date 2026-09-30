@@ -21,6 +21,7 @@ from .builtin import (
     tool_workspace_git_diff,
     tool_workspace_read_file,
 )
+from .search import tool_paper_search, tool_wikipedia
 
 logger = logging.getLogger("llm_council.tools")
 
@@ -63,7 +64,7 @@ BUILTIN_TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "type": "function",
         "function": {
             "name": "web_fetch",
-            "description": "Fetch a webpage URL and extract clean, readable markdown content.",
+            "description": "Fetch a web page, PDF or text URL and return clean markdown. Long documents are paged: use start_index from the truncation note to read on.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -73,11 +74,52 @@ BUILTIN_TOOL_SCHEMAS: Dict[str, Dict[str, Any]] = {
                     },
                     "max_chars": {
                         "type": "integer",
-                        "description": "Maximum characters to return (default: 4000).",
-                        "default": 4000,
+                        "description": "Maximum characters per call (default: 6000, max 20000).",
+                        "default": 6000,
+                    },
+                    "start_index": {
+                        "type": "integer",
+                        "description": "Character offset to continue from (default: 0).",
+                        "default": 0,
                     },
                 },
                 "required": ["url"],
+            },
+        },
+    },
+    "paper_search": {
+        "type": "function",
+        "function": {
+            "name": "paper_search",
+            "description": "Search academic papers (arXiv, OpenAlex). Returns titles, authors, year, citations and abstracts.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Topic or title keywords."},
+                    "limit": {"type": "integer", "description": "Results per source (default: 5).", "default": 5},
+                    "source": {
+                        "type": "string",
+                        "enum": ["all", "arxiv", "openalex"],
+                        "description": "Which index to search (default: all).",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    "wikipedia": {
+        "type": "function",
+        "function": {
+            "name": "wikipedia",
+            "description": "Look up Wikipedia articles and read their introductions. Good for definitions, people, places, history.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Topic or article title."},
+                    "lang": {"type": "string", "description": "Language code (default: en).", "default": "en"},
+                    "limit": {"type": "integer", "description": "Max articles (default: 3).", "default": 3},
+                },
+                "required": ["query"],
             },
         },
     },
@@ -217,13 +259,26 @@ async def execute_tool(
             return await tool_web_search(query, limit=limit)
 
         if tool_name == "web_fetch":
-            url = arguments.get("url", "")
-            max_chars = arguments.get("max_chars", 4000)
-            # Try external fetch MCP server first if available, fallback to builtin
-            mcp_res = await call_http_mcp_tool(MCP_SERVERS["fetch"], "fetch_readable", {"url": url})
-            if mcp_res:
-                return f"### Content from: {url}\n\n{mcp_res[:max_chars]}"
-            return await tool_web_fetch(url, max_chars=max_chars)
+            # Always our own pipeline: an external fetch MCP server would bypass the SSRF guard.
+            return await tool_web_fetch(
+                arguments.get("url", ""),
+                max_chars=arguments.get("max_chars", 6000),
+                start_index=arguments.get("start_index", 0),
+            )
+
+        if tool_name == "paper_search":
+            return await tool_paper_search(
+                arguments.get("query", ""),
+                limit=arguments.get("limit", 5),
+                source=arguments.get("source", "all"),
+            )
+
+        if tool_name == "wikipedia":
+            return await tool_wikipedia(
+                arguments.get("query", ""),
+                lang=arguments.get("lang", "en"),
+                limit=arguments.get("limit", 3),
+            )
 
         if tool_name == "github_scout":
             query_or_repo = arguments.get("query_or_repo", "")

@@ -22,6 +22,7 @@ services:
       QWEN_API_KEY: "${QWEN_API_KEY:-not-needed}"
       CLAUDE_SHIM_BASE_URL: "${CLAUDE_SHIM_BASE_URL:-http://host.docker.internal:8600/v1}"
       ANTIGRAVITY_SHIM_BASE_URL: "${ANTIGRAVITY_SHIM_BASE_URL:-http://host.docker.internal:8601/v1}"
+      SEARXNG_URL: "${SEARXNG_URL:-http://searxng:8080}"
     env_file:
       - ../.env
     volumes:
@@ -42,6 +43,19 @@ services:
       timeout: 3s
       start_period: 5s
       retries: 5
+
+  # Self-hosted metasearch for the web_search tool. No published port: only the backend
+  # reaches it over the compose network. The backend falls back to HN/DDG if it is down.
+  searxng:
+    container_name: council-searxng
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: "${SEARXNG_SECRET:-council-internal-searxng-secret}"
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID]
 
   frontend:
     container_name: council-frontend

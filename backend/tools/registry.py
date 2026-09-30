@@ -12,12 +12,16 @@ SKILL_TOOL_MAP: Dict[str, List[str]] = {
     # Autonomous Researcher & Technology Scout
     "deep-research": [
         "web_search",
+        "paper_search",
+        "wikipedia",
         "web_fetch",
         "github_scout",
         "package_scout",
     ],
     "tech-scout": [
         "web_search",
+        "paper_search",
+        "wikipedia",
         "web_fetch",
         "github_scout",
         "package_scout",
@@ -74,11 +78,15 @@ SKILL_TOOL_MAP: Dict[str, List[str]] = {
     # Logic & First Principles Audit
     "first-principles": [
         "web_search",
+        "paper_search",
+        "wikipedia",
         "web_fetch",
         "github_scout",
     ],
     "red-team-reasoning": [
         "web_search",
+        "paper_search",
+        "wikipedia",
         "web_fetch",
         "github_scout",
     ],
@@ -88,11 +96,16 @@ SKILL_TOOL_MAP: Dict[str, List[str]] = {
 ALL_AVAILABLE_TOOLS = [
     "web_search",
     "web_fetch",
+    "paper_search",
+    "wikipedia",
     "github_scout",
     "package_scout",
     "workspace_read_file",
     "workspace_git_diff",
 ]
+
+
+WORKSPACE_TOOLS = {"workspace_read_file", "workspace_git_diff"}
 
 
 def get_tools_for_model(
@@ -114,7 +127,10 @@ def get_tools_for_model(
 
     # If in open round table / chat mode, give all general tools
     if is_roundtable:
-        return get_tool_definitions(ALL_AVAILABLE_TOOLS)
+        names = ALL_AVAILABLE_TOOLS
+        if not target_workspace:
+            names = [n for n in names if n not in WORKSPACE_TOOLS]
+        return get_tool_definitions(names)
 
     # Extract skill from model string (e.g. 'local/qwen3.8-27b@deep-research')
     skill = None
@@ -125,4 +141,4 @@ def get_tools_for_model(
         return get_tool_definitions(SKILL_TOOL_MAP[skill])
 
     # Default fallback: web_search and web_fetch
-    return get_tool_definitions(["web_search", "web_fetch"])
+    return get_tool_definitions(["web_search", "web_fetch", "wikipedia"])

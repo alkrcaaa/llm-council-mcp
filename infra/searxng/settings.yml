@@ -1,0 +1,9 @@
+# SearXNG for the council's web_search tool. Internal network only (no published port).
+use_default_settings: true
+search:
+  formats: [html, json]
+server:
+  # Overridden by the SEARXNG_SECRET env var in docker-compose.yml.
+  secret_key: "overridden-by-env"
+  limiter: false
+  image_proxy: false
