@@ -311,6 +311,7 @@ async def run_roundtable_stream(
     max_hops: int = 2,
     target_workspace: Optional[str] = None,
     workspace_dossier: Optional[str] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
     Execute a round-table message turn and yield SSE-ready events.
@@ -346,6 +347,8 @@ async def run_roundtable_stream(
         "target_models": target_models,
         "is_broadcast": is_broadcast,
     }
+    if attachments:
+        user_msg["attachments"] = attachments
     conversation["messages"].append(user_msg)
     storage.save_conversation(conversation)
 

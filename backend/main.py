@@ -229,6 +229,7 @@ class SendMessageRequest(BaseModel):
     use_cache: bool = False  # Enable semantic response caching (returns similar cached responses)
     cache_similarity_threshold: float = 0.92  # Minimum similarity for cache hit (0.0-1.0)
     use_research: Optional[bool] = None  # Automated technology scouting (None = auto, True = force, False = disable)
+    attachment_ids: List[str] = []  # Files uploaded to this conversation and sent with the message
 
 
 class ScoutRequest(BaseModel):
@@ -521,6 +522,18 @@ async def delete_conversation(conversation_id: str):
         raise HTTPException(status_code=404, detail="Conversation not found")
     attachments.delete_conversation_attachments(conversation_id)
     return {"status": "ok", "message": "Conversation deleted"}
+
+
+def _resolve_attachments(conversation_id: str, request: "SendMessageRequest"):
+    """Prompt text and public metadata for the files sent with a message; 4xx on a bad id."""
+    if not request.attachment_ids:
+        return "", []
+    try:
+        block = attachments.documents_block(conversation_id, request.attachment_ids)
+    except attachments.AttachmentError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    metas = [attachments.public(attachments.get_meta(conversation_id, a)) for a in dict.fromkeys(request.attachment_ids)]
+    return block, metas
 
 
 @app.post("/api/conversations/{conversation_id}/attachments")
@@ -1418,11 +1431,13 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    doc_block, attachment_meta = _resolve_attachments(conversation_id, request)
+
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
 
     # Add user message
-    storage.add_user_message(conversation_id, request.content)
+    storage.add_user_message(conversation_id, request.content, attachment_meta)
 
     # If this is the first message, generate a title
     if is_first_message:
@@ -1438,6 +1453,7 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
             request.content,
             target_workspace=request.target_workspace
         )
+        effective_query += doc_block
 
         # Resolve council models and chairman model for the conversation
         c_target = None
@@ -1606,6 +1622,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     if running and not running.done:
         raise HTTPException(status_code=409, detail="A response is still streaming in this conversation")
 
+    doc_block, attachment_meta = _resolve_attachments(conversation_id, request)
+
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
 
@@ -1641,11 +1659,14 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                     yield f"data: {json.dumps({'type': 'context_ingested', 'metadata': ingest_meta})}\n\n"
 
                 dossier_text = effective_query if (ingest_meta.get("enriched") and effective_query != request.content) else None
+                if doc_block:
+                    dossier_text = (dossier_text or "") + doc_block
                 async for event in roundtable.run_roundtable_stream(
                     conversation_id,
                     request.content,
                     target_workspace=ingest_meta.get("target_workspace") or target_ws,
-                    workspace_dossier=dossier_text
+                    workspace_dossier=dossier_text,
+                    attachments=attachment_meta
                 ):
                     yield f"data: {json.dumps(event)}\n\n"
 
@@ -1669,13 +1690,14 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             stage_start_time = time.time()
 
             # Add user message
-            storage.add_user_message(conversation_id, request.content)
+            storage.add_user_message(conversation_id, request.content, attachment_meta)
 
             # Ingest and enrich evaluation context if GitHub URLs or workspace references exist
             effective_query, ingest_meta = await ingestion.resolve_evaluation_context(
                 request.content,
                 target_workspace=request.target_workspace
             )
+            effective_query += doc_block
 
             if ingest_meta.get("enriched"):
                 target_ws = ingest_meta.get("target_workspace")

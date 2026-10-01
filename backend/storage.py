@@ -149,13 +149,14 @@ def list_conversations() -> List[Dict[str, Any]]:
     return conversations
 
 
-def add_user_message(conversation_id: str, content: str):
+def add_user_message(conversation_id: str, content: str, attachments: Optional[List[Dict[str, Any]]] = None):
     """
     Add a user message to a conversation.
 
     Args:
         conversation_id: Conversation identifier
         content: User message content
+        attachments: Public metadata of the files sent with the message
     """
     conversation = get_conversation(conversation_id)
     if conversation is None:
@@ -165,11 +166,14 @@ def add_user_message(conversation_id: str, content: str):
     if conversation.get("messages") and conversation["messages"][-1].get("role") == "user" and conversation["messages"][-1].get("content") == content:
         return
 
-    conversation["messages"].append({
+    message = {
         "role": "user",
         "content": content,
         "created_at": datetime.utcnow().isoformat()
-    })
+    }
+    if attachments:
+        message["attachments"] = attachments
+    conversation["messages"].append(message)
 
     save_conversation(conversation)
 

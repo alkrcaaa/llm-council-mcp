@@ -87,6 +87,12 @@ gibi davransın; Council penceresinde kimin ne dediği ve kime cevap verdiği ne
       servis edilir; frontend `<img src>` bearer gönderemez, blob olarak `apiFetch` ile çekmeli.
 - [ ] Mesaj içeriği `text + image_url` listesi; vision'sız modeller için çıkarılmış metin
       (güvenilmeyen veri çerçevesiyle).
+      Yapıldı (metin yolu): `SendMessageRequest.attachment_ids`; PDF/metin `<attachment>`
+      çerçevesiyle (kapanış etiketi kaçırılır) Council, stream ve Round Table sorgusuna eklenir,
+      mesajda yalnız herkese açık meta (`attachments`) saklanır, yabancı/bilinmeyen id 404.
+      Kalan: görsel parçaları (şimdilik "görüntülenemiyor" notu), yetenek haritası olmadan
+      vision'sız modele görsel gitmemeli. Round Table geçmişindeki eski mesajların ekleri
+      sonraki turlara taşınmaz (yalnız gönderildiği tur).
 - [ ] Model yetenek haritası (vision, araç, pdf, bağlam uzunluğu).
 - [ ] Shim'lerde görsel/dosya desteği (stream-json veya `--add-dir`; gerçek çağrıyla doğrula).
 - [ ] Frontend: ataş, sürükle-bırak, yapıştır, küçük resim şeridi, baloncukta chip.
