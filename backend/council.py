@@ -237,6 +237,7 @@ async def stage1_collect_responses(
     use_cot: bool = False,
     models: List[str] = None,
     target_workspace: str = None,
+    images: List[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
@@ -266,7 +267,10 @@ async def stage1_collect_responses(
     if use_cot:
         query += COT_PROMPT_SUFFIX
     query += CONFIDENCE_PROMPT_SUFFIX
-    messages.append({"role": "user", "content": query})
+    user_message = {"role": "user", "content": query}
+    if images:
+        user_message["_images"] = images  # resolved per model in openrouter (vision models only)
+    messages.append(user_message)
 
     # Use provided models or get current council models dynamically
     council_models = models if models else get_council_models()
@@ -314,7 +318,8 @@ async def stage1_collect_responses_streaming(
     user_query: str,
     system_prompt: str = None,
     use_cot: bool = False,
-    models: List[str] = None
+    models: List[str] = None,
+    images: List[Dict[str, str]] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
     Stage 1: Collect individual responses from all council models with streaming.
@@ -348,7 +353,10 @@ async def stage1_collect_responses_streaming(
     if use_cot:
         query += COT_PROMPT_SUFFIX
     query += CONFIDENCE_PROMPT_SUFFIX
-    messages.append({"role": "user", "content": query})
+    user_message = {"role": "user", "content": query}
+    if images:
+        user_message["_images"] = images  # resolved per model in openrouter (vision models only)
+    messages.append(user_message)
 
     # Use provided models or get current council models dynamically
     council_models = models if models else get_council_models()

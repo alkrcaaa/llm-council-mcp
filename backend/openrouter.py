@@ -5,6 +5,7 @@ import json
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL, LOCAL_MODELS
 from .pricing import calculate_cost
+from . import attachments
 
 
 def _resolve_endpoint(model: str):
@@ -53,7 +54,8 @@ def _resolve_endpoint(model: str):
 
 
 def _prepare_messages_for_model(model: str, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
-    """Inject domain skill instructions into system prompt if model identifier has @skill."""
+    """Resolve image attachments for this model, then inject @skill instructions if present."""
+    messages = attachments.inline_images(model, messages)
     if "@" not in model:
         return messages
 

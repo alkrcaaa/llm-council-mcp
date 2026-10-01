@@ -1623,6 +1623,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
         raise HTTPException(status_code=409, detail="A response is still streaming in this conversation")
 
     doc_block, attachment_meta = _resolve_attachments(conversation_id, request)
+    image_refs = attachments.image_refs(conversation_id, request.attachment_ids)
 
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
@@ -1666,7 +1667,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                     request.content,
                     target_workspace=ingest_meta.get("target_workspace") or target_ws,
                     workspace_dossier=dossier_text,
-                    attachments=attachment_meta
+                    attachments=attachment_meta,
+                    images=image_refs
                 ):
                     yield f"data: {json.dumps(event)}\n\n"
 
@@ -2418,7 +2420,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             model_token_counts = {}  # Track token counts for verbose logging
             models_to_use = routed_models if use_dynamic_routing else council_models
 
-            async for event in stage1_collect_responses_streaming(effective_query, active_system_prompt, use_cot, models_to_use):
+            async for event in stage1_collect_responses_streaming(effective_query, active_system_prompt, use_cot, models_to_use, images=image_refs):
                 if event["type"] == "stage1_token":
                     # Stream individual tokens to frontend
                     token_event = {'type': 'stage1_token', 'model': event['model'], 'content': event['content']}
@@ -2515,7 +2517,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                             current_tier = 2
                             tier2_results = []
 
-                            async for tier2_event in stage1_collect_responses_streaming(effective_query, active_system_prompt, use_cot, tier2_models):
+                            async for tier2_event in stage1_collect_responses_streaming(effective_query, active_system_prompt, use_cot, tier2_models, images=image_refs):
                                 if tier2_event["type"] == "stage1_token":
                                     token_event = {'type': 'stage1_token', 'model': tier2_event['model'], 'content': tier2_event['content'], 'tier': 2}
                                     yield f"data: {json.dumps(token_event)}\n\n"

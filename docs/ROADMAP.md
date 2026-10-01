@@ -90,10 +90,15 @@ gibi davransın; Council penceresinde kimin ne dediği ve kime cevap verdiği ne
       Yapıldı (metin yolu): `SendMessageRequest.attachment_ids`; PDF/metin `<attachment>`
       çerçevesiyle (kapanış etiketi kaçırılır) Council, stream ve Round Table sorgusuna eklenir,
       mesajda yalnız herkese açık meta (`attachments`) saklanır, yabancı/bilinmeyen id 404.
-      Kalan: görsel parçaları (şimdilik "görüntülenemiyor" notu), yetenek haritası olmadan
-      vision'sız modele görsel gitmemeli. Round Table geçmişindeki eski mesajların ekleri
-      sonraki turlara taşınmaz (yalnız gönderildiği tur).
-- [ ] Model yetenek haritası (vision, araç, pdf, bağlam uzunluğu).
+      Görseller: mesajda yalnız referans (`_images`) taşınır; `openrouter._prepare_messages_for_model`
+      her model için çözer: vision'lı modele `image_url` (data URL), diğerine "göremiyor" notu,
+      iç alan hiçbir zaman sağlayıcıya gitmez. Council stage 1 (stream) ve Round Table ilk hop'ta.
+      Sınırlar: non-stream `/message` yolu ve Round Table'ın sonraki hop'ları/eski turları görsel
+      taşımaz (ek yalnız gönderildiği turda, ilk hop'ta). Stage 2/3 görseli görmez (yalnız metin).
+      Görsel bayt'ı yalnız vision'lı seçili modele ve onun sağlayıcısına gider.
+- [x] Model yetenek haritası: `backend/capabilities.py` yalnız vision (kayıttaki `vision`
+      bayrağı > `VISION_MODELS` env > ad desenleri; bilinmeyen = yalnız metin). Araç/pdf/bağlam
+      uzunluğu henüz yok.
 - [ ] Shim'lerde görsel/dosya desteği (stream-json veya `--add-dir`; gerçek çağrıyla doğrula).
 - [ ] Frontend: ataş, sürükle-bırak, yapıştır, küçük resim şeridi, baloncukta chip.
 

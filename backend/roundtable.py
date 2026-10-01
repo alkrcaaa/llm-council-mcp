@@ -137,6 +137,7 @@ def format_roundtable_prompt(
     max_history_turns: int = 6,
     lead_model: Optional[str] = None,
     custom_model_prompt: Optional[str] = None,
+    images: Optional[List[Dict[str, str]]] = None,
 ) -> List[Dict[str, str]]:
     """
     Build the message context for a specific model participating in the round table.
@@ -235,13 +236,18 @@ def format_roundtable_prompt(
 
     # Append current user prompt if provided
     if user_content and user_content.strip():
-        messages.append({"role": "user", "content": f"[{user_name}]: {user_content.strip()}"})
+        current = {"role": "user", "content": f"[{user_name}]: {user_content.strip()}"}
+        if images:
+            current["_images"] = images  # resolved per model in openrouter (vision models only)
+        messages.append(current)
 
     # Normalize messages to merge consecutive turns of the same role (required by strict APIs)
     merged_messages: List[Dict[str, str]] = []
     for m in messages:
         if merged_messages and merged_messages[-1]["role"] == m["role"] and m["role"] != "system":
             merged_messages[-1]["content"] += f"\n\n{m['content']}"
+            if m.get("_images"):
+                merged_messages[-1].setdefault("_images", []).extend(m["_images"])
         else:
             merged_messages.append(m)
 
@@ -312,6 +318,7 @@ async def run_roundtable_stream(
     target_workspace: Optional[str] = None,
     workspace_dossier: Optional[str] = None,
     attachments: Optional[List[Dict[str, Any]]] = None,
+    images: Optional[List[Dict[str, str]]] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
     Execute a round-table message turn and yield SSE-ready events.
@@ -407,6 +414,7 @@ async def run_roundtable_stream(
                     custom_context=custom_context,
                     lead_model=lead_model,
                     custom_model_prompt=custom_model_prompt,
+                    images=images,
                 )
             else:
                 # In subsequent hops, all previous dialogue turns are already saved in storage

@@ -236,9 +236,61 @@ def documents_block(conversation_id: str, ids: List[str]) -> str:
             raise AttachmentError("Unknown attachment.", 404)
         name = meta["name"].replace('"', "'")
         if meta["kind"] == "image":
-            parts.append(f'[Image "{name}" ({meta["width"]}x{meta["height"]}) is attached but not viewable here.]')
+            parts.append(f'[Image "{name}" ({meta["width"]}x{meta["height"]}) attached.]')
             continue
         body = meta.get("text", "").replace("</attachment", "<\\/attachment")
         flag = ' truncated="true"' if meta.get("truncated") else ""
         parts.append(f'<attachment name="{name}" kind="{meta["kind"]}"{flag}>\n{body}\n</attachment>')
     return f"\n\n{DOC_HEADER}\n\n" + "\n\n".join(parts) if parts else ""
+
+
+IMAGES_KEY = "_images"  # internal message field: [{"c": conversation_id, "id": attachment_id}]
+NO_VISION_NOTE = "\n\n[The attached image(s) were not shown to you: this model cannot view images.]"
+
+
+def image_refs(conversation_id: str, ids: List[str]) -> List[Dict[str, str]]:
+    """References (not bytes) to the image attachments among `ids`, for a user message."""
+    refs = []
+    for att_id in dict.fromkeys(ids):
+        meta = get_meta(conversation_id, att_id)
+        if meta and meta["kind"] == "image":
+            refs.append({"c": conversation_id, "id": att_id})
+    return refs
+
+
+def _data_url(ref: Dict[str, str]) -> Optional[str]:
+    import base64
+
+    found = file_path(ref.get("c", ""), ref.get("id", ""))
+    if not found:
+        return None
+    path, meta = found
+    with open(path, "rb") as f:
+        return f"data:{meta['mime']};base64,{base64.b64encode(f.read()).decode()}"
+
+
+def inline_images(model: str, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Resolve image references for one model, always removing the internal field.
+
+    Image bytes leave the machine only for a model that can view them; any other model gets a
+    note instead. Nothing is cached on the messages, so one seat's copy never reaches another.
+    """
+    if not any(IMAGES_KEY in m for m in messages):
+        return messages
+    from .capabilities import supports_vision
+
+    vision = supports_vision(model)
+    out = []
+    for m in messages:
+        if IMAGES_KEY not in m:
+            out.append(m)
+            continue
+        clean = {k: v for k, v in m.items() if k != IMAGES_KEY}
+        refs = m[IMAGES_KEY] or []
+        parts = [{"type": "image_url", "image_url": {"url": u}} for u in (_data_url(r) for r in refs) if u] if vision else []
+        if parts:
+            clean["content"] = [{"type": "text", "text": m.get("content", "")}, *parts]
+        elif refs:
+            clean["content"] = f"{m.get('content', '')}{NO_VISION_NOTE}"
+        out.append(clean)
+    return out
