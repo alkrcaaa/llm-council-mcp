@@ -954,35 +954,28 @@ export default function ConfigPanel({
             className={`studio-tab-btn ${activeTab === 'seats' ? 'active' : ''}`}
             onClick={() => setActiveTab('seats')}
           >
-            <span>Council Deliberation ({councilModels.length})</span>
+            <span>Council ({councilModels.length})</span>
           </button>
           <button
             type="button"
             className={`studio-tab-btn ${activeTab === 'chat' ? 'active' : ''}`}
             onClick={() => setActiveTab('chat')}
           >
-            <span>Chat Rosters ({rosterModels.length})</span>
+            <span>Round Table ({rosterModels.length})</span>
           </button>
           <button
             type="button"
-            className={`studio-tab-btn ${activeTab === 'skills' ? 'active' : ''}`}
+            className={`studio-tab-btn ${activeTab === 'skills' || activeTab === 'mcp' ? 'active' : ''}`}
             onClick={() => setActiveTab('skills')}
           >
-            <span>Skills Library ({availableSkills.length})</span>
-          </button>
-          <button
-            type="button"
-            className={`studio-tab-btn ${activeTab === 'mcp' ? 'active' : ''}`}
-            onClick={() => setActiveTab('mcp')}
-          >
-            <span>MCP Servers</span>
+            <span>Skills & Tools</span>
           </button>
           <button
             type="button"
             className={`studio-tab-btn ${activeTab === 'profiles' ? 'active' : ''}`}
             onClick={() => setActiveTab('profiles')}
           >
-            <span>Agent Personas & Colors</span>
+            <span>Agents</span>
           </button>
         </div>
 
@@ -1445,6 +1438,25 @@ export default function ConfigPanel({
                       {isSavingRoster ? 'Saving...' : 'Save Round Table Settings'}
                     </button>
                   </div>
+                </div>
+              )}
+
+              {(activeTab === 'skills' || activeTab === 'mcp') && (
+                <div className="studio-subtabs">
+                  <button
+                    type="button"
+                    className={`studio-subtab-btn ${activeTab === 'skills' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('skills')}
+                  >
+                    Skills ({availableSkills.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`studio-subtab-btn ${activeTab === 'mcp' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('mcp')}
+                  >
+                    Tools (MCP)
+                  </button>
                 </div>
               )}
 

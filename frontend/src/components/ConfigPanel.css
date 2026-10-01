@@ -2752,3 +2752,31 @@
   border-color: #d2a8ff;
 }
 
+
+/* Sub-tabs (Skills / Tools) */
+.studio-subtabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 1rem;
+}
+
+.studio-subtab-btn {
+  background: transparent;
+  border: 1px solid #21262d;
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  color: #8b949e;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.studio-subtab-btn:hover {
+  color: #c9d1d9;
+}
+
+.studio-subtab-btn.active {
+  color: #58a6ff;
+  border-color: #58a6ff;
+  background: rgba(88, 166, 255, 0.06);
+}
