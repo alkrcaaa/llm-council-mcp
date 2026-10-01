@@ -72,12 +72,19 @@ gibi davransın; Council penceresinde kimin ne dediği ve kime cevap verdiği ne
 - [ ] Council'de MCP: Stage 1 zaten araç kullanıyor (`@skill` haritası, MCP yok). Koltuk başına
       MCP için council tanımına seçim alanı ve Stage 1 akışında onay olayı gerekir; onay
       kanalı olmayan `ask` araçları şu an reddedilir.
-- [ ] Testler: SSRF, yol sınırı, sahte modelle tool döngüsü, MCP istemcisi.
+- [x] Testler: SSRF, yol sınırı, sahte modelle tool döngüsü, MCP istemcisi
+      (`test_tool_security`, `test_web_fetch`, `test_tool_loop`, `test_mcp_client`).
 
 ## Aşama 3: Görsel ve dosya yükleme
 
-- [ ] `POST /api/attachments` (magic-byte allowlist, boyut sınırları, Pillow ile yeniden
-      kodlama, PDF/metin çıkarma), sohbete bağlı depolama ve silinince temizlik.
+- [x] Ekler: `backend/attachments.py`, uçlar `/api/conversations/{id}/attachments` (POST/GET
+      liste/GET dosya/DELETE). Tür magic-byte'tan; görsel Pillow ile yeniden kodlanır (EXIF ve
+      eklenmiş veri gider, 2048 px, 50 MP sınırı, GIF ilk kare), PDF/metin çıkarımı 50k karakter
+      ve yalnız sunucuda (istemciye `text_chars`). Sınırlar: görsel 10 MB, PDF 20 MB, metin 1 MB,
+      sohbet başına 20. Gövde sınırı yalnız bu yolda 20 MB (`MAX_UPLOAD_BYTES`), hız sınırı var.
+      Depo `DATA_ROOT/attachments/<sohbet>/`, sohbet silinince temizlenir. Yeni bağımlılık:
+      `pillow`, `python-multipart` (imaj yeniden build edilmeli). Dosya `nosniff` + CSP sandbox ile
+      servis edilir; frontend `<img src>` bearer gönderemez, blob olarak `apiFetch` ile çekmeli.
 - [ ] Mesaj içeriği `text + image_url` listesi; vision'sız modeller için çıkarılmış metin
       (güvenilmeyen veri çerçevesiyle).
 - [ ] Model yetenek haritası (vision, araç, pdf, bağlam uzunluğu).

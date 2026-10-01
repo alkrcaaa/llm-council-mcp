@@ -1,8 +1,8 @@
 """FastAPI backend for LLM Council."""
 
-from fastapi import FastAPI, HTTPException, Query, Body, Header, Depends, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Query, Body, Header, Depends, Request, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import os
@@ -48,6 +48,7 @@ from . import ingestion
 from . import research
 from . import roundtable
 from . import agent_profiles
+from . import attachments
 from .limits import LimitsMiddleware
 
 # Routes reachable without a token. Everything else is authenticated by default,
@@ -518,7 +519,50 @@ async def delete_conversation(conversation_id: str):
     success = storage.delete_conversation(conversation_id)
     if not success:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    attachments.delete_conversation_attachments(conversation_id)
     return {"status": "ok", "message": "Conversation deleted"}
+
+
+@app.post("/api/conversations/{conversation_id}/attachments")
+async def upload_attachment(conversation_id: str, file: UploadFile = File(...)):
+    """Store one image, PDF or text file for this conversation (type checked by content)."""
+    if not storage.get_conversation(conversation_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    # Read one byte past the largest cap so an oversized file is detected without buffering it all.
+    data = await file.read(max(attachments.MAX_BYTES.values()) + 1)
+    try:
+        return attachments.save(conversation_id, file.filename, data)
+    except attachments.AttachmentError as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+
+
+@app.get("/api/conversations/{conversation_id}/attachments")
+async def list_attachments(conversation_id: str):
+    if not storage.get_conversation(conversation_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return [attachments.public(m) for m in attachments.list_for(conversation_id)]
+
+
+@app.get("/api/conversations/{conversation_id}/attachments/{attachment_id}")
+async def get_attachment(conversation_id: str, attachment_id: str):
+    found = attachments.file_path(conversation_id, attachment_id)
+    if not found:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    path, meta = found
+    return FileResponse(
+        path,
+        media_type=meta["mime"],
+        filename=meta["name"],
+        content_disposition_type="inline",
+        headers={"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox"},
+    )
+
+
+@app.delete("/api/conversations/{conversation_id}/attachments/{attachment_id}")
+async def delete_attachment(conversation_id: str, attachment_id: str):
+    if not attachments.delete(conversation_id, attachment_id):
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return {"status": "ok"}
 
 
 @app.put("/api/conversations/{conversation_id}/council")

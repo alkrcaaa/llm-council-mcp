@@ -7,11 +7,16 @@ from collections import defaultdict, deque
 
 MAX_BODY_BYTES = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(2_000_000)))
 RATE_LIMIT_PER_MINUTE = int(os.getenv("COSTLY_RATE_LIMIT_PER_MINUTE", "60"))
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(20_000_000)))
+
+# The one place a large body is expected; every other endpoint keeps the small cap.
+_UPLOAD = re.compile(r"^/api/conversations/[^/]+/attachments$")
 
 # POST endpoints that spend model tokens or fetch remote URLs.
 _COSTLY = re.compile(
     r"^/api/("
     r"conversations/[^/]+/message(/stream)?"
+    r"|conversations/[^/]+/attachments"
     r"|research/scout"
     r"|skills/import(/.*)?"
     r"|providers/(test|fetch-models)"
@@ -71,8 +76,12 @@ class LimitsMiddleware:
             if not self.limiter.allow(client):
                 return await _reject(send, 429, "Too many requests", [(b"retry-after", b"60")])
 
+        max_body = self.max_body
+        if scope["method"] == "POST" and _UPLOAD.match(scope["path"]):
+            max_body = max(max_body, MAX_UPLOAD_BYTES + 1_000_000)  # multipart framing overhead
+
         declared = dict(scope["headers"]).get(b"content-length")
-        if declared and declared.isdigit() and int(declared) > self.max_body:
+        if declared and declared.isdigit() and int(declared) > max_body:
             return await _reject(send, 413, "Request body too large")
 
         received = 0
@@ -83,7 +92,7 @@ class LimitsMiddleware:
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
-                if received > self.max_body:
+                if received > max_body:
                     too_large = True
                     return {"type": "http.request", "body": b"", "more_body": False}
             return message
