@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ProvidersTab from './ProvidersTab.jsx';
 import './SettingsModal.css';
 
 const PRESETS = [
@@ -35,6 +36,7 @@ const PRESETS = [
 export default function SettingsModal({
   isOpen,
   onClose,
+  initialTab = 'prompt',
   systemPrompt,
   onSystemPromptChange,
   useCot,
@@ -66,7 +68,7 @@ export default function SettingsModal({
   useResearch,
   onResearchChange,
 }) {
-  const [activeTab, setActiveTab] = useState('prompt');
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   // Close on Escape key
   useEffect(() => {
@@ -233,6 +235,13 @@ export default function SettingsModal({
           >
             <span>Routing & Optimization</span>
             {advancedActive && <span className="tab-active-dot" />}
+          </button>
+          <button
+            type="button"
+            className={`settings-tab-btn ${activeTab === 'providers' ? 'active' : ''}`}
+            onClick={() => setActiveTab('providers')}
+          >
+            <span>Providers</span>
           </button>
         </div>
 
@@ -417,6 +426,8 @@ export default function SettingsModal({
               </div>
             </div>
           )}
+
+          {activeTab === 'providers' && <ProvidersTab />}
 
           {/* TAB 3: ROUTING & ADVANCED */}
           {activeTab === 'advanced' && (

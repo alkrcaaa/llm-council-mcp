@@ -100,7 +100,10 @@ gibi davransın; Council penceresinde kimin ne dediği ve kime cevap verdiği ne
       şef için "CH" koltuğu. Liste görünümü ve Table/List geçişi kaldırıldı (karar: yalnız masa).
       Koltuk editörleri: Round Table `SeatEditor` (`RosterSeatCard.jsx`), Council
       `CouncilSeatEditor` (`CouncilSeatEditor.jsx`; council koltuğunda rol prompt'u ve MCP yok).
-- [ ] Model Studio yeniden yapılanma (karar verildi): 4 sekme: **Council**, **Round Table**,
+- [~] Model Studio yeniden yapılanma (karar verildi). Yapıldı: Providers `ProvidersTab.jsx` olarak
+      ayrıldı ve Settings'e "Providers" sekmesi olarak taşındı (Settings'te "koltuğa ekle"
+      düğmeleri yok). Kalan: sekmeleri 4'e indir (Skills altında Tools), Agents sekmesi,
+      ConfigPanel'in geri kalanını böl. Hedef: 4 sekme: **Council**, **Round Table**,
       **Skills** (MCP ikinci alt sekme, "Tools"), **Agents** (persona). **Custom Providers
       Model Studio'dan çıkar, Settings'e "Providers" sekmesi olarak taşınır** (altyapı ayarı,
       koltukla ilgisi yok). Başlık "Model Studio". ConfigPanel (3000+ satır) bu sırada bölünür.

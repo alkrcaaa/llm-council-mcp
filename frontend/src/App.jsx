@@ -67,6 +67,7 @@ function App() {
   );
   const [allTags, setAllTags] = useState([]);
   const [selectedTag, setSelectedTag] = useState(null);
+  const [settingsTab, setSettingsTab] = useState('prompt');
   const [showConfigPanel, setShowConfigPanel] = useState(
     () => sessionStorage.getItem('showConfigPanel') === 'true'
   );
@@ -1081,7 +1082,10 @@ function App() {
         onOpenTelemetry={() => setShowProcessMonitor((v) => !v)}
         telemetryActive={showProcessMonitor || processVerbosity > 0}
         telemetryLevel={processVerbosity}
-        onOpenSettings={() => setShowSettings(true)}
+        onOpenSettings={() => {
+          setSettingsTab('prompt');
+          setShowSettings(true);
+        }}
         onOpenConfigPanel={() => {
           const tab = currentConversation?.conversation_type === 'roundtable' ? 'chat' : 'seats';
           setConfigPanelTab(tab);
@@ -1216,8 +1220,8 @@ function App() {
                   type="button"
                   className="council-health-warning-pill"
                   onClick={() => {
-                    setConfigPanelTab('providers');
-                    setShowConfigPanel(true);
+                    setSettingsTab('providers');
+                    setShowSettings(true);
                   }}
                   title={`${offlineCouncilSeats.length} seat(s) offline (${offlineCouncilSeats.join(', ')}). Click to open Model Studio.`}
                 >
@@ -1263,8 +1267,8 @@ function App() {
           providerLabels={providerLabels}
           offlineCouncilSeats={offlineCouncilSeats}
           onOpenProviders={() => {
-            setConfigPanelTab('providers');
-            setShowConfigPanel(true);
+            setSettingsTab('providers');
+            setShowSettings(true);
           }}
           onInspectSkill={(skillId) => {
             setSelectedSkillIdForModal(skillId);
@@ -1328,7 +1332,9 @@ function App() {
 
       {/* Deliberation Settings Modal */}
       <SettingsModal
+        key={settingsTab}
         isOpen={showSettings}
+        initialTab={settingsTab}
         onClose={() => setShowSettings(false)}
         systemPrompt={systemPrompt}
         onSystemPromptChange={handleSystemPromptChange}
