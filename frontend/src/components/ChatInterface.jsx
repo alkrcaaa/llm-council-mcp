@@ -12,7 +12,15 @@ import { shortModelName, linkifyUserMentions, mentionMarkdownComponents } from '
 import { formatSeatLabel } from '../modelLabel.js';
 import { exportToMarkdown, exportToJSON, exportToADR, copyADRToClipboard } from '../utils/export';
 import McpApprovalCard from './McpApprovalCard.jsx';
+import { AttachButton, AttachmentTray, MessageAttachments } from './Attachments.jsx';
+import useAttachmentDraft from '../useAttachmentDraft';
 import './ChatInterface.css';
+
+// Files dropped on or pasted into a composer; returns true when it consumed them.
+function filesFromEvent(e) {
+  const files = e.dataTransfer?.files || e.clipboardData?.files;
+  return files && files.length > 0 ? files : null;
+}
 
 export default function ChatInterface({
   conversation,
@@ -34,6 +42,33 @@ export default function ChatInterface({
 }) {
   const [input, setInput] = useState('');
   const [landingInput, setLandingInput] = useState('');
+  const draft = useAttachmentDraft();
+  const landingDraft = useAttachmentDraft();
+  const [dragging, setDragging] = useState(false);
+  const dropProps = (target) => ({
+    onDragOver: (e) => {
+      if (e.dataTransfer?.types?.includes('Files')) {
+        e.preventDefault();
+        setDragging(true);
+      }
+    },
+    onDragLeave: () => setDragging(false),
+    onDrop: (e) => {
+      const files = filesFromEvent(e);
+      setDragging(false);
+      if (files) {
+        e.preventDefault();
+        target.add(files);
+      }
+    },
+  });
+  const pasteHandler = (target) => (e) => {
+    const files = filesFromEvent(e);
+    if (files) {
+      e.preventDefault();
+      target.add(files);
+    }
+  };
   const [showTagEditor, setShowTagEditor] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState('0.0');
   const [copiedADR, setCopiedADR] = useState(false);
@@ -238,25 +273,26 @@ export default function ChatInterface({
     e.preventDefault();
     if (!input.trim()) return;
     if (!isLoading) {
-      onSendMessage(input);
+      onSendMessage(input, false, null, draft.take());
       setInput('');
     } else if (isRoundTableConv) {
       // The backend accepts one stream per conversation; hold the message until
       // the current replies finish instead of swallowing the Enter key.
       const text = queuedMessage ? `${queuedMessage}\n\n${input.trim()}` : input.trim();
-      setQueued({ conversationId: conversation?.id, text });
+      const files = [...(queuedMessage ? queued.files || [] : []), ...draft.take()];
+      setQueued({ conversationId: conversation?.id, text, files });
       setInput('');
     }
   };
 
   useEffect(() => {
     if (!isLoading && queuedMessage) {
-      onSendMessage(queuedMessage);
+      onSendMessage(queuedMessage, false, null, queued.files || []);
       // Reacting to the isLoading prop falling back to false is the point of this effect.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setQueued(null);
     }
-  }, [isLoading, queuedMessage, onSendMessage]);
+  }, [isLoading, queuedMessage, queued, onSendMessage]);
 
   const handleKeyDown = (e) => {
     if (mentionQuery != null && mentionMatches.length > 0) {
@@ -293,9 +329,9 @@ export default function ChatInterface({
     e.preventDefault();
     if (!landingInput.trim()) return;
     if (conversation && conversation.id) {
-      onSendMessage(landingInput);
+      onSendMessage(landingInput, false, null, landingDraft.take());
     } else if (onNewConversation) {
-      onNewConversation(null, landingInput, effectiveMode);
+      onNewConversation(null, landingInput, effectiveMode, landingDraft.take());
     }
     setLandingInput('');
   };
@@ -352,7 +388,12 @@ export default function ChatInterface({
               : 'Council models propose independent solutions, peer-review each other, and synthesize a final ADR verdict.'}
           </p>
 
-          <form className="landing-composer" onSubmit={handleLandingSubmit}>
+          <AttachmentTray items={landingDraft.items} error={landingDraft.error} onRemove={landingDraft.remove} />
+          <form
+            className={`landing-composer ${dragging ? 'attach-dragging' : ''}`}
+            onSubmit={handleLandingSubmit}
+            {...dropProps(landingDraft)}
+          >
             <button
               type="button"
               className="landing-composer-council"
@@ -360,12 +401,14 @@ export default function ChatInterface({
             >
               {isRoundTable ? (activeChatRoster?.name || 'Round Table') : (conversation?.council_name || activeCouncil?.name || 'LLM Council')}
             </button>
+            <AttachButton onFiles={landingDraft.add} />
             <textarea
               className="landing-composer-input"
               placeholder={activeMode === 'roundtable' ? 'Write a message or mention a model (@all, @qwen)...' : "Ask the council..."}
               value={landingInput}
               onChange={(e) => setLandingInput(e.target.value)}
               onKeyDown={handleLandingKeyDown}
+              onPaste={pasteHandler(landingDraft)}
               rows={1}
               autoFocus
             />
@@ -586,6 +629,7 @@ export default function ChatInterface({
                         )}
                       </SafeMarkdown>
                     </div>
+                    <MessageAttachments attachments={msg.attachments} conversationId={conversation.id} />
                   </div>
                 </div>
               ) : msg.isRoundTable ? (
@@ -1053,7 +1097,11 @@ export default function ChatInterface({
       </div>
 
         <div className="input-form-wrapper">
-          <form className="input-form" onSubmit={handleSubmit}>
+          <form
+            className={`input-form ${dragging ? 'attach-dragging' : ''}`}
+            onSubmit={handleSubmit}
+            {...dropProps(draft)}
+          >
             {mentionQuery != null && mentionMatches.length > 0 && (
               <div className="mention-autocomplete">
                 {mentionMatches.map((model, idx) => (
@@ -1078,10 +1126,13 @@ export default function ChatInterface({
                 </button>
               </div>
             )}
+            <AttachmentTray items={draft.items} error={draft.error} onRemove={draft.remove} />
             <div className="input-inner">
+              <AttachButton onFiles={draft.add} />
               <textarea
                 ref={messageInputRef}
                 className="message-input"
+                onPaste={pasteHandler(draft)}
                 placeholder={
                   isRoundTableConv
                     ? isLoading

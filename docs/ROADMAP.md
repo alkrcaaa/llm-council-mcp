@@ -100,7 +100,14 @@ gibi davransın; Council penceresinde kimin ne dediği ve kime cevap verdiği ne
       bayrağı > `VISION_MODELS` env > ad desenleri; bilinmeyen = yalnız metin). Araç/pdf/bağlam
       uzunluğu henüz yok.
 - [ ] Shim'lerde görsel/dosya desteği (stream-json veya `--add-dir`; gerçek çağrıyla doğrula).
-- [ ] Frontend: ataş, sürükle-bırak, yapıştır, küçük resim şeridi, baloncukta chip.
+- [x] Frontend: `Attach` düğmesi, sürükle-bırak, yapıştır, küçük resim şeridi (taslak), baloncukta
+      görsel önizleme ve dosya chip'i. Dosyalar gönderim anında yüklenir (karşılama ekranında
+      sohbet henüz yok): `useAttachmentDraft`, `components/Attachments.jsx`,
+      `api.uploadAttachment/getAttachmentBlob`. Görseller `apiFetch` ile blob olarak çekilir.
+      Yükleme hatası stream hatasıyla aynı yoldan görünür. Tarayıcıda doğrulandı (yalıtılmış
+      backend, geçici veri): yükleme, baloncuk, yeniden yüklemede önizleme, yerel modelin dosya
+      metnini okuması. Eksik: istemci tarafı hata metni yalnız seçimde, sunucu reddi (ör. bozuk
+      görsel) mesaj gönderilirken görünür.
 
 ## Aşama 4: Council arayüzü ve ConfigPanel
 

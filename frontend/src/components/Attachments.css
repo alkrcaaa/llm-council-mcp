@@ -1,0 +1,178 @@
+/* Attachment controls. Hairline borders, small radii, mono tags: no icons, no emoji. */
+
+.attach-file-input {
+  display: none;
+}
+
+.attach-btn {
+  flex: none;
+  align-self: center;
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: color 150ms ease-out, border-color 150ms ease-out, background 150ms ease-out;
+}
+
+.attach-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--bg-surface-hover);
+}
+
+.attach-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.attach-tray {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 0;
+}
+
+.attach-tray-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.attach-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  padding: 4px 6px 4px 8px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--text-secondary);
+  animation: attach-in 200ms ease-out;
+}
+
+.attach-item.has-thumb {
+  padding-left: 4px;
+}
+
+.attach-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.attach-kind {
+  flex: none;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--accent-brass);
+  border: 1px solid var(--accent-brass-glow);
+  border-radius: var(--radius-sm);
+}
+
+.attach-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attach-size {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.attach-remove {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  font-size: 16px;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.attach-remove:hover {
+  color: var(--status-critical);
+  background: var(--status-critical-subtle);
+}
+
+.attach-error {
+  font-size: 12px;
+  color: var(--status-critical);
+}
+
+.attach-dragging {
+  outline: 1px dashed var(--accent-brass);
+  outline-offset: -4px;
+}
+
+/* Inside a sent message */
+.attach-bubble {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 3px 8px;
+  font-size: 12px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+}
+
+.attach-bubble-thumb-link {
+  display: block;
+  line-height: 0;
+}
+
+.attach-bubble-thumb {
+  max-width: 220px;
+  max-height: 160px;
+  object-fit: cover;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+}
+
+.attach-thumb-loading {
+  width: 80px;
+  height: 60px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+@keyframes attach-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

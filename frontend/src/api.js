@@ -1169,10 +1169,37 @@ export const api = {
    * @param {boolean|null} useResearch - Autonomous technology scouting (null = auto, true = force, false = disable)
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent, systemPrompt = null, verbosity = 0, useCot = false, useMultiChairman = false, useWeightedConsensus = true, useEarlyConsensus = false, useDynamicRouting = false, useEscalation = false, useRefinement = false, refinementMaxIterations = 2, useAdversary = false, useDebate = false, includeRebuttal = true, useDecomposition = false, useCache = false, cacheSimilarityThreshold = 0.92, councilId = null, targetWorkspace = null, useResearch = null) {
+  /** Upload one file to a conversation; resolves to the server's public metadata. */
+  async uploadAttachment(conversationId, file) {
+    const form = new FormData();
+    form.append('file', file, file.name || 'pasted');
+    // No Content-Type: the browser must add the multipart boundary itself.
+    const response = await apiFetch(`${API_BASE}/api/conversations/${conversationId}/attachments`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!response.ok) {
+      if (response.status === 401) this.clearToken();
+      const detail = await response.json().then((b) => b.detail).catch(() => null);
+      throw new Error(detail || `Upload failed (${response.status})`);
+    }
+    return response.json();
+  },
+
+  /** Fetch an attachment as a Blob (an <img src> cannot send the bearer token). */
+  async getAttachmentBlob(conversationId, attachmentId) {
+    const response = await apiFetch(
+      `${API_BASE}/api/conversations/${conversationId}/attachments/${attachmentId}`
+    );
+    if (!response.ok) throw new Error(`Attachment unavailable (${response.status})`);
+    return response.blob();
+  },
+
+  async sendMessageStream(conversationId, content, onEvent, systemPrompt = null, verbosity = 0, useCot = false, useMultiChairman = false, useWeightedConsensus = true, useEarlyConsensus = false, useDynamicRouting = false, useEscalation = false, useRefinement = false, refinementMaxIterations = 2, useAdversary = false, useDebate = false, includeRebuttal = true, useDecomposition = false, useCache = false, cacheSimilarityThreshold = 0.92, councilId = null, targetWorkspace = null, useResearch = null, attachmentIds = []) {
     const body = {
       content,
       verbosity,
+      attachment_ids: Array.isArray(attachmentIds) ? attachmentIds : [],
       use_cot: useCot,
       use_multi_chairman: useMultiChairman,
       use_weighted_consensus: useWeightedConsensus,

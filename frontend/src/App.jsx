@@ -9,6 +9,7 @@ import LoginModal from './components/LoginModal';
 import SettingsModal from './components/SettingsModal';
 import AccountModal from './components/AccountModal';
 import { api } from './api';
+import { describeLocal } from './attachments';
 import { createStreamDispatcher } from './streamHandler';
 import './App.css';
 
@@ -645,7 +646,8 @@ function App() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [currentConversationId, loadingIds]);
 
-  const handleNewConversation = async (councilId = null, initialMessage = null, conversationType = 'roundtable') => {
+  const handleNewConversation = async (councilId = null, initialMessage = null, conversationType = 'roundtable', files = []) => {
+    const draftFiles = Array.isArray(files) ? files : [];
     setShowSettings(false);
     // If no initial message, enter clean landing state immediately without littering DB or sidebar
     if (!initialMessage || !initialMessage.trim()) {
@@ -670,6 +672,9 @@ function App() {
         content: initialMessage,
         created_at: new Date().toISOString(),
       };
+      if (draftFiles.length > 0) {
+        userMessage.attachments = draftFiles.map(({ file, previewUrl }) => describeLocal(file, previewUrl));
+      }
       newConv.messages = [userMessage];
       setConversations((prev) => [
         {
@@ -691,7 +696,7 @@ function App() {
       url.searchParams.set('c', newConv.id);
       window.history.replaceState({}, '', url.pathname + url.search);
       localStorage.setItem('lastActiveConversationId', newConv.id);
-      handleSendMessage(initialMessage, false, newConv.id);
+      handleSendMessage(initialMessage, false, newConv.id, draftFiles);
     } catch (error) {
       console.error('Failed to create conversation:', error);
       if (error.message?.includes('Authentication') || error.message?.includes('401')) {
@@ -852,9 +857,12 @@ function App() {
     localStorage.setItem('useResearch', value.toString());
   };
 
-  const handleSendMessage = async (content, isRetry = false, overrideId = null) => {
+  // `files` are draft items ({ file, previewUrl }) picked in the composer; they are uploaded
+  // here, once the conversation is known, and sent along by id.
+  const handleSendMessage = async (content, isRetry = false, overrideId = null, files = []) => {
     const targetConversationId = overrideId || currentConversationId;
     if (!targetConversationId) return;
+    const draftFiles = Array.isArray(files) ? files : [];
 
     setConvLoading(targetConversationId, true);
 
@@ -899,6 +907,9 @@ function App() {
       // Optimistically add user message to UI only if not a retry
       if (!isRetry) {
         const userMessage = { role: 'user', content, created_at: new Date().toISOString() };
+        if (draftFiles.length > 0) {
+          userMessage.attachments = draftFiles.map(({ file, previewUrl }) => describeLocal(file, previewUrl));
+        }
         setCurrentConversation((prev) => {
           const currentList = prev?.messages || [];
           // Only skip when this exact message is already the tail (double submit);
@@ -1009,6 +1020,13 @@ function App() {
         selectedTag,
       });
 
+      // Upload the picked files first; a failure surfaces through the same error path as a failed stream.
+      const attachmentIds = [];
+      for (const { file } of draftFiles) {
+        const meta = await api.uploadAttachment(targetConversationId, file);
+        attachmentIds.push(meta.id);
+      }
+
       // Send message with streaming
       await api.sendMessageStream(
         targetConversationId,
@@ -1032,7 +1050,8 @@ function App() {
         0.92,
         currentConversation?.council_id || activeCouncil?.id,
         selectedWorkspace || null,
-        useResearch
+        useResearch,
+        attachmentIds
       );
       // Ensure active streaming cache and loading state are cleared on completion
       if (activeStreamRef.current) {
