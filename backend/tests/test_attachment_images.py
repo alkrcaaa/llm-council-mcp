@@ -56,6 +56,18 @@ def test_explicit_flag_beats_name_patterns(monkeypatch):
     assert capabilities.supports_vision("local/gemini-proxy") is False
 
 
+def test_custom_endpoint_is_judged_by_its_upstream_model_id(monkeypatch):
+    from backend import providers
+
+    records = {
+        "custom/gemini-3-6-flash": {"id": "custom/gemini-3-6-flash", "model_id": "gemini-3.6-flash"},
+        "custom/groq": {"id": "custom/groq", "model_id": "llama-3.3-70b-versatile"},
+    }
+    monkeypatch.setattr(providers, "get_provider_by_id", lambda pid: records.get(pid))
+    assert capabilities.supports_vision("custom/gemini-3-6-flash") is True
+    assert capabilities.supports_vision("custom/groq") is False
+
+
 def _user(content, refs):
     return {"role": "user", "content": content, "_images": refs}
 

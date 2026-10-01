@@ -1431,6 +1431,9 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    if is_deliberation_running(conversation_id):
+        raise HTTPException(status_code=409, detail="A response is still streaming in this conversation")
+
     doc_block, attachment_meta = _resolve_attachments(conversation_id, request)
 
     # Check if this is the first message
@@ -1522,7 +1525,8 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
             conversation_id,
             stage1_results,
             stage2_results,
-            stage3_result
+            stage3_result,
+            metadata,
         )
 
         # Return the complete response with metadata
@@ -1619,7 +1623,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     # A second message while one is still streaming used to attach to the running
     # stream and silently drop its own content. Reconnects use GET .../stream instead.
     running = ACTIVE_DELIBERATION_CONTEXTS.get(conversation_id)
-    if running and not running.done:
+    if (running and not running.done) or is_deliberation_running(conversation_id):
         raise HTTPException(status_code=409, detail="A response is still streaming in this conversation")
 
     doc_block, attachment_meta = _resolve_attachments(conversation_id, request)
@@ -1871,7 +1875,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                         conversation_id,
                         cached_stage1,
                         cached_stage2,
-                        cached_stage3
+                        cached_stage3,
+                        cached_response.get("metadata"),
                     )
 
                     # Complete
@@ -3253,7 +3258,16 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 conversation_id,
                 stage1_results,
                 stage2_results,
-                stage3_result
+                stage3_result,
+                {
+                    "label_to_model": label_to_model,
+                    "aggregate_rankings": aggregate_rankings,
+                    "use_weighted_consensus": use_weighted,
+                    "weights_info": weights_info,
+                    "aggregate_confidence": aggregate_confidence,
+                    "escalation_info": escalation_info,
+                    "costs": costs,
+                },
             )
 
             # Store in cache if caching is enabled

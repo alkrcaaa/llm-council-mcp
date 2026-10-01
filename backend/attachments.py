@@ -290,6 +290,8 @@ def inline_images(model: str, messages: List[Dict[str, Any]]) -> List[Dict[str, 
         parts = [{"type": "image_url", "image_url": {"url": u}} for u in (_data_url(r) for r in refs) if u] if vision else []
         if parts:
             clean["content"] = [{"type": "text", "text": m.get("content", "")}, *parts]
+        elif refs and vision:
+            clean["content"] = f"{m.get('content', '')}\n\n[The attached image(s) could not be loaded.]"
         elif refs:
             clean["content"] = f"{m.get('content', '')}{NO_VISION_NOTE}"
         out.append(clean)

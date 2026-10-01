@@ -14,7 +14,7 @@ import re
 _VISION_PATTERNS = [
     r"^openai/(gpt-4o|gpt-4\.1|gpt-4-turbo|gpt-5|o1|o3|o4)",
     r"^anthropic/claude-(?!2|instant)",
-    r"^google/gemini",
+    r"^(google/)?gemini",
     r"^x-ai/grok-(4|.*vision)",
     r"^meta-llama/llama-4",
     r"(^|[-_/])(vl|vision|llava|pixtral|minicpm-v|internvl|molmo)([-_/.:]|$)",
@@ -33,18 +33,24 @@ def supports_vision(model: str) -> bool:
 
     from .config import LOCAL_MODELS
 
-    flag = _flag(LOCAL_MODELS.get(base))
-    if flag is None:
+    record = LOCAL_MODELS.get(base)
+    if record is None:
         try:
             from . import providers
 
-            flag = _flag(providers.get_provider_by_id(base))
+            record = providers.get_provider_by_id(base)
         except Exception:
-            flag = None
+            record = None
+    flag = _flag(record)
     if flag is not None:
         return flag
 
     extra = {m.strip() for m in os.getenv("VISION_MODELS", "").split(",") if m.strip()}
     if base in extra:
         return True
-    return any(p.search(base.lower()) for p in _VISION_RE)
+    # A custom endpoint's id ("custom/gemini-3-6-flash") says nothing about the model behind it,
+    # so the upstream model id gets the same pattern check.
+    names = [base]
+    if isinstance(record, dict) and record.get("model_id"):
+        names.append(str(record["model_id"]))
+    return any(p.search(n.lower()) for n in names for p in _VISION_RE)

@@ -163,7 +163,8 @@ def add_user_message(conversation_id: str, content: str, attachments: Optional[L
         raise ValueError(f"Conversation {conversation_id} not found")
 
     # If last message is already an unanswered user message with the same content, don't duplicate
-    if conversation.get("messages") and conversation["messages"][-1].get("role") == "user" and conversation["messages"][-1].get("content") == content:
+    last = conversation["messages"][-1] if conversation.get("messages") else None
+    if last and last.get("role") == "user" and last.get("content") == content and last.get("attachments") == (attachments or None):
         return
 
     message = {
@@ -182,7 +183,8 @@ def add_assistant_message(
     conversation_id: str,
     stage1: List[Dict[str, Any]],
     stage2: List[Dict[str, Any]],
-    stage3: Dict[str, Any]
+    stage3: Dict[str, Any],
+    metadata: Optional[Dict[str, Any]] = None,
 ):
     """
     Add an assistant message with all 3 stages to a conversation.
@@ -192,18 +194,23 @@ def add_assistant_message(
         stage1: List of individual model responses
         stage2: List of model rankings
         stage3: Final synthesized response
+        metadata: Optional label_to_model / aggregate rankings / costs, kept so a
+            reload can redraw the Stage 2 matrix and cost line
     """
     conversation = get_conversation(conversation_id)
     if conversation is None:
         raise ValueError(f"Conversation {conversation_id} not found")
 
-    conversation["messages"].append({
+    message = {
         "role": "assistant",
         "stage1": stage1,
         "stage2": stage2,
         "stage3": stage3,
         "created_at": datetime.utcnow().isoformat()
-    })
+    }
+    if metadata:
+        message["metadata"] = metadata
+    conversation["messages"].append(message)
     conversation["status"] = "idle"
     conversation["last_error"] = None
 

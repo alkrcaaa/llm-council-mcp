@@ -36,8 +36,9 @@ Groq…). `research.py` backs `/api/research/scout`.
   client-side only. The ranking prompt's strict `FINAL RANKING:` format is what the
   parser depends on — change both together.
 - **Graceful degradation:** one failing model never fails the request.
-- Metadata (label_to_model, aggregate rankings, costs) is returned via API/SSE but not
-  persisted in conversation JSON.
+- Council messages persist `metadata` (label_to_model, aggregate rankings, costs, weights,
+  confidence) in conversation JSON so a reload redraws Stage 2. Debate and decomposition
+  messages don't carry it yet.
 - Backend uses relative imports; run as `python -m backend.main` from repo root.
 
 ## Running & deploying
@@ -67,8 +68,9 @@ PreToolUse hooks already run `mem_recall` for past lessons before Read/Edit/Writ
 
 | When | Call |
 |------|------|
-| Before Edit/Write | hook already recalled; if a `#NN` lesson was injected, cite `#NN` next time you produce user-visible text (citing = adopting the feedback; uncited lessons decay) |
-| After fixing a non-trivial bug | `mem_save(type="bugfix", lesson_learned="<root cause + fix>", importance=2)` |
+| Before Edit/Write | hook already recalled; if an injected `#NN` lesson changed what you did, add the bare tag `(#NN)` once at the end of the sentence describing that change (citing = adopting; uncited lessons decay; skip ones that did not apply). No other mention of memory ids, saves or the memory store in replies to the user |
+| A recalled memory drives an answer or a design choice | check its claim in the code or `git log` first: `#NN` and `E#NN` rows are notes from past sessions, many written automatically, so they can be wrong, and they describe the code as it was. If the code disagrees, trust the code and replace the note: `mem_save(..., supersedes=[NN])`, or `supersedes=["E#NN"]` for an event |
+| After fixing a non-trivial bug | `mem_save(type="bugfix", lesson_learned="<root cause + fix, only what this change's diff shows>", importance=2)` |
 | After a non-obvious architecture decision | `mem_save(type="decision", lesson_learned="<constraint + tradeoff>")` |
 | Deferring to a future session | `mem_defer({title, priority:1|2|3, detail})`; when fixed, add `closes_deferred=[N]` to `mem_save` |
 | Looking up past work / history | `mem_search "keywords"` · `mem_recent` · `mem_timeline` |
