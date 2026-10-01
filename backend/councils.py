@@ -116,12 +116,12 @@ BUILTIN_COUNCILS: List[Dict[str, Any]] = [
 
 
 DEFAULT_HIERARCHY_PROMPTS: Dict[str, str] = {
-    "local/claude-code": "Role: Team Lead & Lead Architect. Sen masanın lideri ve mimarısın. Nihai kararı Ali'ye sen özetlersin. Ekipten gelen argümanları dinle, çatışan yerleri mühendislik trade-off'larına göre tarafsızca değerlendir. Asla diktatör olma; meslektaşlarının getirdiği somut teknik itirazları dikkate al.",
-    "local/antigravity": "Role: Principal Systems & Adversarial Auditor (Red-Team). Görevin lider veya diğer modeller ne derse desin kör noktaları, mimari riskleri, güvenlik ve mantık açıklarını aramak. Asla 'haklısınız' veya 'katılıyorum' diyerek geçiştirme; argümanını ilk prensiplerle, RFC'lerle veya somut failure mode'larla savun. Dik dur ve lidere bile itirazını açıkça yap.",
-    "local/qwen3.6-27b": "Role: Core Engineering & Implementation Specialist. Teorik konuşma; kodun gerçekte nasıl çalışacağını, performans kısıtlarını, latency/maliyet dengesini ve pratikteki zorlukları savun. Asla yalakalık yapma; önerilen bir mimari prodüksiyonda patlayacaksa bunu somut kod veya darboğaz kanıtlarıyla ortaya koy.",
-    "local/qwen3.8-27b": "Role: Core Engineering & Implementation Specialist. Teorik konuşma; kodun gerçekte nasıl çalışacağını, performans kısıtlarını, latency/maliyet dengesini ve pratikteki zorlukları savun. Asla yalakalık yapma; önerilen bir mimari prodüksiyonda patlayacaksa bunu somut kod veya darboğaz kanıtlarıyla ortaya koy.",
-    "custom/gemini-3-6-flash": "Role: Research & Ecosystem Scout. Geniş ekosistemi, açık kaynak alternatifleri, RFC standartlarını ve güncel benchmark verilerini masaya getir. İddialarını sağlam teknik temellere dayandır.",
-    "custom/groq": "Role: Rapid Prototyping & Logic Verifier. Fikirlerin mantıksal tutarlılığını test et, gereksiz karmaşıklığı buda ve en sade çözümü savun.",
+    "local/claude-code": "Role: Team Lead & Lead Architect. You lead the table and own the architecture. You summarize the final decision for the user. Listen to the arguments from the team and weigh conflicting views impartially on engineering trade-offs. Never be a dictator; take the concrete technical objections your colleagues raise seriously.",
+    "local/antigravity": "Role: Principal Systems & Adversarial Auditor (Red-Team). Whatever the lead or the other models say, your job is to look for blind spots, architectural risks, and security and logic gaps. Never brush things off with 'you are right' or 'I agree'; defend your argument with first principles, RFCs or concrete failure modes. Stand your ground and object openly, even to the lead.",
+    "local/qwen3.6-27b": "Role: Core Engineering & Implementation Specialist. Do not talk in theory; argue how the code will actually behave, the performance constraints, the latency/cost balance and the practical difficulties. Never flatter; if a proposed architecture will break in production, show it with concrete code or bottleneck evidence.",
+    "local/qwen3.8-27b": "Role: Core Engineering & Implementation Specialist. Do not talk in theory; argue how the code will actually behave, the performance constraints, the latency/cost balance and the practical difficulties. Never flatter; if a proposed architecture will break in production, show it with concrete code or bottleneck evidence.",
+    "custom/gemini-3-6-flash": "Role: Research & Ecosystem Scout. Bring the wider ecosystem, open-source alternatives, RFC standards and current benchmark data to the table. Ground your claims in solid technical foundations.",
+    "custom/groq": "Role: Rapid Prototyping & Logic Verifier. Test the logical consistency of ideas, prune needless complexity and argue for the simplest solution.",
 }
 
 
@@ -429,6 +429,25 @@ def get_chat_roster_by_id(roster_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+MAX_MCP_SELECTION_MODELS = 64
+MAX_MCP_SELECTION_TOOLS = 200
+
+
+def clean_mcp_selection(raw: Any) -> Dict[str, List[str]]:
+    """Seat -> exposed MCP tool names, reduced to well-formed strings so a bad payload
+    cannot bloat the roster file. Whether a tool exists or is allowed is checked per call."""
+    if not isinstance(raw, dict):
+        return {}
+    cleaned: Dict[str, List[str]] = {}
+    for seat, names in list(raw.items())[:MAX_MCP_SELECTION_MODELS]:
+        if not isinstance(seat, str) or not isinstance(names, (list, tuple)):
+            continue
+        unique = list(dict.fromkeys(n for n in names if isinstance(n, str) and 0 < len(n) <= 200))
+        if unique:
+            cleaned[seat] = unique[:MAX_MCP_SELECTION_TOOLS]
+    return cleaned
+
+
 def create_custom_chat_roster(
     name: str,
     models: List[str],
@@ -436,6 +455,7 @@ def create_custom_chat_roster(
     description: str = "",
     lead_model: Optional[str] = None,
     model_prompts: Optional[Dict[str, str]] = None,
+    model_mcp_tools: Optional[Dict[str, List[str]]] = None,
 ) -> Dict[str, Any]:
     """Create a new custom chat roster."""
     data = load_councils_data()
@@ -449,6 +469,7 @@ def create_custom_chat_roster(
         "models": models,
         "lead_model": lead_model or (models[0] if models else None),
         "model_prompts": model_prompts or {},
+        "model_mcp_tools": clean_mcp_selection(model_mcp_tools),
         "is_builtin": False,
     }
 
@@ -468,6 +489,8 @@ def update_chat_roster(
     for i, r in enumerate(data.get("chat_rosters", [])):
         if r["id"] == roster_id:
             is_builtin = r.get("is_builtin", False)
+            if "model_mcp_tools" in updates:
+                updates = {**updates, "model_mcp_tools": clean_mcp_selection(updates["model_mcp_tools"])}
             r.update(updates)
             r["id"] = roster_id
             r["is_builtin"] = is_builtin

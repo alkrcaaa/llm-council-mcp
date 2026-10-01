@@ -179,11 +179,12 @@ class UpdateCouncilRequest(BaseModel):
 class CreateChatRosterRequest(BaseModel):
     """Request to create a new custom chat roster."""
     name: str
-    icon: str = "💬"
+    icon: str = ""
     description: str = ""
     models: List[str]
     lead_model: Optional[str] = None
     model_prompts: Optional[Dict[str, str]] = None
+    model_mcp_tools: Optional[Dict[str, List[str]]] = None
 
 
 class UpdateChatRosterRequest(BaseModel):
@@ -194,6 +195,7 @@ class UpdateChatRosterRequest(BaseModel):
     models: Optional[List[str]] = None
     lead_model: Optional[str] = None
     model_prompts: Optional[Dict[str, str]] = None
+    model_mcp_tools: Optional[Dict[str, List[str]]] = None
 
 
 class UpdateChatSettingsRequest(BaseModel):
@@ -425,12 +427,12 @@ async def change_password(
     try:
         success = auth.change_password(username, request.old_password, request.new_password)
         if not success:
-            raise HTTPException(status_code=400, detail="Mevcut şifre hatalı")
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     new_token = auth.create_token(username)
-    return {"status": "ok", "message": "Şifre başarıyla güncellendi", "token": new_token}
+    return {"status": "ok", "message": "Password updated", "token": new_token}
 
 
 
@@ -689,6 +691,7 @@ async def create_new_chat_roster(request: CreateChatRosterRequest):
         description=request.description,
         lead_model=request.lead_model,
         model_prompts=request.model_prompts,
+        model_mcp_tools=request.model_mcp_tools,
     )
     return created
 
@@ -895,6 +898,20 @@ async def refresh_mcp_server(server_id: str):
         return {"server": await mcp_client.refresh_server(server_id)}
     except mcp_client.McpError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.get("/api/mcp-library")
+async def get_mcp_library():
+    """Curated, version-pinned MCP servers that can be installed with one click."""
+    from backend.tools import mcp_library
+    return mcp_library.list_catalog()
+
+
+@app.post("/api/mcp-library/{entry_id}/install")
+async def install_mcp_library_entry(entry_id: str):
+    """Add a catalog server. Its tools are discovered by /refresh and all start as 'deny'."""
+    from backend.tools import mcp_library
+    return {"server": _mcp_call(mcp_library.install, entry_id)}
 
 
 @app.post("/api/mcp-approvals/{approval_id}")

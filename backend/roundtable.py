@@ -175,10 +175,10 @@ def format_roundtable_prompt(
         )
 
     anti_sycophancy_rules = (
-        "- STRICT ANTI-SYCOPHANCY RULE (YALAKALIK YASAĞI): Do NOT be a yes-man or sycophant. "
+        "- STRICT ANTI-SYCOPHANCY RULE: Do NOT be a yes-man or sycophant. "
         "Never post empty agreement, superficial flattery, or polite deferrals (e.g. 'I agree with the lead', "
         "'Well said', or 'I am waiting for my turn'). Such replies waste context and are strictly forbidden.\n"
-        "- EVIDENCE-BASED BACKBONE (DİK DURUŞ): Defend your technical position with first principles, "
+        "- EVIDENCE-BASED BACKBONE: Defend your technical position with first principles, "
         "RFC standards, concrete benchmark numbers, real code trade-offs, or production failure modes. "
         "If the Team Lead or a colleague proposes something flawed, suboptimal, or high-risk, "
         "CHALLENGE THEM RESPECTFULLY BUT DIRECTLY with concrete evidence and provide the superior alternative.\n"
@@ -254,13 +254,16 @@ async def stream_single_model_roundtable(
     out_queue: asyncio.Queue,
     timeout: float = 120.0,
     target_workspace: Optional[str] = None,
+    mcp_allow: Optional[List[str]] = None,
 ):
     """Worker task that queries a single model with tool support and pushes SSE events into out_queue."""
     try:
         from .tools import get_tools_for_model, run_tool_loop
 
         current_messages = list(messages)
-        tools = get_tools_for_model(model, is_roundtable=True, target_workspace=target_workspace)
+        tools = get_tools_for_model(
+            model, is_roundtable=True, target_workspace=target_workspace, mcp_allow=mcp_allow,
+        )
 
         if tools:
             async def _query(m, msgs, tools=None):
@@ -351,6 +354,7 @@ async def run_roundtable_stream(
     active_roster = councils.get_active_chat_roster() or {}
     lead_model = active_roster.get("lead_model") or (council_models[0] if council_models else None)
     model_prompts = active_roster.get("model_prompts") or {}
+    model_mcp_tools = active_roster.get("model_mcp_tools") or {}
 
     custom_context = conversation.get("system_prompt")
     if not custom_context:
@@ -417,8 +421,12 @@ async def run_roundtable_stream(
                 )
 
             effective_ws = target_workspace or conversation.get("target_workspace")
+            mcp_allow = model_mcp_tools.get(model) or model_mcp_tools.get(model.split("@")[0]) or []
             task = asyncio.create_task(
-                stream_single_model_roundtable(model, prompt_messages, chunk_queue, target_workspace=effective_ws)
+                stream_single_model_roundtable(
+                    model, prompt_messages, chunk_queue,
+                    target_workspace=effective_ws, mcp_allow=mcp_allow,
+                )
             )
             tasks.append(task)
 

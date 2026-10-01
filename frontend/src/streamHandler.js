@@ -120,6 +120,25 @@ export function createStreamDispatcher({
             });
             break;
 
+          case 'roundtable_tool_approval':
+            // An 'ask' MCP tool is paused server-side until the user decides (120s timeout).
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.pendingApprovals = [
+                ...(lastMsg.pendingApprovals || []),
+                {
+                  approval_id: event.approval_id,
+                  model: event.model,
+                  tool: event.tool,
+                  arguments: event.arguments,
+                  received_at: Date.now(),
+                },
+              ];
+              return { ...prev, messages };
+            });
+            break;
+
           case 'roundtable_model_complete':
             setCurrentConversation((prev) => {
               const messages = [...prev.messages];

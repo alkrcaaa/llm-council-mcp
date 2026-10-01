@@ -19,7 +19,7 @@ import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, Iterable, List, Optional, Tuple
 
 from ..config import DATA_ROOT
 
@@ -32,6 +32,7 @@ MAX_TOOLS_PER_SERVER = 100
 MAX_EXPOSED_NAME = 64  # OpenAI-style function name limit
 MAX_SCHEMA_CHARS = 20000
 CONNECT_TIMEOUT_S = 30.0
+LIBRARY_CONNECT_TIMEOUT_S = 150.0
 APPROVAL_TIMEOUT_S = 120.0
 
 # No "__": it separates server id from tool name, so ids "a" + tool "b__c" and "a__b" + "c" would collide.
@@ -139,7 +140,9 @@ def _validate_transport(rec: Dict[str, Any]) -> None:
         if not re.match(r"^https?://[^\s]+$", url):
             raise McpError("url must be an http(s) URL")
     elif rec["transport"] == "stdio":
-        if not stdio_allowed():
+        # Library servers run a fixed, version-pinned command from the repo's own catalog,
+        # so they do not need the switch that guards user-supplied commands.
+        if not (rec.get("origin") or stdio_allowed()):
             raise McpError("stdio servers are disabled; set MCP_ALLOW_STDIO=1 on the backend to allow them")
         if not rec.get("command") or not isinstance(rec["command"], str):
             raise McpError("command is required for stdio servers")
@@ -149,7 +152,9 @@ def _validate_transport(rec: Dict[str, Any]) -> None:
         raise McpError("transport must be 'http' or 'stdio'")
 
 
-def add_server(data: Dict[str, Any]) -> Dict[str, Any]:
+def add_server(data: Dict[str, Any], *, origin: Optional[str] = None) -> Dict[str, Any]:
+    """``origin`` marks a server installed from the library. Only mcp_library passes it;
+    the API request model has no such field, so a client cannot claim it."""
     server_id = str(data.get("id") or "").strip().lower()
     if not _ID_RE.match(server_id):
         raise McpError("id must be 1-32 chars of a-z, 0-9, '_' or '-'")
@@ -163,6 +168,7 @@ def add_server(data: Dict[str, Any]) -> Dict[str, Any]:
         "command": data.get("command") or "",
         "args": data.get("args") or [],
         "env": _clean_kv(data.get("env"), "env", _ENV_KEY_RE),
+        "origin": origin,
         "tools": {},
         "last_refresh": None,
         "last_error": None,
@@ -187,6 +193,8 @@ def update_server(server_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
         rec = servers.get(server_id)
         if not rec:
             raise McpError(f"unknown server '{server_id}'")
+        if rec.get("origin") and ("command" in patch or "args" in patch or "url" in patch):
+            raise McpError("the command of a library server is fixed; remove it and add a custom server instead")
         if "name" in patch:
             rec["name"] = str(patch["name"])[:80]
         if "enabled" in patch:
@@ -253,15 +261,19 @@ def policy_for(exposed: str) -> Optional[str]:
     return policy if policy in POLICIES else "deny"
 
 
-def get_tool_definitions() -> List[Dict[str, Any]]:
+def get_tool_definitions(allowed: Optional[Iterable[str]] = None) -> List[Dict[str, Any]]:
     """OpenAI-format definitions for every enabled, non-denied MCP tool (read from the
-    stored discovery result, no network)."""
+    stored discovery result, no network). ``allowed`` (exposed names) narrows the result
+    to a seat's own selection; None means no narrowing, an empty collection means none."""
+    only = None if allowed is None else set(allowed)
     defs: List[Dict[str, Any]] = []
     for rec in _load().values():
         if not rec.get("enabled"):
             continue
         for tool, t in (rec.get("tools") or {}).items():
             if t.get("policy", "deny") not in ("auto", "ask"):
+                continue
+            if only is not None and exposed_name(rec["id"], tool) not in only:
                 continue
             desc = (t.get("description") or "")[:500]
             defs.append({
@@ -284,7 +296,7 @@ async def _session(rec: Dict[str, Any]) -> AsyncIterator[Any]:
     if rec["transport"] == "stdio":
         from mcp.client.stdio import StdioServerParameters, stdio_client
 
-        if not stdio_allowed():
+        if not (rec.get("origin") or stdio_allowed()):
             raise McpError("stdio servers are disabled (MCP_ALLOW_STDIO)")
         params = StdioServerParameters(
             command=rec["command"], args=list(rec.get("args") or []), env=dict(rec.get("env") or {}) or None,
@@ -331,6 +343,8 @@ async def refresh_server(server_id: str) -> Dict[str, Any]:
         raise McpError(f"unknown server '{server_id}'")
     error: Optional[str] = None
     found: Dict[str, Dict[str, Any]] = {}
+    # The first run of a library server downloads its package.
+    connect_timeout = LIBRARY_CONNECT_TIMEOUT_S if rec.get("origin") else CONNECT_TIMEOUT_S
     try:
         async def _discover() -> None:
             async with _session(rec) as session:
@@ -344,11 +358,11 @@ async def refresh_server(server_id: str) -> Dict[str, Any]:
                         }
                         meta["fingerprint"] = _fingerprint(meta)
                         found[t.name] = meta
-        await asyncio.wait_for(_discover(), timeout=CONNECT_TIMEOUT_S)
+        await asyncio.wait_for(_discover(), timeout=connect_timeout)
     except McpError:
         raise
     except asyncio.TimeoutError:
-        error = f"timed out after {CONNECT_TIMEOUT_S:.0f}s"
+        error = f"timed out after {connect_timeout:.0f}s"
     except Exception as e:  # SDK, OS and network errors all surface the same way
         error = _scrub(f"{type(e).__name__}: {e}")[:300]
         logger.warning("MCP refresh failed for %s: %s", server_id, error)

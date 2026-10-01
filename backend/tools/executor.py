@@ -143,6 +143,7 @@ async def run_tool_loop(
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     cost = {"input_cost": 0.0, "output_cost": 0.0, "total_cost": 0.0}
     started = time.monotonic()
+    offered = {t.get("function", {}).get("name") for t in tools}
     last_response: Optional[Dict[str, Any]] = None
     stop_reason = "final"
 
@@ -211,6 +212,10 @@ async def run_tool_loop(
                 output = cache[key]
                 if repeats[key] >= limits.max_repeats:
                     output += "\n[You already made this exact call; do not repeat it.]"
+            elif mcp_client.policy_for(name) is not None and name not in offered:
+                # A model may only call the external tools its seat was given, not any
+                # it can name.
+                ok, output = False, f"Error: tool '{name}' is not enabled."
             elif (refusal := await _authorize(name, args, model, on_event)) is not None:
                 ok, output = False, refusal
             else:

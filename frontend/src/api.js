@@ -1421,4 +1421,62 @@ export const api = {
     }
     return response.json();
   },
+
+  // ----- MCP servers -----
+  // Secrets never come back: servers carry headers_set / env_set (names only).
+  // On PUT an empty header/env value deletes that key.
+
+  async _mcpRequest(path, method = 'GET', body) {
+    const response = await apiFetch(`${API_BASE}${path}`, {
+      method,
+      headers: this.getAuthHeaders(body ? { 'Content-Type': 'application/json' } : {}),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!response.ok) {
+      let detail = '';
+      try {
+        const raw = (await response.json()).detail;
+        // Pydantic validation errors arrive as a list of {loc, msg, ...}.
+        detail = Array.isArray(raw)
+          ? raw.map((d) => `${(d.loc || []).slice(1).join('.')}: ${d.msg}`).join('; ')
+          : raw || '';
+      } catch { /* non-JSON error body */ }
+      const err = new Error(detail || `MCP request failed (${response.status})`);
+      err.status = response.status;
+      throw err;
+    }
+    return response.json();
+  },
+
+  getMcpServers() {
+    return this._mcpRequest('/api/mcp-servers');
+  },
+
+  createMcpServer(server) {
+    return this._mcpRequest('/api/mcp-servers', 'POST', server);
+  },
+
+  updateMcpServer(serverId, patch) {
+    return this._mcpRequest(`/api/mcp-servers/${encodeURIComponent(serverId)}`, 'PUT', patch);
+  },
+
+  deleteMcpServer(serverId) {
+    return this._mcpRequest(`/api/mcp-servers/${encodeURIComponent(serverId)}`, 'DELETE');
+  },
+
+  refreshMcpServer(serverId) {
+    return this._mcpRequest(`/api/mcp-servers/${encodeURIComponent(serverId)}/refresh`, 'POST');
+  },
+
+  getMcpLibrary() {
+    return this._mcpRequest('/api/mcp-library');
+  },
+
+  installMcpLibraryEntry(entryId) {
+    return this._mcpRequest(`/api/mcp-library/${encodeURIComponent(entryId)}/install`, 'POST');
+  },
+
+  decideMcpApproval(approvalId, approve) {
+    return this._mcpRequest(`/api/mcp-approvals/${encodeURIComponent(approvalId)}`, 'POST', { approve });
+  },
 };

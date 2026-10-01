@@ -11,6 +11,7 @@ import RoundTableMessage from './RoundTableMessage';
 import { shortModelName, linkifyUserMentions, mentionMarkdownComponents } from './mentionUtils.jsx';
 import { formatSeatLabel } from '../modelLabel.js';
 import { exportToMarkdown, exportToJSON, exportToADR, copyADRToClipboard } from '../utils/export';
+import McpApprovalCard from './McpApprovalCard.jsx';
 import './ChatInterface.css';
 
 export default function ChatInterface({
@@ -609,6 +610,9 @@ export default function ChatInterface({
                       toolsExecuted={msg.roundtableStreamingTools?.[m]}
                       onReplyToModel={handleReplyToModel}
                     />
+                  ))}
+                  {(msg.pendingApprovals || []).map((a) => (
+                    <McpApprovalCard key={a.approval_id} approval={a} />
                   ))}
                 </div>
               ) : msg.model && !msg.stage1 && !msg.stage3 ? (

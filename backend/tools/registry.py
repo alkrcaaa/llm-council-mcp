@@ -3,7 +3,7 @@
 Maps model @skill specifications to curated, high-leverage toolkits.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from . import mcp_client
 from .mcp_bridge import get_tool_definitions
@@ -113,12 +113,15 @@ def get_tools_for_model(
     model_id: str,
     is_roundtable: bool = False,
     target_workspace: Optional[str] = None,
+    mcp_allow: Optional[Iterable[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Determine tools for a given model based on its @skill suffix or chat mode.
 
     Args:
         model_id: Model identifier (e.g. 'local/qwen3.8-27b@deep-research')
         is_roundtable: True if running in conversational Round Table mode
+        mcp_allow: exposed names of the MCP tools this seat may use. External tools are
+            opt-in per seat, so None (nothing selected) offers no MCP tool at all.
 
     Returns:
         List of OpenAI-compatible tool specifications
@@ -131,7 +134,7 @@ def get_tools_for_model(
         names = ALL_AVAILABLE_TOOLS
         if not target_workspace:
             names = [n for n in names if n not in WORKSPACE_TOOLS]
-        return get_tool_definitions(names) + mcp_client.get_tool_definitions()
+        return get_tool_definitions(names) + mcp_client.get_tool_definitions(allowed=mcp_allow or ())
 
     # Extract skill from model string (e.g. 'local/qwen3.8-27b@deep-research')
     skill = None

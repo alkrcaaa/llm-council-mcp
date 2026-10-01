@@ -128,6 +128,14 @@ def test_api_roundtrip(echo):
 
 # ---------------------------------------------------------------- tool loop + approvals
 
+def offer(*names):
+    """Tool definitions as a seat would be handed them."""
+    return [{"type": "function", "function": {"name": n}} for n in names]
+
+
+OFFER_ECHO = offer("mcp__echo__echo")
+
+
 def tool_call(name="mcp__echo__echo", args='{"text": "hi"}'):
     return {"id": "c1", "type": "function", "function": {"name": name, "arguments": args}}
 
@@ -149,7 +157,7 @@ async def _loop(events, policy_decision):
 
     return await run_tool_loop(
         Script({"content": "", "tool_calls": [tool_call()]}, {"content": "final"}),
-        "m", [{"role": "user", "content": "q"}], [{"t": 1}], on_event=on_event,
+        "m", [{"role": "user", "content": "q"}], OFFER_ECHO, on_event=on_event,
     )
 
 
@@ -182,7 +190,7 @@ def test_ask_without_a_listener_is_denied(echo, monkeypatch):
     mcp_client.update_server("echo", {"tool_policies": {"echo": "ask"}})
     res = run(run_tool_loop(
         Script({"content": "", "tool_calls": [tool_call()]}, {"content": "final"}),
-        "m", [{"role": "user", "content": "q"}], [{"t": 1}],
+        "m", [{"role": "user", "content": "q"}], OFFER_ECHO,
     ))
     assert res["tools_executed"][0]["ok"] is False
 
@@ -192,7 +200,7 @@ def test_ask_times_out_as_denied(echo, monkeypatch):
     monkeypatch.setattr(mcp_client, "APPROVAL_TIMEOUT_S", 0.05)
     res = run(run_tool_loop(
         Script({"content": "", "tool_calls": [tool_call()]}, {"content": "final"}),
-        "m", [{"role": "user", "content": "q"}], [{"t": 1}], on_event=lambda ev: None,
+        "m", [{"role": "user", "content": "q"}], OFFER_ECHO, on_event=lambda ev: None,
     ))
     assert res["tools_executed"][0]["ok"] is False
     assert mcp_client._approvals == {}
@@ -208,7 +216,7 @@ def test_deny_policy_blocks_before_execute(echo, monkeypatch):
     monkeypatch.setattr(executor, "execute_tool", spy)
     res = run(run_tool_loop(
         Script({"content": "", "tool_calls": [tool_call()]}, {"content": "final"}),
-        "m", [{"role": "user", "content": "q"}], [{"t": 1}], on_event=lambda ev: None,
+        "m", [{"role": "user", "content": "q"}], OFFER_ECHO, on_event=lambda ev: None,
     ))
     assert calls == [] and res["tools_executed"][0]["ok"] is False
 
@@ -227,7 +235,7 @@ def test_repeated_ask_call_is_asked_again(echo):
         await run_tool_loop(
             Script({"content": "", "tool_calls": [tool_call()]},
                    {"content": "", "tool_calls": [tool_call()]}, {"content": "final"}),
-            "m", [{"role": "user", "content": "q"}], [{"t": 1}], on_event=on_event,
+            "m", [{"role": "user", "content": "q"}], OFFER_ECHO, on_event=on_event,
         )
         return [e for e in events if e["type"] == "tool_approval_required"]
 
@@ -245,7 +253,7 @@ def test_policy_change_applies_to_repeat_call(echo):
         return await run_tool_loop(
             Script({"content": "", "tool_calls": [tool_call()]},
                    {"content": "", "tool_calls": [tool_call()]}, {"content": "final"}),
-            "m", [{"role": "user", "content": "q"}], [{"t": 1}], on_event=on_event,
+            "m", [{"role": "user", "content": "q"}], OFFER_ECHO, on_event=on_event,
         )
 
     res = run(go())
@@ -324,3 +332,139 @@ def test_approval_resolves_once():
 
 def test_approval_endpoint_unknown_id():
     assert client.post("/api/mcp-approvals/unknown", json={"approve": True}).status_code == 404
+
+
+# ---------------------------------------------------------------- per-seat selection
+
+def _mcp_names(defs):
+    return [d["function"]["name"] for d in defs if d["function"]["name"].startswith("mcp__")]
+
+
+def test_get_tool_definitions_narrows_to_the_seat_selection(echo):
+    mcp_client.update_server("echo", {"tool_policies": {"echo": "auto", "boom": "auto"}})
+    assert sorted(_mcp_names(mcp_client.get_tool_definitions(None))) == ["mcp__echo__boom", "mcp__echo__echo"]
+    assert _mcp_names(mcp_client.get_tool_definitions(["mcp__echo__echo"])) == ["mcp__echo__echo"]
+    assert mcp_client.get_tool_definitions([]) == []
+    assert mcp_client.get_tool_definitions(["mcp__echo__ghost"]) == []
+
+
+def test_seat_without_selection_gets_no_mcp_tools(echo):
+    from backend.tools.registry import get_tools_for_model
+    mcp_client.update_server("echo", {"tool_policies": {"echo": "auto"}})
+    assert _mcp_names(get_tools_for_model("m", is_roundtable=True)) == []
+    assert _mcp_names(get_tools_for_model("m", is_roundtable=True, mcp_allow=[])) == []
+    selected = get_tools_for_model("m", is_roundtable=True, mcp_allow=["mcp__echo__echo"])
+    assert _mcp_names(selected) == ["mcp__echo__echo"]
+
+
+def test_selection_cannot_override_server_policy(echo):
+    from backend.tools.registry import get_tools_for_model
+    # Selected by the seat but still 'deny' on the server: never offered.
+    tools = get_tools_for_model("m", is_roundtable=True, mcp_allow=["mcp__echo__echo"])
+    assert _mcp_names(tools) == []
+
+
+def test_unoffered_mcp_tool_call_is_refused(echo, monkeypatch):
+    mcp_client.update_server("echo", {"tool_policies": {"echo": "auto"}})
+    calls = []
+
+    async def spy(name, args, target_workspace=None):
+        calls.append(name)
+        return "ran"
+
+    monkeypatch.setattr(executor, "execute_tool", spy)
+    # The server allows it, but this seat was not given it: naming the tool is not enough.
+    res = run(run_tool_loop(
+        Script({"content": "", "tool_calls": [tool_call()]}, {"content": "final"}),
+        "m", [{"role": "user", "content": "q"}], offer("web_search"), on_event=lambda ev: None,
+    ))
+    assert calls == [] and res["tools_executed"][0]["ok"] is False
+    assert "not enabled" in res["messages"][-1]["content"]
+
+
+def test_clean_mcp_selection_drops_malformed_entries():
+    from backend.councils import clean_mcp_selection
+    raw = {"a": ["x", "x", "", 5, "y"], "b": "nope", 3: ["z"], "c": []}
+    assert clean_mcp_selection(raw) == {"a": ["x", "y"]}
+    assert clean_mcp_selection(None) == {}
+
+
+# ---------------------------------------------------------------- library
+
+def test_catalog_entries_are_pinned_and_well_formed():
+    import re
+    from backend.tools import mcp_library
+    ids = [e["id"] for e in mcp_library.CATALOG]
+    assert len(ids) == len(set(ids))
+    for e in mcp_library.CATALOG:
+        assert re.match(r"^[a-z0-9_-]{1,32}$", e["id"]) and "__" not in e["id"]
+        assert re.match(r"^\d[\w.]*$", e["version"]), "version must be an exact release"
+        assert e["source"].startswith("https://") and e["license"] and e["maintainer"]
+        assert f"{e['package']}=={e['version']}" in mcp_library._args(e)
+
+
+def test_library_install_needs_no_stdio_switch_and_sets_origin(monkeypatch):
+    from backend.tools import mcp_library
+    monkeypatch.delenv("MCP_ALLOW_STDIO")
+    monkeypatch.setattr(mcp_library.shutil, "which", lambda cmd: "/usr/bin/" + cmd)
+    server = mcp_library.install("fetch")
+    assert server["origin"] == "library:fetch" and server["transport"] == "stdio"
+    assert server["command"] == "uvx" and "mcp-server-fetch==2026.8.18" in server["args"]
+    assert server["tools"] == []  # nothing is exposed until a refresh and an explicit policy
+    listed = mcp_library.list_catalog()
+    assert {e["id"]: e["installed"] for e in listed["entries"]}["fetch"] is True
+    with pytest.raises(mcp_client.McpError):  # installing twice
+        mcp_library.install("fetch")
+    with pytest.raises(mcp_client.McpError):
+        mcp_library.install("nope")
+
+
+def test_library_install_refused_without_the_runner(monkeypatch):
+    from backend.tools import mcp_library
+    monkeypatch.setattr(mcp_library.shutil, "which", lambda cmd: None)
+    with pytest.raises(mcp_client.McpError):
+        mcp_library.install("fetch")
+    assert mcp_client.list_servers() == []
+
+
+def test_client_cannot_claim_library_origin(monkeypatch):
+    monkeypatch.delenv("MCP_ALLOW_STDIO")
+    resp = client.post("/api/mcp-servers", json={
+        "id": "evil", "transport": "stdio", "command": "sh", "args": ["-c", "id"], "origin": "library:fetch",
+    })
+    assert resp.status_code == 422
+    assert mcp_client.list_servers() == []
+
+
+def test_library_server_command_is_fixed(monkeypatch):
+    from backend.tools import mcp_library
+    monkeypatch.setattr(mcp_library.shutil, "which", lambda cmd: "/usr/bin/" + cmd)
+    mcp_library.install("fetch")
+    for patch in ({"command": "sh"}, {"args": ["-c", "id"]}):
+        with pytest.raises(mcp_client.McpError):
+            mcp_client.update_server("fetch", patch)
+    resp = client.put("/api/mcp-servers/fetch", json={"command": "sh"})
+    assert resp.status_code == 422
+    # Secrets and policies stay editable.
+    assert mcp_client.update_server("fetch", {"env": {"API_KEY": "k"}, "enabled": False})["env_set"] == ["API_KEY"]
+
+
+def test_library_origin_runs_stdio_without_the_switch(monkeypatch):
+    monkeypatch.delenv("MCP_ALLOW_STDIO")
+    mcp_client.add_server(
+        {"id": "echo", "transport": "stdio", "command": sys.executable, "args": [ECHO_SERVER]},
+        origin="library:test",
+    )
+    rec = run(mcp_client.refresh_server("echo"))
+    assert rec["last_error"] is None and {t["name"] for t in rec["tools"]} == {"echo", "boom"}
+    assert all(t["policy"] == "deny" for t in rec["tools"])
+
+
+def test_library_api_endpoints(monkeypatch):
+    from backend.tools import mcp_library
+    monkeypatch.setattr(mcp_library.shutil, "which", lambda cmd: "/usr/bin/" + cmd)
+    listed = client.get("/api/mcp-library").json()
+    assert listed["runner_available"] is True and {e["id"] for e in listed["entries"]} >= {"fetch", "arxiv"}
+    assert client.post("/api/mcp-library/fetch/install").status_code == 200
+    assert client.post("/api/mcp-library/fetch/install").status_code == 422
+    assert client.post("/api/mcp-library/ghost/install").status_code == 422

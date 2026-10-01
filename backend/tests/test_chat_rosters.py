@@ -84,6 +84,32 @@ def test_chat_rosters_api():
     assert act_resp.json()["id"] == "fast-trio"
 
 
+def test_roster_mcp_selection_roundtrip_and_sanitizing():
+    client = TestClient(app)
+    created = client.post("/api/chat-rosters", json={
+        "name": "MCP seats",
+        "models": ["local/qwen3.6-27b", "local/claude-code"],
+        "model_mcp_tools": {"local/qwen3.6-27b": ["mcp__fetch__fetch", "mcp__fetch__fetch", ""]},
+    }).json()
+    rid = created["id"]
+    try:
+        assert created["icon"] == ""
+        assert created["model_mcp_tools"] == {"local/qwen3.6-27b": ["mcp__fetch__fetch"]}
+
+        # Replacing the selection is a full replace; a seat with no tools is dropped.
+        updated = client.put(f"/api/chat-rosters/{rid}", json={
+            "model_mcp_tools": {"local/claude-code": ["mcp__fetch__fetch"], "local/qwen3.6-27b": []},
+        }).json()
+        assert updated["model_mcp_tools"] == {"local/claude-code": ["mcp__fetch__fetch"]}
+        assert get_chat_roster_by_id(rid)["model_mcp_tools"] == updated["model_mcp_tools"]
+
+        # An update that does not mention the field leaves it alone.
+        kept = client.put(f"/api/chat-rosters/{rid}", json={"description": "x"}).json()
+        assert kept["model_mcp_tools"] == updated["model_mcp_tools"]
+    finally:
+        delete_chat_roster(rid)
+
+
 def test_chat_settings_and_prompt_injection():
     client = TestClient(app)
 
