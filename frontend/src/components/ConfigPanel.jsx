@@ -1827,7 +1827,7 @@ export default function ConfigPanel({
                   <div className="tab-pane-profiles">
                     <div className="provider-form-header" style={{ marginBottom: '1rem' }}>
                       <div>
-                        <h3 className="provider-form-title">Agent Personas &amp; Visual Styling</h3>
+                        <h3 className="provider-form-title">Agents</h3>
                         <p className="provider-form-subtitle">
                           Customize the avatar, accent color and display name models use in Round Table chats and council deliberations.
                         </p>
@@ -1838,7 +1838,7 @@ export default function ConfigPanel({
                       {/* Left Column: Model List */}
                       <div className="profiles-sidebar">
                         <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#8b949e', textTransform: 'uppercase', marginBottom: '8px', padding: '0 4px' }}>
-                          Modeller ({allDistinctModels.length})
+                          Models ({allDistinctModels.length})
                         </div>
                         {allDistinctModels.map((m) => {
                           const prof = getAgentProfile(m);
@@ -1904,7 +1904,7 @@ export default function ConfigPanel({
                           {/* Theme Color */}
                           <div className="form-group" style={{ marginBottom: '1.25rem' }}>
                             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#c9d1d9', marginBottom: '6px' }}>
-                              Tema &amp; Sohbet Rengi
+                              Theme &amp; chat color
                             </label>
                             <div className="color-swatches-grid">
                               {COLOR_SWATCHES.map((swatch) => (
@@ -1940,23 +1940,32 @@ export default function ConfigPanel({
                           {/* Avatar Image */}
                           <div className="form-group" style={{ marginBottom: '1.25rem' }}>
                             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#c9d1d9', marginBottom: '6px' }}>
-                              Profil Resmi (Avatar)
+                              Profile image
                             </label>
-                            <input
-                              type="text"
-                              value={profileAvatarUrl}
-                              onChange={(e) => setProfileAvatarUrl(e.target.value)}
-                              placeholder="Image URL (https://...) or choose a local file"
-                              style={{
-                                width: '100%',
-                                padding: '8px 12px',
-                                background: '#0d1117',
-                                border: '1px solid #30363d',
-                                borderRadius: '6px',
-                                color: '#f0f6fc',
-                                fontSize: '0.9rem',
-                              }}
-                            />
+                            {profileAvatarUrl.startsWith('data:') ? (
+                              <div className="avatar-uploaded-row">
+                                <div className="profile-item-avatar" style={{ '--item-color': profileColor }}>
+                                  <img src={profileAvatarUrl} alt="Uploaded avatar" />
+                                </div>
+                                <span>Uploaded image</span>
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                value={profileAvatarUrl}
+                                onChange={(e) => setProfileAvatarUrl(e.target.value)}
+                                placeholder="Image URL (https://...) or choose a local file"
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 12px',
+                                  background: '#0d1117',
+                                  border: '1px solid #30363d',
+                                  borderRadius: '6px',
+                                  color: '#f0f6fc',
+                                  fontSize: '0.9rem',
+                                }}
+                              />
+                            )}
                             <div className="avatar-upload-row">
                               <label className="avatar-file-btn">
                                 Upload file (PNG/JPG/SVG/WebP)
@@ -2042,7 +2051,7 @@ export default function ConfigPanel({
                               className="confirm-save-btn"
                               disabled={isSavingProfile}
                             >
-                              {isSavingProfile ? 'Kaydediliyor...' : 'Profili Kaydet'}
+                              {isSavingProfile ? 'Saving...' : 'Save profile'}
                             </button>
                           </div>
                         </form>

@@ -102,12 +102,14 @@ gibi davransın; Council penceresinde kimin ne dediği ve kime cevap verdiği ne
       `CouncilSeatEditor` (`CouncilSeatEditor.jsx`; council koltuğunda rol prompt'u ve MCP yok).
 - [~] Model Studio yeniden yapılanma (karar verildi). Yapıldı: Providers `ProvidersTab.jsx` olarak
       ayrıldı ve Settings'e "Providers" sekmesi olarak taşındı (Settings'te "koltuğa ekle"
-      düğmeleri yok). Kalan: sekmeleri 4'e indir (Skills altında Tools), Agents sekmesi,
-      ConfigPanel'in geri kalanını böl. Hedef: 4 sekme: **Council**, **Round Table**,
+      düğmeleri yok). Sekmeler 4'e indi (Council, Round Table, Skills & Tools alt sekmeli, Agents;
+      `activeTab` değerleri aynı, `mcp` Skills'in alt görünümü). Kalan: ConfigPanel'in geri kalanını
+      böl, Agents sekmesinin içeriği (aşağıdaki persona maddesi). Hedef: 4 sekme: **Council**, **Round Table**,
       **Skills** (MCP ikinci alt sekme, "Tools"), **Agents** (persona). **Custom Providers
       Model Studio'dan çıkar, Settings'e "Providers" sekmesi olarak taşınır** (altyapı ayarı,
       koltukla ilgisi yok). Başlık "Model Studio". ConfigPanel (3000+ satır) bu sırada bölünür.
-- [ ] Agent Personas: Türkçe kalıntılar ("MODELLER", "TEMA & SOHBET RENGI", "PROFIL RESMI")
+- [~] Agent Personas (Türkçe kalıntılar ve base64 gizleme yapıldı; kalan: persona avatarı
+      masadaki monogramın yerine geçsin). Eski metin: Türkçe kalıntılar ("MODELLER", "TEMA & SOHBET RENGI", "PROFIL RESMI")
       İngilizceye; avatar alanındaki ham base64 gizlenir (önizleme + yükle/sil); persona avatarı
       masadaki monogramın yerine kullanılır.
 - [ ] MCP Servers boş durum: Library öne, elle ekleme formu "Advanced" altında katlı.
