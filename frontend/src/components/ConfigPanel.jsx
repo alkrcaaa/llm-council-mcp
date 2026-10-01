@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import SafeMarkdown from './SafeMarkdown.jsx';
+import McpSettingsTab from './McpSettingsTab.jsx';
+import { SeatEditor } from './RosterSeatCard.jsx';
+import RoundTableView from './RoundTableView.jsx';
+import { CouncilSeatEditor, ExternalChairmanNote, AddSeatPanel } from './CouncilSeatEditor.jsx';
 import { api } from '../api';
 import { saveAgentProfile, getAgentProfile, fetchAgentProfiles, useAgentProfiles } from '../agentProfiles';
 import './ConfigPanel.css';
@@ -191,6 +195,10 @@ export default function ConfigPanel({
   initialSkillId = null,
 }) {
   const [activeTab, setActiveTab] = useState(initialTab);
+  const [selectedSeat, setSelectedSeat] = useState(null);
+  const [selectedCouncilSeat, setSelectedCouncilSeat] = useState(null);
+  const [addingCouncilSeat, setAddingCouncilSeat] = useState(false);
+  const [addingRosterSeat, setAddingRosterSeat] = useState(false);
 
   // -------------------------------------------------------------------------
   // 1. Council & Seats State
@@ -218,12 +226,12 @@ export default function ConfigPanel({
   const [showSaveRosterModal, setShowSaveRosterModal] = useState(false);
   const [newRosterName, setNewRosterName] = useState('');
   const [newRosterDesc, setNewRosterDesc] = useState('');
-  const [newRosterModelInput, setNewRosterModelInput] = useState('');
-  const [newRosterModelSkill, setNewRosterModelSkill] = useState('');
   const [isSavingRoster, setIsSavingRoster] = useState(false);
   const [rosterLeadModel, setRosterLeadModel] = useState('');
   const [rosterModelPrompts, setRosterModelPrompts] = useState({});
-  const [expandedPromptModel, setExpandedPromptModel] = useState(null);
+  const [rosterMcpTools, setRosterMcpTools] = useState({});
+  const [mcpServers, setMcpServers] = useState([]);
+  const [mcpServersLoading, setMcpServersLoading] = useState(false);
   const [isLoadingPresets, setIsLoadingPresets] = useState(false);
 
   // -------------------------------------------------------------------------
@@ -416,6 +424,7 @@ export default function ConfigPanel({
       if (active) {
         setRosterLeadModel(active.lead_model || '');
         setRosterModelPrompts(active.model_prompts || {});
+        setRosterMcpTools(active.model_mcp_tools || {});
       }
       if (settingsRes && settingsRes.models && settingsRes.models.length > 0) {
         setRosterModels(settingsRes.models);
@@ -472,6 +481,18 @@ export default function ConfigPanel({
     if (activeTab === 'providers') {
       handlePingAll();
     }
+  }, [activeTab]);
+
+  // Seats pick from the MCP tools the servers currently expose, so refresh on each visit.
+  useEffect(() => {
+    if (activeTab !== 'chat') return;
+    let cancelled = false;
+    setMcpServersLoading(true);
+    api.getMcpServers()
+      .then((res) => { if (!cancelled) setMcpServers(res.servers || []); })
+      .catch(() => { if (!cancelled) setMcpServers([]); })
+      .finally(() => { if (!cancelled) setMcpServersLoading(false); });
+    return () => { cancelled = true; };
   }, [activeTab]);
 
   const showNotification = (msg) => {
@@ -545,6 +566,7 @@ export default function ConfigPanel({
     setRosterModels([...(roster.models || [])]);
     setRosterLeadModel(roster.lead_model || '');
     setRosterModelPrompts(roster.model_prompts || {});
+    setRosterMcpTools(roster.model_mcp_tools || {});
     try {
       await api.activateChatRoster(roster.id);
       showNotification(`Activated chat team "${roster.name}".`);
@@ -561,6 +583,39 @@ export default function ConfigPanel({
     }));
   };
 
+  const renderModelOptions = () => (
+    <>
+      <optgroup label="Local Models (dev-agent-kit)">
+        <option value="local/antigravity">local/antigravity (Antigravity Agent)</option>
+        <option value="local/claude-code">local/claude-code (Claude Code CLI)</option>
+        <option value="local/qwen3.6-27b">local/qwen3.6-27b (vLLM 27B)</option>
+      </optgroup>
+      {customProviders.length > 0 && (
+        <optgroup label="Custom Providers">
+          {customProviders.map((cp) => (
+            <option key={cp.id} value={cp.id}>
+              {cp.name} ({cp.id})
+            </option>
+          ))}
+        </optgroup>
+      )}
+      <optgroup label="Available Models">
+        {availableModels.map((m) => (
+          <option key={m} value={m}>{m}</option>
+        ))}
+      </optgroup>
+    </>
+  );
+
+  const handleMcpToolsChange = (modelKey, names) => {
+    setRosterMcpTools((prev) => {
+      const next = { ...prev };
+      if (names.length) next[modelKey] = names;
+      else delete next[modelKey];
+      return next;
+    });
+  };
+
   const handleLoadHierarchyPresets = async () => {
     try {
       setIsLoadingPresets(true);
@@ -573,10 +628,10 @@ export default function ConfigPanel({
         if (res.lead_model && !rosterLeadModel) {
           setRosterLeadModel(res.lead_model);
         }
-        showNotification('Hiyerarşik roller ve dik duruş / anti-yalakalık promptları yüklendi.');
+        showNotification('Hierarchy roles and anti-sycophancy prompts loaded.');
       }
     } catch (err) {
-      setError(err.message || 'Hiyerarşik şablon yüklenemedi.');
+      setError(err.message || 'Failed to load the hierarchy template.');
     } finally {
       setIsLoadingPresets(false);
     }
@@ -626,10 +681,11 @@ export default function ConfigPanel({
           models: rosterModels,
           lead_model: rosterLeadModel,
           model_prompts: rosterModelPrompts,
-        }).catch(() => {});
+          model_mcp_tools: rosterMcpTools,
+        });
       }
       await loadChatRosters();
-      showNotification('Round Table ayarları, lider ve model promptları başarıyla kaydedildi.');
+      showNotification('Round Table settings saved.');
       onCouncilsUpdated?.();
     } catch (err) {
       setError(err.message || 'Failed to save chat settings');
@@ -665,6 +721,7 @@ export default function ConfigPanel({
         models: rosterModels,
         lead_model: rosterLeadModel,
         model_prompts: rosterModelPrompts,
+        model_mcp_tools: rosterMcpTools,
       });
       await api.activateChatRoster(created.id);
       await loadChatRosters();
@@ -1196,7 +1253,7 @@ export default function ConfigPanel({
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      setProfileAvatarFileError('Görsel boyutu 2MB üzerinde olamaz.');
+      setProfileAvatarFileError('Image must be 2 MB or smaller.');
       return;
     }
     setProfileAvatarFileError(null);
@@ -1270,6 +1327,13 @@ export default function ConfigPanel({
             onClick={() => setActiveTab('skills')}
           >
             <span>Skills Library ({availableSkills.length})</span>
+          </button>
+          <button
+            type="button"
+            className={`studio-tab-btn ${activeTab === 'mcp' ? 'active' : ''}`}
+            onClick={() => setActiveTab('mcp')}
+          >
+            <span>MCP Servers</span>
           </button>
           <button
             type="button"
@@ -1353,136 +1417,11 @@ export default function ConfigPanel({
                       Assign distinct models and domain skills to each seat. Use the Inspect skill button to inspect operative checklists.
                     </p>
 
-                    <ul className="model-list">
-                      {councilModels.map((model, index) => {
-                        const [baseModel, currentSkillId = ''] = model.split('@');
-                        const isChairman = model === chairmanModel;
-
-                        return (
-                          <li key={`${model}-${index}`} className="model-item">
-                            <div className="model-item-content">
-                              <div className="model-item-primary">
-                                <span className="model-index">{index + 1}.</span>
-                                <div className="model-selects-row">
-                                  {/* Model selector */}
-                                  <select
-                                    className="seat-model-select"
-                                    value={baseModel}
-                                    onChange={(e) => handleModelChange(index, e.target.value)}
-                                  >
-                                    <optgroup label="Custom Providers">
-                                      {customProviders.map((cp) => (
-                                        <option key={cp.id} value={cp.id}>
-                                          {cp.name} ({cp.id})
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                    <optgroup label="Available Models">
-                                      {availableModels.map((m) => (
-                                        <option key={m} value={m}>{m}</option>
-                                      ))}
-                                    </optgroup>
-                                  </select>
-
-                                  {/* Skill selector */}
-                                  <select
-                                    className={`seat-skill-select ${currentSkillId ? 'has-skill' : ''}`}
-                                    value={currentSkillId}
-                                    onChange={(e) => handleSkillChange(index, e.target.value)}
-                                  >
-                                    <option value="">No Domain Skill (Default)</option>
-                                    {availableSkills.map((s) => (
-                                      <option key={s.id} value={s.id}>
-                                        {s.badge ? `[${s.badge}] ` : ''}{s.title}
-                                      </option>
-                                    ))}
-                                  </select>
-
-                                  {/* View Skill button */}
-                                  {currentSkillId && (
-                                    <button
-                                      type="button"
-                                      className="seat-view-skill-btn"
-                                      onClick={() => handleJumpToSkill(currentSkillId)}
-                                      title={`Read ${currentSkillId} checklist & rules`}
-                                    >
-                                      Read
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="model-item-actions">
-                                {isChairman ? (
-                                  <span className="chairman-badge">Chairman</span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="set-chairman-btn"
-                                    onClick={() => setChairmanModel(model)}
-                                    title="Set as Chairman (synthesizes Stage 3 verdict)"
-                                  >
-                                    Make Chairman
-                                  </button>
-                                )}
-
-                                <button
-                                  type="button"
-                                  className="seat-profile-btn"
-                                  onClick={() => handleOpenCustomizeProfile(baseModel)}
-                                  title="Bu modelin profil resmini, rengini ve ismini özelleştir"
-                                >
-                                  Persona
-                                </button>
-
-                                <div className="reorder-buttons">
-                                  <button
-                                    type="button"
-                                    className="reorder-btn"
-                                    onClick={() => handleMoveUp(index)}
-                                    disabled={index === 0}
-                                    title="Move up"
-                                  >
-                                    ▲
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="reorder-btn"
-                                    onClick={() => handleMoveDown(index)}
-                                    disabled={index === councilModels.length - 1}
-                                    title="Move down"
-                                  >
-                                    ▼
-                                  </button>
-                                </div>
-
-                                <button
-                                  type="button"
-                                  className="remove-btn"
-                                  onClick={() => handleRemoveModel(index)}
-                                  disabled={councilModels.length <= 2}
-                                  title={councilModels.length <= 2 ? 'Minimum 2 models required' : 'Remove seat'}
-                                >
-                                  &times;
-                                </button>
-                              </div>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-
-                    {/* Add Seat Form */}
-                    <div className="add-seat-box">
-                      <div className="add-seat-row">
-                        <select
-                          className="add-seat-model-select"
-                          value={newModelInput}
-                          onChange={(e) => setNewModelInput(e.target.value)}
-                        >
-                          <option value="">Select model to add as new seat...</option>
+                    {(() => {
+                      const councilOptions = (
+                        <>
                           {customProviders.length > 0 && (
-                            <optgroup label="Custom Registered Providers">
+                            <optgroup label="Custom Providers">
                               {customProviders.map((cp) => (
                                 <option key={cp.id} value={cp.id}>
                                   {cp.name} ({cp.id})
@@ -1495,31 +1434,103 @@ export default function ConfigPanel({
                               <option key={m} value={m}>{m}</option>
                             ))}
                           </optgroup>
-                        </select>
+                        </>
+                      );
+                      const externalChairman = Boolean(chairmanModel) && !councilModels.includes(chairmanModel);
+                      const tableSeats = councilModels.map((model, index) => {
+                        const skillId = model.split('@')[1] || '';
+                        return {
+                          key: `${model}-${index}`,
+                          index,
+                          model,
+                          isLead: model === chairmanModel,
+                          skillTitle: availableSkills.find((sk) => sk.id === skillId)?.title || '',
+                        };
+                      });
+                      if (externalChairman) {
+                        tableSeats.push({
+                          key: 'chairman-external', index: -1, model: chairmanModel, isLead: true, external: true,
+                        });
+                      }
+                      const councilSeat = selectedCouncilSeat !== null && selectedCouncilSeat >= 0
+                        ? councilModels[selectedCouncilSeat]
+                        : undefined;
+                      const activeCouncil = savedCouncils.find((c) => c.id === activeCouncilId);
 
-                        <select
-                          className="add-seat-skill-select"
-                          value={newModelSkill}
-                          onChange={(e) => setNewModelSkill(e.target.value)}
-                        >
-                          <option value="">No Domain Skill (Standard)</option>
-                          {availableSkills.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.badge ? `[${s.badge}] ` : ''}{s.title}
-                            </option>
-                          ))}
-                        </select>
+                      return (
+                        <>
+                            <RoundTableView
+                              kicker="Council"
+                              leadLabel="Chairman"
+                              title={activeCouncil?.name || 'Deliberation'}
+                              seats={tableSeats}
+                              selectedIndex={selectedCouncilSeat}
+                              adding={addingCouncilSeat}
+                              onSelect={(i) => { setSelectedCouncilSeat(i); setAddingCouncilSeat(false); }}
+                              onAddSeat={() => { setSelectedCouncilSeat(null); setAddingCouncilSeat(true); }}
+                            >
+                              {addingCouncilSeat && (
+                                <>
+                                  <div className="rtv-panel-head">
+                                    <span className="rtv-panel-title">New seat</span>
+                                  </div>
+                                  <AddSeatPanel
+                                    modelOptions={councilOptions}
+                                    skills={availableSkills}
+                                    onAdd={(model, skillId) => {
+                                      handleAddModel(model, skillId);
+                                      setAddingCouncilSeat(false);
+                                    }}
+                                    onClose={() => setAddingCouncilSeat(false)}
+                                  />
+                                </>
+                              )}
+                              {!addingCouncilSeat && selectedCouncilSeat === -1 && externalChairman && (
+                                <>
+                                  <div className="rtv-panel-head">
+                                    <span className="rtv-panel-title">Chairman</span>
+                                    <button type="button" className="seat-link-btn" onClick={() => setSelectedCouncilSeat(null)}>
+                                      Close
+                                    </button>
+                                  </div>
+                                  <ExternalChairmanNote model={chairmanModel} />
+                                </>
+                              )}
+                              {!addingCouncilSeat && councilSeat !== undefined && (
+                                <>
+                                  <div className="rtv-panel-head">
+                                    <span className="rtv-panel-title">
+                                      Seat {String(selectedCouncilSeat + 1).padStart(2, '0')}
+                                    </span>
+                                    <button type="button" className="seat-link-btn" onClick={() => setSelectedCouncilSeat(null)}>
+                                      Close
+                                    </button>
+                                  </div>
+                                  <CouncilSeatEditor
+                                    key={`${councilSeat}-${selectedCouncilSeat}`}
+                                    model={councilSeat}
+                                    isChairman={councilSeat === chairmanModel}
+                                    canRemove={councilModels.length > 2}
+                                    canMoveUp={selectedCouncilSeat > 0}
+                                    canMoveDown={selectedCouncilSeat < councilModels.length - 1}
+                                    skills={availableSkills}
+                                    modelOptions={councilOptions}
+                                    onModelChange={(value) => handleModelChange(selectedCouncilSeat, value)}
+                                    onSkillChange={(skillId) => handleSkillChange(selectedCouncilSeat, skillId)}
+                                    onReadSkill={() => handleJumpToSkill(councilSeat.split('@')[1])}
+                                    onMakeChairman={() => setChairmanModel(councilSeat)}
+                                    onOpenPersona={() => handleOpenCustomizeProfile(councilSeat.split('@')[0])}
+                                    onMoveUp={() => { handleMoveUp(selectedCouncilSeat); setSelectedCouncilSeat(selectedCouncilSeat - 1); }}
+                                    onMoveDown={() => { handleMoveDown(selectedCouncilSeat); setSelectedCouncilSeat(selectedCouncilSeat + 1); }}
+                                    onRemove={() => { handleRemoveModel(selectedCouncilSeat); setSelectedCouncilSeat(null); }}
+                                  />
+                                </>
+                              )}
+                            </RoundTableView>
+                        </>
+                      );
+                    })()}
 
-                        <button
-                          type="button"
-                          className="add-seat-submit-btn"
-                          onClick={() => handleAddModel()}
-                          disabled={!newModelInput}
-                        >
-                          + Add Seat
-                        </button>
-                      </div>
-                    </div>
 
                     {/* Chairman Override Selector */}
                     <div className="chairman-section">
@@ -1619,7 +1630,7 @@ export default function ConfigPanel({
                             <div className="council-card-seats">
                               <span className="seats-count">{r.models?.length} participants</span>
                               {r.lead_model && (
-                                <span className="chairman-tag">★ Lead: {r.lead_model.split('/')[1]?.split('@')[0] || r.lead_model}</span>
+                                <span className="chairman-tag">Lead: {r.lead_model.split('/')[1]?.split('@')[0] || r.lead_model}</span>
                               )}
                             </div>
                           </div>
@@ -1640,17 +1651,17 @@ export default function ConfigPanel({
                           type="button"
                           className="prompt-template-btn"
                           onClick={handleResetChatBio}
-                          title="Vault Hakkımda profilini yükle"
+                          title="Replace the text below with the default user profile template"
                         >
-                          Vault Profilini Yükle
+                          Load default profile
                         </button>
                         <button
                           type="button"
                           className="prompt-clear-btn"
                           onClick={() => setChatSystemPrompt('')}
-                          title="Temizle"
+                          title="Clear the text below"
                         >
-                          Temizle
+                          Clear
                         </button>
                       </div>
                     </div>
@@ -1679,221 +1690,106 @@ export default function ConfigPanel({
                         className="preset-hierarchy-btn"
                         onClick={handleLoadHierarchyPresets}
                         disabled={isLoadingPresets}
-                        title="Tüm modellere dik duruş, uzmanlık ve lider hiyerarşisi şablonunu otomatik yükle"
+                        title="Fill every seat with role prompts that push back instead of agreeing by default"
                       >
-                        {isLoadingPresets ? 'Yükleniyor…' : '⚡ Hiyerarşik Şablonu Yükle'}
+                        {isLoadingPresets ? 'Loading...' : 'Load hierarchy template'}
                       </button>
                     </div>
                     <p className="config-help">
-                      Ekip üyelerini, lideri (Lead) ve modellere özel rol promptlarını belirleyin. Lider sohbeti yönetir; uzman modeller ise dik duruşla kendi alanlarını savunur, gerekçesiz onay vermez.
+                      Choose who sits at the table, who leads, and what each seat is allowed to do. The lead steers the
+                      conversation; the other seats defend their own area and do not agree without evidence. Open a seat
+                      to set its model, skill, role prompt and which MCP tools it may call.
                     </p>
 
-                    <ul className="model-list">
-                      {rosterModels.map((model, index) => {
-                        const [baseModel, currentSkillId = ''] = model.split('@');
-                        const isLead = baseModel === rosterLeadModel || model === rosterLeadModel;
-                        const hasCustomPrompt = Boolean(rosterModelPrompts[baseModel]?.trim());
+                    {(() => {
+                      const seatProps = (model, index) => {
+                        const baseModel = model.split('@')[0];
+                        return {
+                          model,
+                          isLead: baseModel === rosterLeadModel || model === rosterLeadModel,
+                          canRemove: rosterModels.length > 1,
+                          skills: availableSkills,
+                          modelOptions: renderModelOptions(),
+                          prompt: rosterModelPrompts[baseModel],
+                          mcpSelected: rosterMcpTools[baseModel] || [],
+                          mcpServers,
+                          mcpLoading: mcpServersLoading,
+                          onModelChange: (value) => handleRosterModelChange(index, value),
+                          onSkillChange: (skillId) => handleRosterSkillChange(index, skillId),
+                          onInspectSkill: (skillId) => {
+                            setSelectedSkillId(skillId);
+                            setActiveTab('skills');
+                          },
+                          onMakeLead: () => setRosterLeadModel(baseModel),
+                          onRemove: () => {
+                            setSelectedSeat(null);
+                            handleRemoveRosterModel(index);
+                          },
+                          onPromptChange: (text) => handleModelPromptChange(baseModel, text),
+                          onMcpChange: (names) => handleMcpToolsChange(baseModel, names),
+                          onOpenPersona: () => handleOpenCustomizeProfile(baseModel),
+                          onOpenMcpTab: () => setActiveTab('mcp'),
+                        };
+                      };
+                      const activeRoster = savedRosters.find((r) => r.id === activeRosterId);
+                      const seatOf = selectedSeat !== null ? rosterModels[selectedSeat] : undefined;
 
-                        return (
-                          <li key={`${model}-${index}`} className="model-item">
-                            <div className="model-item-content">
-                              <div className="model-item-primary">
-                                <span className="model-index">{index + 1}.</span>
-                                <div className="model-selects-row">
-                                  {/* Model selector */}
-                                  <select
-                                    className="seat-model-select"
-                                    value={baseModel}
-                                    onChange={(e) => handleRosterModelChange(index, e.target.value)}
-                                  >
-                                    <optgroup label="Local Models (dev-agent-kit)">
-                                      <option value="local/antigravity">local/antigravity (Antigravity Agent)</option>
-                                      <option value="local/claude-code">local/claude-code (Claude Code CLI)</option>
-                                      <option value="local/qwen3.6-27b">local/qwen3.6-27b (vLLM 27B)</option>
-                                    </optgroup>
-                                    {customProviders.length > 0 && (
-                                      <optgroup label="Custom Providers">
-                                        {customProviders.map((cp) => (
-                                          <option key={cp.id} value={cp.id}>
-                                            {cp.name} ({cp.id})
-                                          </option>
-                                        ))}
-                                      </optgroup>
-                                    )}
-                                    <optgroup label="Available Models">
-                                      {availableModels.map((m) => (
-                                        <option key={m} value={m}>{m}</option>
-                                      ))}
-                                    </optgroup>
-                                  </select>
-
-                                  {/* Skill selector */}
-                                  <select
-                                    className={`seat-skill-select ${currentSkillId ? 'has-skill' : ''}`}
-                                    value={currentSkillId}
-                                    onChange={(e) => handleRosterSkillChange(index, e.target.value)}
-                                  >
-                                    <option value="">No Domain Skill (General Chat)</option>
-                                    {availableSkills.map((s) => (
-                                      <option key={s.id} value={s.id}>
-                                        {s.badge ? `[${s.badge}] ` : ''}{s.title}
-                                      </option>
-                                    ))}
-                                  </select>
-
-                                  {currentSkillId && (
-                                    <button
-                                      type="button"
-                                      className="seat-view-skill-btn"
-                                      onClick={() => {
-                                        setSelectedSkillId(currentSkillId);
-                                        setActiveTab('skills');
-                                      }}
-                                      title="Inspect skill checklist in Skills Library"
-                                    >
-                                      Inspect
+                      return (
+                        <>
+                            <RoundTableView
+                              title={activeRoster?.name || 'Round Table'}
+                              seats={rosterModels.map((model, index) => {
+                                const props = seatProps(model, index);
+                                const skillId = model.split('@')[1] || '';
+                                return {
+                                  key: `${model}-${index}`,
+                                  index,
+                                  model,
+                                  isLead: props.isLead,
+                                  hasPrompt: Boolean(props.prompt?.trim()),
+                                  toolCount: props.mcpSelected.length,
+                                  skillTitle: availableSkills.find((sk) => sk.id === skillId)?.title || '',
+                                };
+                              })}
+                              selectedIndex={selectedSeat}
+                              adding={addingRosterSeat}
+                              onSelect={(i) => { setSelectedSeat(i); setAddingRosterSeat(false); }}
+                              onAddSeat={() => { setSelectedSeat(null); setAddingRosterSeat(true); }}
+                            >
+                              {addingRosterSeat && (
+                                <>
+                                  <div className="rtv-panel-head">
+                                    <span className="rtv-panel-title">New seat</span>
+                                  </div>
+                                  <AddSeatPanel
+                                    modelOptions={renderModelOptions()}
+                                    skills={availableSkills}
+                                    onAdd={(model, skillId) => {
+                                      handleAddRosterModel(model, skillId);
+                                      setAddingRosterSeat(false);
+                                    }}
+                                    onClose={() => setAddingRosterSeat(false)}
+                                  />
+                                </>
+                              )}
+                              {!addingRosterSeat && seatOf !== undefined && (
+                                <>
+                                  <div className="rtv-panel-head">
+                                    <span className="rtv-panel-title">
+                                      Seat {String(selectedSeat + 1).padStart(2, '0')}
+                                    </span>
+                                    <button type="button" className="seat-link-btn" onClick={() => setSelectedSeat(null)}>
+                                      Close
                                     </button>
-                                  )}
-                                </div>
-                              </div>
+                                  </div>
+                                  <SeatEditor key={`${seatOf}-${selectedSeat}`} {...seatProps(seatOf, selectedSeat)} />
+                                </>
+                              )}
+                            </RoundTableView>
+                        </>
+                      );
+                    })()}
 
-                              <div className="model-item-actions">
-                                {isLead ? (
-                                  <span className="lead-badge" title="Lead Model: Sohbeti yönlendirir, delegasyonu yapar ve nihai sentezi sunar.">
-                                    ★ Lead (Patron)
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="set-lead-btn"
-                                    onClick={() => setRosterLeadModel(baseModel)}
-                                    title="Bu modeli ekibin Lead / Patron modeli yap"
-                                  >
-                                    Lead Yap
-                                  </button>
-                                )}
-
-                                <button
-                                  type="button"
-                                  className={`role-prompt-toggle-btn ${hasCustomPrompt ? 'has-prompt' : ''} ${expandedPromptModel === baseModel ? 'active' : ''}`}
-                                  onClick={() => setExpandedPromptModel(expandedPromptModel === baseModel ? null : baseModel)}
-                                  title="Bu modele özel rol / prompt talimatını düzenle"
-                                >
-                                  {hasCustomPrompt && <span className="role-prompt-dot" />}
-                                  ✎ Rol Prompt
-                                </button>
-
-                                <button
-                                  type="button"
-                                  className="seat-profile-btn"
-                                  onClick={() => handleOpenCustomizeProfile(baseModel)}
-                                  title="Bu modelin profil resmini, rengini ve ismini özelleştir"
-                                >
-                                  Persona
-                                </button>
-
-                                <button
-                                  type="button"
-                                  className="remove-btn"
-                                  onClick={() => handleRemoveRosterModel(index)}
-                                  title="Remove participant"
-                                  disabled={rosterModels.length <= 1}
-                                >
-                                  &times;
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Collapsible Model Prompt Editor */}
-                            {expandedPromptModel === baseModel && (
-                              <div className="model-prompt-editor-box">
-                                <div className="model-prompt-header">
-                                  <span className="model-prompt-title">
-                                    {baseModel} — Özel Rol ve Karakter Talimatı
-                                  </span>
-                                  {hasCustomPrompt && (
-                                    <button
-                                      type="button"
-                                      className="model-prompt-clear-btn"
-                                      onClick={() => handleModelPromptChange(baseModel, '')}
-                                    >
-                                      Temizle
-                                    </button>
-                                  )}
-                                </div>
-                                <textarea
-                                  className="model-prompt-textarea"
-                                  rows={4}
-                                  placeholder={`Bu modele özel talimat (örn: "Kod kalitesinden ödün verme, delilsiz katılma, RFC ve somut kaynaklarla savun.")`}
-                                  value={rosterModelPrompts[baseModel] || ''}
-                                  onChange={(e) => handleModelPromptChange(baseModel, e.target.value)}
-                                />
-                              </div>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-
-                    {/* Add Participant Box */}
-                    <div className="add-seat-box">
-                      <div className="add-seat-row">
-                        <select
-                          className="add-seat-model-select"
-                          value={newRosterModelInput}
-                          onChange={(e) => setNewRosterModelInput(e.target.value)}
-                        >
-                          <option value="">Select model to add to table...</option>
-                          <optgroup label="Local Models (dev-agent-kit)">
-                            <option value="local/antigravity">local/antigravity (Antigravity Agent)</option>
-                            <option value="local/claude-code">local/claude-code (Claude Code CLI)</option>
-                            <option value="local/qwen3.6-27b">local/qwen3.6-27b (vLLM 27B)</option>
-                          </optgroup>
-                          {customProviders.length > 0 && (
-                            <optgroup label="Custom Registered Providers">
-                              {customProviders.map((cp) => (
-                                <option key={cp.id} value={cp.id}>
-                                  {cp.name} ({cp.id})
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                          <optgroup label="Available Models">
-                            {availableModels.map((m) => (
-                              <option key={m} value={m}>{m}</option>
-                            ))}
-                          </optgroup>
-                        </select>
-
-                        <select
-                          className="add-seat-skill-select"
-                          value={newRosterModelSkill}
-                          onChange={(e) => setNewRosterModelSkill(e.target.value)}
-                        >
-                          <option value="">Assign Skill (Optional)</option>
-                          {availableSkills.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.badge ? `[${s.badge}] ` : ''}{s.title}
-                            </option>
-                          ))}
-                        </select>
-
-                        <button
-                          type="button"
-                          className="add-seat-submit-btn"
-                          onClick={() => {
-                            if (newRosterModelInput) {
-                              handleAddRosterModel(newRosterModelInput, newRosterModelSkill || null);
-                              setNewRosterModelInput('');
-                              setNewRosterModelSkill('');
-                            }
-                          }}
-                          disabled={!newRosterModelInput}
-                        >
-                          + Add Participant
-                        </button>
-                      </div>
-                    </div>
                   </div>
 
                   {/* Actions Footer */}
@@ -2088,7 +1984,7 @@ export default function ConfigPanel({
                       {/* Fetch Models Error */}
                       {fetchModelsError && (
                         <div className="test-result-box failure">
-                          <span>✕ Model Discovery Notice: {fetchModelsError}</span>
+                          <span>Model discovery notice: {fetchModelsError}</span>
                         </div>
                       )}
 
@@ -2115,9 +2011,9 @@ export default function ConfigPanel({
                       {providerTestResult && (
                         <div className={`test-result-box ${providerTestResult.success ? 'success' : 'failure'}`}>
                           {providerTestResult.success ? (
-                            <span>✓ {providerTestResult.message}</span>
+                            <span>{providerTestResult.message}</span>
                           ) : (
-                            <span>✕ {providerTestResult.error}</span>
+                            <span>{providerTestResult.error}</span>
                           )}
                         </div>
                       )}
@@ -2147,7 +2043,7 @@ export default function ConfigPanel({
                   {/* Saved Provider Inline Banner (Replaces window.confirm popup) */}
                   {savedProviderBanner && (
                     <div className="provider-save-success-banner">
-                      <div className="banner-badge-icon">✓</div>
+                      <div className="banner-badge-icon">OK</div>
                       <div className="banner-details">
                         <div className="banner-headline">
                           Provider <strong>"{savedProviderBanner.name}"</strong> registered successfully!
@@ -2434,6 +2330,10 @@ export default function ConfigPanel({
                     )}
                   </div>
                 </div>
+              )}
+
+              {activeTab === 'mcp' && (
+                <McpSettingsTab onError={setError} onSuccess={setSuccessMessage} />
               )}
 
               {/* =============================================================
@@ -2801,7 +2701,7 @@ export default function ConfigPanel({
                       <div>
                         <h3 className="provider-form-title">Agent Personas &amp; Visual Styling</h3>
                         <p className="provider-form-subtitle">
-                          Modellerin Round Table grup sohbetinde ve Deliberation turlarında görünecek profil resmini (avatar), tema rengini ve görünen ismini özelleştirin.
+                          Customize the avatar, accent color and display name models use in Round Table chats and council deliberations.
                         </p>
                       </div>
                     </div>
@@ -2846,7 +2746,7 @@ export default function ConfigPanel({
                             {selectedProfileModel}
                           </h3>
                           <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#8b949e' }}>
-                            Görünen ismi, sohbet rengini ve avatar görselini güncelleyin.
+                            Update the display name, chat color and avatar image.
                           </p>
                         </div>
 
@@ -2854,13 +2754,13 @@ export default function ConfigPanel({
                           {/* Display Name */}
                           <div className="form-group" style={{ marginBottom: '1.25rem' }}>
                             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#c9d1d9', marginBottom: '6px' }}>
-                              Görünen İsim (Display Name)
+                              Display name
                             </label>
                             <input
                               type="text"
                               value={profileDisplayName}
                               onChange={(e) => setProfileDisplayName(e.target.value)}
-                              placeholder="Örn: Antigravity, Qwen 27B, Claude Code"
+                              placeholder="e.g. Antigravity, Qwen 27B, Claude Code"
                               style={{
                                 width: '100%',
                                 padding: '8px 12px',
@@ -2895,7 +2795,7 @@ export default function ConfigPanel({
                                   value={profileColor.startsWith('#') && profileColor.length === 7 ? profileColor : '#6366f1'}
                                   onChange={(e) => setProfileColor(e.target.value)}
                                   className="color-native-input"
-                                  title="Özel renk seç"
+                                  title="Pick a custom color"
                                 />
                                 <input
                                   type="text"
@@ -2918,7 +2818,7 @@ export default function ConfigPanel({
                               type="text"
                               value={profileAvatarUrl}
                               onChange={(e) => setProfileAvatarUrl(e.target.value)}
-                              placeholder="Görsel URL'si (https://...) veya yerel dosya seçin"
+                              placeholder="Image URL (https://...) or choose a local file"
                               style={{
                                 width: '100%',
                                 padding: '8px 12px',
@@ -2931,7 +2831,7 @@ export default function ConfigPanel({
                             />
                             <div className="avatar-upload-row">
                               <label className="avatar-file-btn">
-                                Dosyadan Yükle (PNG/JPG/SVG/WebP)
+                                Upload file (PNG/JPG/SVG/WebP)
                                 <input
                                   type="file"
                                   accept="image/*"
@@ -2945,7 +2845,7 @@ export default function ConfigPanel({
                                   className="avatar-clear-btn"
                                   onClick={() => setProfileAvatarUrl('')}
                                 >
-                                  Görseli Kaldır
+                                  Remove image
                                 </button>
                               )}
                             </div>
@@ -2958,7 +2858,7 @@ export default function ConfigPanel({
 
                           {/* Live Preview Card */}
                           <div className="profile-preview-card">
-                            <span className="profile-preview-label">Canlı Sohbet Önizlemesi</span>
+                            <span className="profile-preview-label">Live chat preview</span>
                             <div className="profile-preview-bubble">
                               <div
                                 className="profile-item-avatar"
@@ -3001,7 +2901,7 @@ export default function ConfigPanel({
                                     lineHeight: '1.4',
                                   }}
                                 >
-                                  Round Table ve Council deliberasyonunda yanıtlarım bu renkte ve avatarla görünecek.
+                                  My replies in Round Table and council deliberations will appear with this color and avatar.
                                 </div>
                               </div>
                             </div>

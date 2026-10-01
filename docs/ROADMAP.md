@@ -61,9 +61,17 @@ gibi davransın; Council penceresinde kimin ne dediği ve kime cevap verdiği ne
 - [ ] Shim koltukları için metin tabanlı tool protokolü.
 - [x] MCP istemcisi (resmi Python SDK), `data/mcp_servers.json`, `/api/mcp-servers` uçları,
       araç başına izin ve onay akışı. (Notlar aşağıda; UI henüz yok.)
-- [ ] MCP Mağazası (kürate katalog, tek tıkla ekleme). Aday listesi aşağıda.
-- [ ] UI: MCP sekmesi, sohbet başlığında araç popover'ı, araç zaman çizelgesi ve kaynak
-      chip'leri, Round Table'da reasoning (thinking) gösterimi.
+- [x] MCP Mağazası: `backend/tools/mcp_library.py` (sabit sürümlü, `uvx` ile; şimdilik `fetch`
+      ve `arxiv`). İstemci komut veremez, yalnız katalog id'si seçer; `MCP_ALLOW_STDIO` kapalı
+      kalır. `markitdown-mcp` bilerek yok (`file://` ile container dosyalarını okur). Yeni
+      giriş eklemeden önce PyPI/OSV doğrulaması ve araçların neye eriştiğine bakılır.
+- [x] UI: MCP sekmesi (Installed / Library), onay kartı, Round Table koltuğu başına MCP araç
+      seçimi (`model_mcp_tools`; seçilmeyen araç modele sunulmaz ve çağrısı reddedilir).
+- [ ] UI kalanı: sohbet başlığında araç popover'ı, araç zaman çizelgesi ve kaynak chip'leri,
+      Round Table'da reasoning (thinking) gösterimi.
+- [ ] Council'de MCP: Stage 1 zaten araç kullanıyor (`@skill` haritası, MCP yok). Koltuk başına
+      MCP için council tanımına seçim alanı ve Stage 1 akışında onay olayı gerekir; onay
+      kanalı olmayan `ask` araçları şu an reddedilir.
 - [ ] Testler: SSRF, yol sınırı, sahte modelle tool döngüsü, MCP istemcisi.
 
 ## Aşama 3: Görsel ve dosya yükleme
@@ -86,8 +94,25 @@ gibi davransın; Council penceresinde kimin ne dediği ve kime cevap verdiği ne
 - [ ] Debate'te tur içi model başına akış ve durum noktaları.
 - [ ] MCP'den gelen işler `/message/stream` veya ortak arka plan yolu üzerinden çalışsın:
       canlı thinking, sidebar'da "canlı" ve "MCP" etiketi, SSE keepalive.
-- [ ] ConfigPanel (3000+ satır) bölünür: Councils, Models & Providers, Skills, Gelişmiş;
-      council ve round table için tek `SeatEditor`.
+- [x] "Masa" görünümü: `RoundTableView.jsx` hem Council Deliberation hem Chat Rosters
+      sekmesinde. Elips masa, koltuk başına SVG koltuk + yuvarlak ajan jetonu + kitap, boş
+      sandalyeler (8'e kadar, tıklayınca `AddSeatPanel`), şef/lider masanın başında, dışarıdaki
+      şef için "CH" koltuğu. Liste görünümü ve Table/List geçişi kaldırıldı (karar: yalnız masa).
+      Koltuk editörleri: Round Table `SeatEditor` (`RosterSeatCard.jsx`), Council
+      `CouncilSeatEditor` (`CouncilSeatEditor.jsx`; council koltuğunda rol prompt'u ve MCP yok).
+- [ ] Model Studio yeniden yapılanma (karar verildi): 4 sekme: **Council**, **Round Table**,
+      **Skills** (MCP ikinci alt sekme, "Tools"), **Agents** (persona). **Custom Providers
+      Model Studio'dan çıkar, Settings'e "Providers" sekmesi olarak taşınır** (altyapı ayarı,
+      koltukla ilgisi yok). Başlık "Model Studio". ConfigPanel (3000+ satır) bu sırada bölünür.
+- [ ] Agent Personas: Türkçe kalıntılar ("MODELLER", "TEMA & SOHBET RENGI", "PROFIL RESMI")
+      İngilizceye; avatar alanındaki ham base64 gizlenir (önizleme + yükle/sil); persona avatarı
+      masadaki monogramın yerine kullanılır.
+- [ ] MCP Servers boş durum: Library öne, elle ekleme formu "Advanced" altında katlı.
+- [ ] Settings (Deliberation Settings): her ayara tooltip, kısaltmalar (CoT, DQ) açıklanır,
+      sekme/etiket adları sadeleşir; Providers sekmesi buraya gelir.
+- [ ] Masa cilası (isteğe bağlı): küçük ekran düzeni, klavye ile koltuk gezinmesi.
+- [ ] `design/DESIGN-DNA.md` kodla uyumsuz (belge obsidian + brass + Syne, kod Electric Azure
+      + Google/OpenAI Sans): belgeyi koda göre güncelle.
 - [ ] Design-DNA ihlalleri (emoji/sembol simgeler, sabit renkler) temizlenir; ölü kod silinir.
 
 ## Aşama 5: Persona ve sistem promptları

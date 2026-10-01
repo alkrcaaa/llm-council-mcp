@@ -1,0 +1,316 @@
+.rtv {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+.rtv-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 12.5;
+  min-height: 540px;
+  background: radial-gradient(ellipse at 50% 50%, var(--bg-surface-elevated) 0%, var(--bg-canvas) 70%);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* the table: a hairline-framed ellipse with an inlaid rim */
+.rtv-table {
+  position: absolute;
+  inset: 25% 19%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-medium);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 10px var(--bg-canvas), inset 0 0 0 11px var(--border-subtle);
+}
+
+.rtv-caption {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 34%;
+}
+
+.rtv-table-kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--accent-primary);
+}
+
+.rtv-table-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.rtv-table-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* a book on the table in front of every seated agent */
+.rtv-books { position: absolute; inset: 0; pointer-events: none; }
+
+.rtv-book {
+  position: absolute;
+  width: 32px;
+  height: 24px;
+  transform: translate(-50%, -50%) rotate(var(--rot, 0deg));
+  filter: drop-shadow(0 2px 2px rgba(1, 4, 9, 0.6));
+}
+
+.rtv-book-cover { fill: hsl(var(--hue, 210) 30% 24%); stroke: hsl(var(--hue, 210) 30% 40%); stroke-width: 1; }
+.rtv-book-spine { fill: none; stroke: hsl(var(--hue, 210) 30% 40%); stroke-width: 1.5; }
+.rtv-book-lines { fill: none; stroke: hsl(var(--hue, 210) 35% 62%); stroke-width: 1; stroke-linecap: round; opacity: 0.7; }
+.rtv-book.is-lead .rtv-book-cover { fill: var(--accent-subtle); stroke: var(--accent-primary); }
+.rtv-book.is-lead .rtv-book-spine,
+.rtv-book.is-lead .rtv-book-lines { stroke: var(--accent-primary); }
+
+.rtv-seats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* the slot point is the cushion centre, which is 62% down the chair box */
+.rtv-seat-slot {
+  position: absolute;
+  transform: translate(-50%, -62%);
+  animation: rtv-seat-in 220ms ease-out both;
+  animation-delay: calc(var(--i) * 45ms);
+}
+
+@keyframes rtv-seat-in {
+  from { opacity: 0; transform: translate(-50%, calc(-62% + 6px)); }
+  to { opacity: 1; transform: translate(-50%, -62%); }
+}
+
+.rtv-seat {
+  position: relative;
+  display: block;
+  width: 108px;
+  height: 108px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.rtv-seat:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 4px; border-radius: var(--radius-md); }
+
+/* chair: back always faces away from the table */
+.rtv-chair {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: rotate(var(--rot, 0deg));
+  transform-origin: 50% 62%;
+}
+
+.rtv-chair-seat { fill: var(--bg-surface-elevated); stroke: var(--border-medium); stroke-width: 2; transition: stroke 150ms ease-out; }
+.rtv-chair-back { fill: var(--border-medium); stroke: var(--border-strong); stroke-width: 2; transition: fill 150ms ease-out, stroke 150ms ease-out; }
+.rtv-chair-arm { fill: var(--bg-surface-hover); stroke: var(--border-medium); stroke-width: 2; }
+
+.rtv-seat:hover .rtv-chair-back { stroke: var(--text-muted); }
+.rtv-seat.is-lead .rtv-chair-back,
+.rtv-seat.is-selected .rtv-chair-back { fill: var(--accent-primary); stroke: var(--accent-primary); }
+.rtv-seat.is-selected .rtv-chair-seat { stroke: var(--border-active); }
+
+/* the agent: a round token sitting on the cushion */
+.rtv-avatar {
+  position: absolute;
+  top: 62%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  transform: translate(-50%, -50%);
+  background: hsl(var(--hue, 210) 24% 15%);
+  border: 2px solid hsl(var(--hue, 210) 22% 34%);
+  border-radius: 50%;
+  box-shadow: var(--shadow-md);
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out, background 150ms ease-out, transform 150ms ease-out;
+}
+
+.rtv-seat:hover .rtv-avatar { background: hsl(var(--hue, 210) 24% 20%); transform: translate(-50%, calc(-50% - 2px)); }
+.rtv-seat.is-lead .rtv-avatar { border-color: var(--accent-primary); width: 58px; height: 58px; }
+.rtv-seat.is-selected .rtv-avatar { border-color: var(--accent-primary); box-shadow: 0 0 0 4px var(--accent-glow), var(--shadow-md); }
+
+.rtv-monogram {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: hsl(var(--hue, 210) 70% 80%);
+}
+
+.rtv-seal {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  min-width: 24px;
+  padding: 1px 4px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-active);
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--accent-primary);
+}
+
+/* name plate: offset toward the table by --px/--py so it never hides the chair back */
+.rtv-plate {
+  position: absolute;
+  top: 62%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  width: max-content;
+  max-width: 100px;
+  padding: 3px 9px;
+  transform: translate(calc(-50% + var(--px, 0px)), calc(-50% + var(--py, 0px)));
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-medium);
+  border-radius: 12px;
+}
+
+.rtv-seat.is-selected .rtv-plate { border-color: var(--border-active); }
+.rtv-seat.is-lead .rtv-plate { border-color: var(--border-active); background: var(--accent-subtle); }
+
+.rtv-seat-name {
+  max-width: 100%;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtv-seat-provider {
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtv-seat.is-lead .rtv-seat-provider { color: var(--accent-primary); }
+
+.rtv-seat-extras {
+  max-width: 100%;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* open chair: ghosted until hovered */
+.rtv-seat-add { opacity: 0.55; transition: opacity 150ms ease-out; }
+.rtv-seat-add:hover, .rtv-seat-add.is-selected, .rtv-seat-add:focus-visible { opacity: 1; }
+.rtv-seat-add .rtv-chair-seat,
+.rtv-seat-add .rtv-chair-back,
+.rtv-seat-add .rtv-chair-arm { fill: transparent; stroke-dasharray: 5 6; }
+.rtv-seat-add.is-selected .rtv-chair-back { fill: transparent; stroke: var(--accent-primary); }
+.rtv-avatar-empty { background: transparent; border-style: dashed; border-color: var(--border-medium); box-shadow: none; }
+.rtv-avatar-empty .rtv-monogram { font-weight: 400; font-size: 24px; color: var(--text-muted); }
+.rtv-seat-add:hover .rtv-avatar-empty,
+.rtv-seat-add.is-selected .rtv-avatar-empty { border-color: var(--accent-primary); background: transparent; }
+.rtv-seat-add:hover .rtv-monogram,
+.rtv-seat-add.is-selected .rtv-monogram { color: var(--accent-primary); }
+.rtv-seat-add .rtv-plate { background: transparent; border-style: dashed; }
+
+.rtv-panel {
+  min-width: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.rtv-panel.is-open { border-color: var(--border-active); }
+
+.rtv-panel .seat-drawer { border-top: 0; }
+
+.rtv-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 0;
+}
+
+.rtv-panel-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtv-panel-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.rtv-panel-empty-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 1000px) {
+  .rtv { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .rtv-stage { aspect-ratio: auto; min-height: 520px; }
+  .rtv-table-title { font-size: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtv-seat-slot { animation: none; }
+}
