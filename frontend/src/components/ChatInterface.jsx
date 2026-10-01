@@ -14,6 +14,8 @@ import { exportToMarkdown, exportToJSON, exportToADR, copyADRToClipboard } from 
 import McpApprovalCard from './McpApprovalCard.jsx';
 import { AttachButton, AttachmentTray, MessageAttachments } from './Attachments.jsx';
 import useAttachmentDraft from '../useAttachmentDraft';
+
+const ATTACH_ONLY_TEXT = 'See the attached file(s).';
 import './ChatInterface.css';
 
 // Files dropped on or pasted into a composer; returns true when it consumed them.
@@ -271,28 +273,46 @@ export default function ChatInterface({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() && draft.items.length === 0) return;
+    // A picture with no caption is a valid message, as in ChatGPT and Claude.
+    const text = input.trim() ? input : ATTACH_ONLY_TEXT;
     if (!isLoading) {
-      onSendMessage(input, false, null, draft.take());
+      sendOrHold(text, draft.take(), false);
       setInput('');
     } else if (isRoundTableConv) {
       // The backend accepts one stream per conversation; hold the message until
       // the current replies finish instead of swallowing the Enter key.
-      const text = queuedMessage ? `${queuedMessage}\n\n${input.trim()}` : input.trim();
+      const joined = queuedMessage ? `${queuedMessage}\n\n${text.trim()}` : text.trim();
       const files = [...(queuedMessage ? queued.files || [] : []), ...draft.take()];
-      setQueued({ conversationId: conversation?.id, text, files });
+      setQueued({ conversationId: conversation?.id, text: joined, files });
       setInput('');
     }
   };
 
+  // The held message is drawn at the end of the thread, so bring it into view.
   useEffect(() => {
-    if (!isLoading && queuedMessage) {
-      onSendMessage(queuedMessage, false, null, queued.files || []);
-      // Reacting to the isLoading prop falling back to false is the point of this effect.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (queuedMessage) scrollToBottom();
+  }, [queuedMessage]);
+
+  // The UI can see a stream as finished a moment before the server frees the conversation;
+  // that send comes back 'busy', so the message goes back on hold instead of being lost.
+  const sendOrHold = async (text, files, retry) => {
+    const conversationId = conversation?.id;
+    const result = await onSendMessage(text, false, null, files);
+    if (result === 'busy') setQueued({ conversationId, text, files, retry });
+  };
+
+  useEffect(() => {
+    if (isLoading || !queuedMessage) return undefined;
+    const { text, files, retry } = queued;
+    const timer = setTimeout(() => {
       setQueued(null);
-    }
-  }, [isLoading, queuedMessage, queued, onSendMessage]);
+      sendOrHold(text, files || [], true);
+    }, retry ? 1500 : 0);
+    return () => clearTimeout(timer);
+    // sendOrHold only closes over props already listed; re-running on its identity would re-send.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, queuedMessage, queued]);
 
   const handleKeyDown = (e) => {
     if (mentionQuery != null && mentionMatches.length > 0) {
@@ -327,11 +347,12 @@ export default function ChatInterface({
 
   const handleLandingSubmit = (e) => {
     e.preventDefault();
-    if (!landingInput.trim()) return;
+    if (!landingInput.trim() && landingDraft.items.length === 0) return;
+    const text = landingInput.trim() ? landingInput : ATTACH_ONLY_TEXT;
     if (conversation && conversation.id) {
-      onSendMessage(landingInput, false, null, landingDraft.take());
+      onSendMessage(text, false, null, landingDraft.take());
     } else if (onNewConversation) {
-      onNewConversation(null, landingInput, effectiveMode, landingDraft.take());
+      onNewConversation(null, text, effectiveMode, landingDraft.take());
     }
     setLandingInput('');
   };
@@ -388,12 +409,13 @@ export default function ChatInterface({
               : 'Council models propose independent solutions, peer-review each other, and synthesize a final ADR verdict.'}
           </p>
 
-          <AttachmentTray items={landingDraft.items} error={landingDraft.error} onRemove={landingDraft.remove} />
           <form
             className={`landing-composer ${dragging ? 'attach-dragging' : ''}`}
             onSubmit={handleLandingSubmit}
             {...dropProps(landingDraft)}
           >
+            <AttachmentTray items={landingDraft.items} error={landingDraft.error} onRemove={landingDraft.remove} />
+            <div className="landing-composer-row">
             <button
               type="button"
               className="landing-composer-council"
@@ -415,7 +437,7 @@ export default function ChatInterface({
             <button
               type="submit"
               className="landing-composer-send"
-              disabled={!landingInput.trim()}
+              disabled={!landingInput.trim() && landingDraft.items.length === 0}
               title="Start deliberation"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -423,6 +445,7 @@ export default function ChatInterface({
                 <polyline points="6 11 12 5 18 11"></polyline>
               </svg>
             </button>
+            </div>
           </form>
 
           {rosterModels.length > 0 && (
@@ -1093,6 +1116,32 @@ export default function ChatInterface({
           </div>
         )}
 
+        {queuedMessage && (
+          <div className="message-group">
+            <div className="user-message queued-bubble">
+              <div className="message-content">
+                <div className="markdown-content">
+                  <p>{queuedMessage}</p>
+                </div>
+                {(queued.files || []).length > 0 && (
+                  <div className="attach-bubble">
+                    {queued.files.map(({ key, file }) => (
+                      <span className="attach-chip" key={key} title={file.name}>
+                        <span className="attach-name">{file.name}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="queued-meta">
+                  <span className="queued-label">Queued, sends when replies finish</span>
+                  <button type="button" className="queued-cancel" onClick={() => setQueued(null)} title="Cancel queued message">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -1117,17 +1166,9 @@ export default function ChatInterface({
                 ))}
               </div>
             )}
-            {queuedMessage && (
-              <div className="queued-message">
-                <span className="queued-label">Queued</span>
-                <span className="queued-text">{queuedMessage}</span>
-                <button type="button" className="queued-cancel" onClick={() => setQueued(null)} title="Cancel queued message">
-                  ×
-                </button>
-              </div>
-            )}
-            <AttachmentTray items={draft.items} error={draft.error} onRemove={draft.remove} />
             <div className="input-inner">
+              <AttachmentTray items={draft.items} error={draft.error} onRemove={draft.remove} />
+              <div className="input-row">
               <AttachButton onFiles={draft.add} />
               <textarea
                 ref={messageInputRef}
@@ -1147,6 +1188,7 @@ export default function ChatInterface({
                 onKeyDown={handleKeyDown}
                 rows={2}
               />
+              </div>
               {isRoundTableConv ? (
                 isLoading ? (
                   <button
@@ -1166,7 +1208,7 @@ export default function ChatInterface({
                   <button
                     type="submit"
                     className="input-icon-btn send"
-                    disabled={!input.trim()}
+                    disabled={!input.trim() && draft.items.length === 0}
                     title="Send"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -1190,7 +1232,7 @@ export default function ChatInterface({
                 <button
                   type="submit"
                   className="input-icon-btn send"
-                  disabled={!input.trim()}
+                  disabled={!input.trim() && draft.items.length === 0}
                   title="Send"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">

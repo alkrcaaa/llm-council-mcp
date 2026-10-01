@@ -1075,6 +1075,8 @@ function App() {
         };
       });
       setConvLoading(targetConversationId, false);
+      // The server still has a stream open for this chat; the caller holds the message and retries.
+      if (error.status === 409) return 'busy';
     }
   };
 

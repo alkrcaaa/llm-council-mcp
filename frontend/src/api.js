@@ -1242,7 +1242,9 @@ export const api = {
         this.clearToken();
       }
       const detail = await response.json().then((b) => b.detail).catch(() => null);
-      throw new Error(detail || 'Failed to send message');
+      const err = new Error(detail || 'Failed to send message');
+      err.status = response.status;
+      throw err;
     }
 
     await readSSE(response, onEvent);

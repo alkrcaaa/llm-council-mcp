@@ -104,6 +104,10 @@ gibi davransın; Council penceresinde kimin ne dediği ve kime cevap verdiği ne
       görsel önizleme ve dosya chip'i. Dosyalar gönderim anında yüklenir (karşılama ekranında
       sohbet henüz yok): `useAttachmentDraft`, `components/Attachments.jsx`,
       `api.uploadAttachment/getAttachmentBlob`. Görseller `apiFetch` ile blob olarak çekilir.
+      Ek şeridi artık kutunun içinde (hem açılış hem sohbet kompozeri); yalnız görselle de
+      gönderilebilir (metin "See the attached file(s)." olur). Bekleyen mesaj kompozer üstündeki
+      çip yerine sohbet sonunda soluk kullanıcı balonu; sunucu 409 (akış henüz bitmedi) dönerse
+      mesaj kaybolmaz, tutulup 1,5 sn sonra yeniden denenir.
       Yükleme hatası stream hatasıyla aynı yoldan görünür. Tarayıcıda doğrulandı (yalıtılmış
       backend, geçici veri): yükleme, baloncuk, yeniden yüklemede önizleme, yerel modelin dosya
       metnini okuması. Eksik: istemci tarafı hata metni yalnız seçimde, sunucu reddi (ör. bozuk
@@ -111,8 +115,11 @@ gibi davransın; Council penceresinde kimin ne dediği ve kime cevap verdiği ne
 
 ## Aşama 4: Council arayüzü ve ConfigPanel
 
-- [ ] `metadata` ve tam debate verisi kalıcı (yeniden yüklemede Stage 2 matrisi, etiketler,
-      maliyet kaybolmasın).
+- [~] `metadata` ve tam debate verisi kalıcı (yeniden yüklemede Stage 2 matrisi, etiketler,
+      maliyet kaybolmasın). Yapıldı: Council akışı, non-stream yol ve cache isabeti mesajla
+      birlikte `metadata` yazar (`storage.add_assistant_message`); frontend zaten `msg.metadata`
+      okuyor. Kalan: debate ve decomposition mesajları metadata taşımıyor; tarayıcıda yeniden
+      yükleme doğrulaması yapılmadı.
 - [ ] Rebuttal olayına `critic` bilgisi; model hataları kullanıcıya görünür.
 - [ ] Tek `Turn` bileşeni: konuşan, aşama mührü, "X'e cevap" zinciri, token/maliyet/gecikme.
       Stage 1 kart ızgarası, Stage 2 sıralama chip'leri, karar kartı üstte.
