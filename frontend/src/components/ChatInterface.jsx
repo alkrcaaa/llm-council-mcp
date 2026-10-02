@@ -1004,6 +1004,7 @@ export default function ChatInterface({
 
         {/* Aborted deliberation status banner */}
         {conversation.status === 'aborted' &&
+          !isRoundTableConv &&
           conversation.messages.length > 0 &&
           conversation.messages[conversation.messages.length - 1]?.role === 'user' && (
             <div className="deliberation-aborted-banner">
