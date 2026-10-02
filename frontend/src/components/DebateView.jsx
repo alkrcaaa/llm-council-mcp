@@ -46,6 +46,7 @@ export default function DebateView({
   positions = [],
   critiques = [],
   rebuttals = [],
+  rebuttalFailures = [],
   judgment = '',
   modelToLabel = {},
   labelToModel = {},
@@ -73,7 +74,7 @@ export default function DebateView({
 
   const hasRound1 = positions.length > 0;
   const hasRound2 = critiques.length > 0;
-  const hasRound3 = rebuttals.length > 0 && numRounds >= 3;
+  const hasRound3 = (rebuttals.length > 0 || rebuttalFailures.length > 0) && numRounds >= 3;
   const hasJudgment = Boolean(judgment || judgmentStreaming);
 
   if (!hasRound1 && !isDebating) {
@@ -313,10 +314,25 @@ export default function DebateView({
                     <div className="rebuttal-card-header">
                       <ModelBadge model={reb.model} roleLabel={modelToLabel[reb.model] || 'Defender'} />
                       <span className="rebuttal-tag">REBUTTAL</span>
+                      {reb.critic && (
+                        <>
+                          <span className="rebuttal-reply-to">replies to</span>
+                          <ModelBadge model={reb.critic} roleLabel={reb.critic_label || modelToLabel[reb.critic] || 'Critic'} />
+                        </>
+                      )}
                     </div>
                     <div className="card-markdown-content">
                       <SafeMarkdown>{reb.rebuttal}</SafeMarkdown>
                     </div>
+                  </div>
+                ))}
+                {rebuttalFailures.map((fail, idx) => (
+                  <div key={`fail-${idx}`} className="rebuttal-card rebuttal-failed">
+                    <div className="rebuttal-card-header">
+                      <ModelBadge model={fail.model} roleLabel={fail.label || modelToLabel[fail.model] || 'Defender'} />
+                      <span className="rebuttal-tag">NO REBUTTAL</span>
+                    </div>
+                    <div className="card-markdown-content">Model failed to respond: {fail.error}</div>
                   </div>
                 ))}
               </div>

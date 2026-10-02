@@ -2009,12 +2009,23 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                             yield proc_event
 
                     elif event_type == "rebuttal_complete":
-                        yield f"data: {json.dumps({'type': 'rebuttal_complete', 'model': event['model'], 'label': event['label'], 'rebuttal': event['rebuttal'], 'cost': event.get('cost', {})})}\n\n"
+                        yield f"data: {json.dumps({'type': 'rebuttal_complete', 'model': event['model'], 'label': event['label'], 'rebuttal': event['rebuttal'], 'critic': event.get('critic'), 'critic_label': event.get('critic_label'), 'cost': event.get('cost', {})})}\n\n"
 
                         proc_event = emit_process(pl.create_process_event(
                             f"{event['label']} defended position",
                             pl.EventCategory.MODEL,
                             pl.Verbosity.STANDARD
+                        ))
+                        if proc_event:
+                            yield proc_event
+
+                    elif event_type == "rebuttal_failed":
+                        yield f"data: {json.dumps({'type': 'rebuttal_failed', 'model': event['model'], 'label': event['label'], 'error': event['error']})}\n\n"
+
+                        proc_event = emit_process(pl.create_process_event(
+                            f"{event['label']} rebuttal failed: {event['error']}",
+                            pl.EventCategory.ERROR,
+                            pl.Verbosity.BASIC
                         ))
                         if proc_event:
                             yield proc_event

@@ -580,3 +580,12 @@
   font-size: 0.8rem;
   color: #8b949e;
 }
+
+.rebuttal-reply-to {
+  font-size: 11px;
+  color: var(--text-muted, inherit);
+}
+
+.rebuttal-card.rebuttal-failed {
+  opacity: 0.75;
+}

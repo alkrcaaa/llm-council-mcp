@@ -66,6 +66,7 @@ import './Stage3.css';
  * @param {Array} props.debatePositions - Round 1 position statements
  * @param {Array} props.debateCritiques - Round 2 critiques
  * @param {Array} props.debateRebuttals - Round 3 rebuttals
+ * @param {Array} props.debateRebuttalFailures - Models that failed to rebut
  * @param {string} props.debateJudgment - Chairman's final judgment
  * @param {string} props.debateJudgmentStreaming - Partial judgment during streaming
  * @param {boolean} props.isDebating - Whether debate is in progress
@@ -123,6 +124,7 @@ export default function Stage3({
   debatePositions = [],
   debateCritiques = [],
   debateRebuttals = [],
+  debateRebuttalFailures = [],
   debateJudgment = '',
   debateJudgmentStreaming = '',
   isDebating = false,
@@ -240,6 +242,7 @@ export default function Stage3({
           positions={debatePositions}
           critiques={debateCritiques}
           rebuttals={debateRebuttals}
+          rebuttalFailures={debateRebuttalFailures}
           judgment={debateJudgment}
           modelToLabel={debateModelToLabel}
           labelToModel={debateLabelToModel}

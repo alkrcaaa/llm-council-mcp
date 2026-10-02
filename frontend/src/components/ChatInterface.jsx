@@ -850,6 +850,7 @@ export default function ChatInterface({
                           ? msg.debateRebuttals
                           : (msg.stage3?.rebuttals || [])
                       }
+                      rebuttalFailures={msg.debateRebuttalFailures || []}
                       judgment={msg.debateJudgment || msg.stage3?.response || ''}
                       modelToLabel={msg.debateModelToLabel || msg.stage3?.model_to_label || {}}
                       labelToModel={msg.debateLabelToModel || msg.stage3?.label_to_model || {}}

@@ -420,7 +420,7 @@ async def collect_rebuttals(
     positions: List[Dict[str, Any]],
     critiques: List[Dict[str, Any]],
     model_to_label: Dict[str, str]
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any], List[Dict[str, Any]]]:
     """
     Round 3: Collect rebuttals from each model defending their position.
 
@@ -431,7 +431,7 @@ async def collect_rebuttals(
         model_to_label: Dict mapping models to anonymous labels
 
     Returns:
-        Tuple of (rebuttals list, total costs)
+        Tuple of (rebuttals list, total costs, failures list of {model, error})
     """
     # Build lookups
     position_by_model = {p["model"]: p["position"] for p in positions}
@@ -449,29 +449,38 @@ async def collect_rebuttals(
             critic_label
         )
         result = await query_model(model, prompt)
-        return model, result
+        return model, critique_data["critic"], result
 
     # Prepare rebuttal queries
     tasks = []
+    task_models = []
     for pos in positions:
         model = pos["model"]
         position = pos["position"]
         critique_data = critique_by_target.get(model)
         if critique_data:
             tasks.append(query_rebuttal(model, position, critique_data))
+            task_models.append(model)
 
     rebuttals = []
+    failures = []
     total_cost = {"prompt_tokens": 0, "completion_tokens": 0, "total": 0}
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for result in results:
+    for task_model, result in zip(task_models, results):
         if isinstance(result, Exception):
+            failures.append({"model": task_model, "error": str(result) or type(result).__name__})
             continue
-        model, response = result
+        model, critic, response = result
+        if not (response and response.get("content")):
+            failures.append({"model": model, "error": "empty response"})
+            continue
         if response and response.get("content"):
             rebuttals.append({
                 "model": model,
+                "critic": critic,
+                "critic_label": model_to_label.get(critic, critic),
                 "rebuttal": response["content"],
                 "usage": response.get("usage", {}),
                 "cost": response.get("cost", {}),
@@ -482,7 +491,7 @@ async def collect_rebuttals(
                 total_cost["completion_tokens"] += response["cost"].get("completion_tokens", 0)
                 total_cost["total"] += response["cost"].get("total", 0)
 
-    return rebuttals, total_cost
+    return rebuttals, total_cost, failures
 
 
 async def synthesize_judgment(
@@ -660,7 +669,7 @@ async def run_debate_streaming(
             "model_count": len(council_models),
         }
 
-        rebuttals, round3_cost = await collect_rebuttals(
+        rebuttals, round3_cost, rebuttal_failures = await collect_rebuttals(
             question, positions, critiques, model_to_label
         )
         total_cost["prompt_tokens"] += round3_cost["prompt_tokens"]
@@ -674,7 +683,17 @@ async def run_debate_streaming(
                 "model": reb["model"],
                 "label": model_to_label.get(reb["model"], reb["model"]),
                 "rebuttal": reb["rebuttal"],
+                "critic": reb.get("critic"),
+                "critic_label": reb.get("critic_label"),
                 "cost": reb.get("cost", {}),
+            }
+
+        for fail in rebuttal_failures:
+            yield {
+                "type": "rebuttal_failed",
+                "model": fail["model"],
+                "label": model_to_label.get(fail["model"], fail["model"]),
+                "error": fail["error"],
             }
 
         yield {

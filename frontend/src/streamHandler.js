@@ -972,6 +972,21 @@ export function createStreamDispatcher({
                 model: event.model,
                 rebuttal: event.rebuttal,
                 label: event.label,
+                critic: event.critic,
+                critic_label: event.critic_label,
+              }];
+              return { ...prev, messages };
+            });
+            break;
+
+          case 'rebuttal_failed':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.debateRebuttalFailures = [...(lastMsg.debateRebuttalFailures || []), {
+                model: event.model,
+                label: event.label,
+                error: event.error,
               }];
               return { ...prev, messages };
             });
