@@ -941,6 +941,7 @@ export default function ChatInterface({
                               isStreaming={msg.loading?.stage1}
                               routingInfo={msg.routingInfo}
                               escalationInfo={msg.escalationInfo}
+                              errors={msg.stage1Errors || []}
                             />
                           )}
                           {msg.stage2 && (

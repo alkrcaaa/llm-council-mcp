@@ -122,8 +122,9 @@ gibi davransın; Council penceresinde kimin ne dediği ve kime cevap verdiği ne
       stage3'te). Kalan: tarayıcıda yeniden yükleme doğrulaması yapılmadı.
 - [~] Rebuttal olayına `critic` bilgisi; model hataları kullanıcıya görünür. Yapıldı: debate
       rebuttal olayı `critic`/`critic_label` taşır, başarısız rebuttal `rebuttal_failed` olayı ve
-      "NO REBUTTAL" kartı olarak görünür (yalnız akışta, yeniden yüklemede kalıcı değil). Kalan:
-      Stage 1/2 ve diğer akışlarda model hataları.
+      "NO REBUTTAL" kartı olarak görünür (yalnız akışta, yeniden yüklemede kalıcı değil). Stage 1 model hataları
+      (`stage1_error`) kartın üstünde "did not respond" satırı olarak görünür (yalnız akışta).
+      Kalan: Stage 2/3 hataları, hataların kalıcı olması.
 - [ ] Tek `Turn` bileşeni: konuşan, aşama mührü, "X'e cevap" zinciri, token/maliyet/gecikme.
       Stage 1 kart ızgarası, Stage 2 sıralama chip'leri, karar kartı üstte.
 - [ ] Debate'te tur içi model başına akış ve durum noktaları.

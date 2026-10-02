@@ -371,8 +371,16 @@ export function createStreamDispatcher({
             break;
 
           case 'stage1_error':
-            // Model error during Stage 1 - log but continue
-            console.warn('Stage 1 model error:', event.model, event.error);
+            // Model error during Stage 1 - surface it, the other models continue
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              lastMsg.stage1Errors = [
+                ...(lastMsg.stage1Errors || []).filter((e) => e.model !== event.model),
+                { model: event.model, error: event.error },
+              ];
+              return { ...prev, messages };
+            });
             break;
 
           case 'stage1_complete':

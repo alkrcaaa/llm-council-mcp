@@ -71,6 +71,7 @@ export default function Stage1({
   isStreaming,
   routingInfo,
   escalationInfo,
+  errors = [],
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [showReasoning, setShowReasoning] = useState({});
@@ -164,6 +165,16 @@ export default function Stage1({
       {/* Escalation Banner (if escalation was triggered) */}
       {escalationInfo && escalationInfo.escalated && (
         <EscalationBanner escalationInfo={escalationInfo} />
+      )}
+
+      {errors.length > 0 && (
+        <div className="stage1-errors">
+          {errors.map((err) => (
+            <div key={err.model} className="stage1-error-row">
+              <strong>{parseModelSkill(err.model).shortName}</strong> did not respond: {err.error}
+            </div>
+          ))}
+        </div>
       )}
 
       <div className="tabs">
