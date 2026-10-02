@@ -118,8 +118,8 @@ gibi davransın; Council penceresinde kimin ne dediği ve kime cevap verdiği ne
 - [~] `metadata` ve tam debate verisi kalıcı (yeniden yüklemede Stage 2 matrisi, etiketler,
       maliyet kaybolmasın). Yapıldı: Council akışı, non-stream yol ve cache isabeti mesajla
       birlikte `metadata` yazar (`storage.add_assistant_message`); frontend zaten `msg.metadata`
-      okuyor. Kalan: debate ve decomposition mesajları metadata taşımıyor; tarayıcıda yeniden
-      yükleme doğrulaması yapılmadı.
+      okuyor. Debate ve decomposition mesajları `metadata.costs` yazar (etiketler zaten
+      stage3'te). Kalan: tarayıcıda yeniden yükleme doğrulaması yapılmadı.
 - [ ] Rebuttal olayına `critic` bilgisi; model hataları kullanıcıya görünür.
 - [ ] Tek `Turn` bileşeni: konuşan, aşama mührü, "X'e cevap" zinciri, token/maliyet/gecikme.
       Stage 1 kart ızgarası, Stage 2 sıralama chip'leri, karar kartı üstte.

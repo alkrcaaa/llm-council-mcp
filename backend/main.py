@@ -2115,7 +2115,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                         conversation_id,
                         stage1_results,
                         stage2_results,
-                        stage3_result
+                        stage3_result,
+                        {"costs": costs},
                     )
 
                 # Send completion event
@@ -2323,7 +2324,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                         conversation_id,
                         stage1_results,
                         stage2_results,
-                        stage3_result
+                        stage3_result,
+                        {"costs": costs},
                     )
 
                     # Send completion event
